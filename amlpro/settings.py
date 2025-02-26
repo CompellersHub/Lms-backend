@@ -1,4 +1,4 @@
-
+from dotenv import load_dotenv
 import os
 from pathlib import Path
 from django.templatetags.static import static
@@ -8,6 +8,7 @@ from django.utils.translation import gettext_lazy as _
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+load_dotenv()
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
@@ -101,10 +102,10 @@ REST_FRAMEWORK = {
     ],
 }
 
-ACCOUNT_AUTHENTICATION_METHOD = 'email'
-ACCOUNT_EMAIL_REQUIRED = True
-ACCOUNT_UNIQUE_EMAIL = True
-ACCOUNT_EMAIL_VERIFICATION = 'mandatory'
+# ACCOUNT_AUTHENTICATION_METHOD = 'email'
+# ACCOUNT_EMAIL_REQUIRED = True
+# ACCOUNT_UNIQUE_EMAIL = True
+# ACCOUNT_EMAIL_VERIFICATION = 'mandatory'
 
 
 
@@ -123,8 +124,8 @@ SOCIALACCOUNT_PROVIDERS = {
         # (``socialaccount`` app) containing the required client
         # credentials, or list them here:
         'APP': {
-            'client_id' : '657211330134-7bh780ep7h56dv1oig0aoqio8c94b9cm.apps.googleusercontent.com',
-            'secret': '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',
+            'client_id' : os.getenv('CLIENT_ID'),
+            'secret': os.getenv('SECRET'),
             'key': ''
         },
 

@@ -30,6 +30,8 @@ urlpatterns = [
     re_path(r"redoc/$", schema_view.with_ui("redoc", cache_timeout=0), name="schema-redoc"),
     path('admin/', admin.site.urls),
     path('accounts/', include('allauth.urls')),
+    path('api/auth/', include('dj_rest_auth.urls')),
+    path('api/auth/social/', include('allauth.socialaccount.urls')),
 ]
 
 if settings.DEBUG:

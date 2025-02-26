@@ -39,6 +39,8 @@ INSTALLED_APPS = [
     'user',
     'rest_framework',
     'rest_framework.authtoken',
+    'dj_rest_auth',
+    'django.contrib.sites',
     'drf_yasg',
     # allauth
     'allauth',
@@ -92,6 +94,19 @@ AUTHENTICATION_BACKENDS = [
     'allauth.account.auth_backends.AuthenticationBackend',
 ]
 
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.SessionAuthentication',
+        'rest_framework.authentication.TokenAuthentication',
+    ],
+}
+
+ACCOUNT_AUTHENTICATION_METHOD = 'email'
+ACCOUNT_EMAIL_REQUIRED = True
+ACCOUNT_UNIQUE_EMAIL = True
+ACCOUNT_EMAIL_VERIFICATION = 'mandatory'
+
+
 
 LOGIN_REDIRECT_URL = '/'
 ACCOUNT_LOGOUT_REDIRECT_URL = '/'
@@ -103,23 +118,30 @@ SOCIALACCOUNT_FORMS = {
 
 
 SOCIALACCOUNT_PROVIDERS = {
-    # 'google': {
-    #     # For each OAuth based provider, either add a ``SocialApp``
-    #     # (``socialaccount`` app) containing the required client
-    #     # credentials, or list them here:
-    #     'APP': {
-            
-    #         'key': ''
-    #     },
+    'google': {
+        # For each OAuth based provider, either add a ``SocialApp``
+        # (``socialaccount`` app) containing the required client
+        # credentials, or list them here:
+        'APP': {
+            'client_id' : '657211330134-7bh780ep7h56dv1oig0aoqio8c94b9cm.apps.googleusercontent.com',
+            'secret': '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',
+            'key': ''
+        },
 
-    #     'SCOPE' : {
-    #         'profile',
-    #         'email',
-    #     },
-    #     'AUTH_PARAMS': {'access_type': 'online'},
-    #     'OAUTH_PRICE_ENABLED': True
-    # }
+        'SCOPE' : {
+            'profile',
+            'email',
+        },
+        'AUTH_PARAMS': {'access_type': 'online'},
+        'OAUTH_PRICE_ENABLED': True
+    }
 }
+
+SITE_ID = 1
+
+# SOCIALACCOUNT_ADAPTER = 'user.adapters.CustomSocialAccountAdapter'
+
+
 
 WSGI_APPLICATION = 'amlpro.wsgi.application'
 

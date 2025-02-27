@@ -18,11 +18,13 @@ class CustomUser(AbstractUser):
     class Meta:
         permissions = [
             ('Assign_teaching_position', 'Can assign teaching position'),
+            ('create_course_videos', 'can create course videos'),
             ('create_course_notes', 'can create course notes'),
             ('edit_course_notes', 'can create course notes'),
             ('view_payments', 'can view payments'),
             ('make_payments', 'can make payments'),
             ('make_assignments', 'can make assignments'),
+            ('view_assignments', 'can view assignments'),
             ('add_students_to_course', 'can add students to course'),
             ('view_students_in_course', 'can view all students in course'),
             ('edit_students_in_course', 'can edit all students in course'),
@@ -32,3 +34,6 @@ class CustomUser(AbstractUser):
             ('view_course', 'can view all course')
 
         ]
+
+    def _str__(self):
+        return self.username

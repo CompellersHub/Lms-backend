@@ -33,6 +33,7 @@ urlpatterns = [
     path('api/auth/', include('dj_rest_auth.urls')),
     path('api/auth/social/', include('allauth.socialaccount.urls')),
     path('customuser/', include('user.urls')),
+    path('courses/', include('courses.urls')),
 ]
 
 if settings.DEBUG:

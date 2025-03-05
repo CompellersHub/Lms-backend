@@ -18,11 +18,12 @@ def validate_password(password):
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomUser
-        fields = ['id', 'username', 'email', 'role', 'password']
+        fields = ['id', 'username', 'email', 'role', 'password', 'phone_number']
         extra_kwargs = {
             'password': {'write_only': True, 'required': True},
             'role': {'required': True},
             'created_at': {'read_only': True},
+            'phone_number': {'required': True}
         }
     
     def create(self, validated_data):

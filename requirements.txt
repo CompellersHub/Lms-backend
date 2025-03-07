@@ -20,9 +20,11 @@ idna==3.10
 inflection==0.5.1
 oauthlib==3.2.2
 packaging==24.1
+paypalrestsdk==1.13.3
 pillow==11.0.0
 pycparser==2.22
 PyJWT==2.9.0
+pyOpenSSL==25.0.0
 python-dotenv==1.0.1
 pytz==2024.2
 PyYAML==6.0.2

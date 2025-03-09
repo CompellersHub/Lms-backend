@@ -10,7 +10,7 @@ class CategoryAdmin(ModelAdmin):
 
 @admin.register(Course)
 class CourseAdmin(ModelAdmin):
-    list_display = ['name', 'category', 'created_by']
+    list_display = ['name', 'category', 'price', 'created_by']
     search_fields = ['name', 'category', 'created_by']
 
 @admin.register(Video)

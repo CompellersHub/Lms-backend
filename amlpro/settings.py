@@ -37,6 +37,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    
     'user',
     'courses',
     'rest_framework',
@@ -52,11 +53,15 @@ INSTALLED_APPS = [
     'allauth.socialaccount.providers.github',
     'allauth.socialaccount.providers.google',
 
+    'corsheaders',
+
     
 ]
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -67,6 +72,22 @@ MIDDLEWARE = [
     # Add the account middleware:
     "allauth.account.middleware.AccountMiddleware",
 ]
+
+CORS_ALLOWED_ORIGINS = [
+    "https://example.com",
+    "https://sub.example.com",
+    "http://localhost:3000", #common for react development.
+    "http://127.0.0.1:9000", #common for angular development.
+]
+
+CORS_ALLOWED_METHODS = [
+    "GET",
+    "POST",
+    "PUT",
+    "PATCH",
+    "DELETE",
+    "OPTIONS",
+] 
 
 ROOT_URLCONF = 'amlpro.urls'
 
@@ -138,6 +159,14 @@ SOCIALACCOUNT_PROVIDERS = {
         'OAUTH_PRICE_ENABLED': True
     }
 }
+
+import paypalrestsdk
+
+paypalrestsdk.configure({
+    "mode": "sandbox",  # or "live"
+    "client_id": os.getenv("PAYPAL_CLIENT_ID"),
+    "client_secret": os.getenv("PAYPAL_SECRET")
+})
 
 SITE_ID = 1
 
@@ -276,6 +305,30 @@ UNFOLD = {
                         "link": reverse_lazy("admin:index"),
                         "permission": lambda request: request.user.is_superuser,
                     },
+                    {
+                        "title": _("Users"),
+                        "icon": "people",
+                        "link": reverse_lazy("admin:user_customuser_changelist"),
+                        "permission": lambda request: request.user.is_superuser,
+                    },
+                    {
+                        "title": _("Courses"),
+                        "icon": "school",
+                        "link": reverse_lazy("admin:courses_course_changelist"),
+                        "permission": lambda request: request.user.is_superuser,
+                    },
+                    {
+                        "title": _("Categories"),
+                        "icon": "category",
+                        "link": reverse_lazy("admin:courses_category_changelist"),
+                        "permission": lambda request: request.user.is_superuser,
+                    },
+                    {
+                        "title": _("Videos"),
+                        "icon": "video_library",
+                        "link": reverse_lazy("admin:courses_video_changelist"),
+                        "permission": lambda request: request.user.is_superuser,
+                    }
 
                     
             

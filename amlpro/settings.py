@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     'allauth.socialaccount.providers.github',
     'allauth.socialaccount.providers.google',
 
+
     'corsheaders',
 
     
@@ -115,6 +116,7 @@ AUTHENTICATION_BACKENDS = [
 
     # `allauth` specific authentication methods, such as login by email
     'allauth.account.auth_backends.AuthenticationBackend',
+
 ]
 
 REST_FRAMEWORK = {
@@ -138,6 +140,8 @@ SOCIALACCOUNT_FORMS = {
     'disconnect': 'allauth.socialaccount.forms.DisconnectForm',
     'signup': 'allauth.socialaccount.forms.SignupForm',
 }
+
+# AUTH_USER_MODEL = 'user.CustomUser'
 
 
 SOCIALACCOUNT_PROVIDERS = {

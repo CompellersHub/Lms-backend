@@ -41,6 +41,8 @@ INSTALLED_APPS = [
     'user',
     'courses',
     'rest_framework',
+    'payment',
+    'student_dashboard',
     'rest_framework.authtoken',
     'dj_rest_auth',
     'django.contrib.sites',

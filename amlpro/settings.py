@@ -78,6 +78,7 @@ MIDDLEWARE = [
 
 CORS_ALLOWED_ORIGINS = [
     "https://example.com",
+    "http://127.0.0.1:5502",
     "https://sub.example.com",
     "http://localhost:3000", #common for react development.
     "http://127.0.0.1:9000", #common for angular development.
@@ -123,7 +124,7 @@ AUTHENTICATION_BACKENDS = [
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework.authentication.SessionAuthentication',
+        # 'rest_framework.authentication.SessionAuthentication',
         'rest_framework.authentication.TokenAuthentication',
     ],
 }

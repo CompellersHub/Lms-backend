@@ -16,13 +16,14 @@ from django.http import JsonResponse
 
 # Create your views here.
 class Signup(APIView):
-    permission_classes = [AllowAny]
+    # permission_classes = [AllowAny]
     def post(self, request):
         serializer = UserSerializer(data=request.data)
         if serializer.is_valid():
-            serializer.save()
+            user = serializer.save()
             print(f"User Created: {user}")
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            token, created = Token.objects.get_or_create(user=user)
+            return Response({"token": token.key, "user": serializer.data}, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
 class Login(APIView):
@@ -50,3 +51,11 @@ class Logout(APIView):
     def post(self, request):
         request.user.auth_token.delete()
         return Response({"message": "User logged out successfully"}, status=status.HTTP_200_OK)
+    
+class Get_csrf_token(APIView):
+    @method_decorator(ensure_csrf_cookie)
+    def get(self, request, *args, **kwargs):
+        csrf_token = get_token(request)
+        response = JsonResponse({'message': 'CSRF token set.'})
+        response['X-CSRFToken'] = csrf_token
+        return response

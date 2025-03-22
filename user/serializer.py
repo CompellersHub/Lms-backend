@@ -14,22 +14,32 @@ def validate_password(password):
         raise ValidationError("Password must be at least 8 characters long")
     if check_password(password) == False:
         raise ValidationError("Password must contain at least one uppercase, one lowercase, one digit and one special character")
-    
+
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomUser
-        fields = ['id', 'username', 'email', 'role', 'password', 'phone_number']
+        fields = [
+            'id', 'username', 'email', 'password', 'first_name', 'last_name', 'role', 'phone_number', 'created_at'
+        ]
+
         extra_kwargs = {
             'password': {'write_only': True, 'required': True},
-            # 'role': {'required': True},
             'created_at': {'read_only': True},
-            # 'phone_number': {'required': True}
+            # 'username': {'required': True},
+            'phone_number':{'required': True},
         }
-    
-    def create(self, validated_data):
-        password = validated_data.pop('password')
-        validate_password(password)
-        user = CustomUser(**validated_data)
-        user.set_password(password)
-        user.save()
-        return
+
+        def create(self, validated_data):
+            password = validate_password['password']
+            if not check_password(password):
+                raise ValidationError("Password must contain at least one uppercase, one lowercase, one digit and one special character")
+            
+            user = CustomUser.objects.create_user(
+                username=validated_data['username'],
+                email=validated_data['email'],
+                phone_number = validated_data['phone_number'],
+                password=password
+            )
+            return user
+
+        

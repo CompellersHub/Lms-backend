@@ -14,6 +14,11 @@ class CustomUser(AbstractUser):
     user_permissions = models.ManyToManyField(Permission, related_name="customuser_user_set", blank=True)
     created_at = models.DateTimeField(auto_now=True)
 
+class Token(models.Model):
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="customuser")
+    key = models.CharField(max_length=40, primary_key=True)
+    created = models.DateTimeField(auto_now_add=True)
+
 
     class Meta:
         permissions = [

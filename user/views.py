@@ -13,6 +13,7 @@ from django.views.decorators.csrf import ensure_csrf_cookie
 from django.middleware.csrf import get_token
 from django.utils.decorators import method_decorator
 from django.http import JsonResponse
+from django.http import HttpResponseRedirect
 
 # Create your views here.
 class Signup(APIView):
@@ -59,3 +60,6 @@ class Get_csrf_token(APIView):
         response = JsonResponse({'message': 'CSRF token set.'})
         response['X-CSRFToken'] = csrf_token
         return response
+
+def social_callback(request):
+    return HttpResponseRedirect("http://127.0.0.1:5503/course.html")

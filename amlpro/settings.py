@@ -85,8 +85,7 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:9000",
     "http://127.0.0.1:5503",
-    "http://localhost:3000",
-    "http://127.0.0.1:8000",
+    
 ]
 
 CORS_ALLOWED_METHODS = [
@@ -367,11 +366,11 @@ UNFOLD = {
 
 
 JAZZMIN_SETTINGS = {
-     "site_title": "Mb shawarma bite",
+     "site_title": "Amlpro trainers",
      "site_logo": "../static/favicon_io/favicon.ico",
-     "copyright": "Mb shawarma site",
+     "copyright": "Amlpro trainers site",
      "topmenu_links":[
-          {"app": "Mb-shawarma-bite"},
+          {"app": "Aml-pro-trainers"},
           {"name": "Support", "url": "https://chowdeck.com/store/alimosho-1/restaurants/mb-shawarma-bite", "new_window": True},
      ],
      "use_google_fonts_cdn": True,

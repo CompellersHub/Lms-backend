@@ -79,9 +79,8 @@ MIDDLEWARE = [
 ]
 
 CORS_ALLOWED_ORIGINS = [
-    "https://example.com",
+    "https://pro-trainers.com",
     "http://127.0.0.1:5502",
-    "https://sub.example.com",
     "http://localhost:3000",
     "http://127.0.0.1:9000",
     "http://127.0.0.1:5503",

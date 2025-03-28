@@ -95,7 +95,7 @@ def create_course_order(request):
     return JsonResponse({"error": "Invalid request"}, status=400)
 
 class Courses(APIView):
-    permission_classes = [IsAuthenticated]
+    # permission_classes = [IsAuthenticated]
     def get(self, request):
         courses = Course.objects.all()
         serializer = CourseSerializer(courses, many=True)

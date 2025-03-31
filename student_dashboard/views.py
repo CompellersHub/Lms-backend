@@ -11,7 +11,7 @@ from rest_framework.permissions import IsAuthenticated
 # Create your views here.
 
 class Profile(APIView):
-    permission_classes = [IsAuthenticated]
+    # permission_classes = [IsAuthenticated]
     def get(self, request):
         student = request.user
         enrolled_courses = Course.objects.filter(student=student)

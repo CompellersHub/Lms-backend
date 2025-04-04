@@ -25,7 +25,7 @@ ALLOWED_HOSTS = []
 # Application definition
 
 INSTALLED_APPS = [
-    #'jazzmin'
+    
     'jazzmin',
     # unfold
     "unfold.contrib.import_export",
@@ -62,6 +62,8 @@ INSTALLED_APPS = [
 
     
 ]
+
+SOCIALACCOUNT_LOGIN_ON_GET = True
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
@@ -197,6 +199,7 @@ DATABASES = {
 }
 
 
+
 # Password validation
 # https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators
 
@@ -239,134 +242,14 @@ STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-UNFOLD = {
-     "SITE_TITLE": "AmlPro",
-     "SITE_HEADER": "",
-     "SITE_URL": "/",
-     # "SITE_ICON": lambda request: static("icon.svg"),  # both modes, optimise for 32px height
-     "SITE_ICON": {
-         "light": lambda request: static("icon-light.svg"),  # light mode
-         "dark": lambda request: static("icon-dark.svg"),  # dark mode
-     },
-     # "SITE_LOGO": lambda request: static("logo.svg"),  # both modes, optimise for 32px height
-    "SITE_LOGO": {
-         "light": lambda request: static("logo-light.svg"),  # light mode
-         "dark": lambda request: static("logo-dark.svg"),  # dark mode
-     },
 
-    "SITE_SYMBOL": "speed",  # symbol from icon set
-    "SITE_FAVICONS": [
-        {
-            "rel": "icon",
-            "sizes": "32x32",
-            "type": "image/svg+xml",
-            "href": lambda request: static("favicon.svg"),
-        },
-    ],
-    "SHOW_HISTORY": True, # show/hide "History" button, default: True
-    "SHOW_VIEW_ON_SITE": True, # show/hide "View on site" button, default: True
-    "THEME": "dark", # Force theme: "dark" or "light". Will disable theme switcher
-    
-    
-    "COLORS": {
-        "font": {
-            "subtle-light": "107 114 128",
-            "subtle-dark": "156 163 175",
-            "default-light": "75 85 99",
-            "default-dark": "209 213 219",
-            "important-light": "17 24 39",
-            "important-dark": "243 244 246",
-        },
-        "primary": {
-            "50": "250 245 255",
-            "100": "243 232 255",
-            "200": "233 213 255",
-            "300": "216 180 254",
-            "400": "192 132 252",
-            "500": "168 85 247",
-            "600": "147 51 234",
-            "700": "126 34 206",
-            "800": "107 33 168",
-            "900": "88 28 135",
-            "950": "59 7 100",
-        },
-    },
-    # "EXTENSIONS": {
-    #     "modeltranslation": {
-    #         "flags": {
-    #             "en": "🇬🇧",
-    #             "fr": "🇫🇷",
-    #             "nl": "🇧🇪",
-    #         },
-    #     },
-    # },
-    "SIDEBAR": {
-        "show_search": True,  # Search in applications and models names
-        "show_all_applications": True,  # Dropdown with all applications and models
-        "navigation": [
-            {
-                "title": _("Navigation trainer"),
-                "separator": True,  # Top border
-                "collapsible": True,  # Collapsible group of links
-                "items": [
-                    {
-                        "title": _("Dashboard"),
-                        "icon": "home",  # Supported icon set: https://fonts.google.com/icons
-                        "link": reverse_lazy("admin:index"),
-                        "permission": lambda request: request.user.is_superuser,
-                    },
-                    {
-                        "title": _("Users"),
-                        "icon": "people",
-                        "link": reverse_lazy("admin:user_customuser_changelist"),
-                        "permission": lambda request: request.user.is_superuser,
-                    },
-                    {
-                        "title": _("Courses"),
-                        "icon": "school",
-                        "link": reverse_lazy("admin:courses_course_changelist"),
-                        "permission": lambda request: request.user.is_superuser,
-                    },
-                    {
-                        "title": _("Categories"),
-                        "icon": "category",
-                        "link": reverse_lazy("admin:courses_category_changelist"),
-                        "permission": lambda request: request.user.is_superuser,
-                    },
-                    {
-                        "title": _("Videos"),
-                        "icon": "video_library",
-                        "link": reverse_lazy("admin:courses_video_changelist"),
-                        "permission": lambda request: request.user.is_superuser,
-                    }
-
-                    
-            
-                   
-                ],
-            },
-        ],
-    },
-    # "TABS": [
-    #     {
-    #         "models": [
-    #             "app_label.model_name_in_lowercase",
-    #         ],
-    #         "items": [
-    #             {
-    #                 "title": _("Your custom title"),
-    #                 "link": reverse_lazy("admin:app_label_model_name_changelist"),
-    #                 "permission": "sample_app.permission_callback",
-    #             },
-    #         ],
-    #     },
-    # ],
-}
 
 
 JAZZMIN_SETTINGS = {
      "site_title": "Amlpro trainers",
-     "site_logo": "../static/favicon_io/favicon.ico",
+     "site_header": "Amlpro trainers",
+     "site_logo": "/amlpro/staticfiles/logo/logo.jpg",
+     "login_logo": "/amlpro/staticfiles/logo/logo.jpg",
      "copyright": "Amlpro trainers site",
      "topmenu_links":[
           {"app": "Aml-pro-trainers"},

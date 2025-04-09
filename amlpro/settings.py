@@ -14,15 +14,21 @@ load_dotenv()
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-f($n54+mp@2@3bx$smc=$2-rxd6jyzbbz4%=h-_34%^w37_*--'
+#SECRET_KEY = 'django-insecure-f($n54+mp@2@3bx$smc=$2-rxd6jyzbbz4%=h-_34%^w37_*--'
+SECRET_KEY = os.getenv('SECRET_KEY') or 'django-insecure-f($n54+mp@2@3bx$smc=$2-rxd6jyzbbz4%=h-_34%^w37_*--'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = bool(os.getenv('DEBUG'))
 
+<<<<<<< HEAD
 ALLOWED_HOSTS = ['lms-backend-bn1v.onrender.com', '127.0.0.1', 'DOMAIN_NAME']
+=======
+DOMAIN_NAME = os.getenv('DOMAIN_NAME')
+>>>>>>> 668e39d83eea5078ec7275ccda167c3aa14d3652
 
+ALLOWED_HOSTS =  [DOMAIN_NAME] if DOMAIN_NAME else ['*'] 
 
-# Application definition
+#Application definition
 
 INSTALLED_APPS = [
     

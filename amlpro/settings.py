@@ -21,7 +21,7 @@ SECRET_KEY = os.getenv('SECRET_KEY') or 'django-insecure-f($n54+mp@2@3bx$smc=$2-
 DEBUG = bool(os.getenv('DEBUG'))
 
 <<<<<<< HEAD
-ALLOWED_HOSTS = ['lms-backend-bn1v.onrender.com', '127.0.0.1', 'DOMAIN_NAME']
+# ALLOWED_HOSTS = ['lms-backend-bn1v.onrender.com', '127.0.0.1', 'DOMAIN_NAME']
 =======
 DOMAIN_NAME = os.getenv('DOMAIN_NAME')
 >>>>>>> 668e39d83eea5078ec7275ccda167c3aa14d3652

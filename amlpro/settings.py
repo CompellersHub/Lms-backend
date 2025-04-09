@@ -19,7 +19,7 @@ SECRET_KEY = 'django-insecure-f($n54+mp@2@3bx$smc=$2-rxd6jyzbbz4%=h-_34%^w37_*--
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['lms-backend-bn1v.onrender.com']
+ALLOWED_HOSTS = ['lms-backend-bn1v.onrender.com', '127.0.0.1', 'DOMAIN_NAME']
 
 
 # Application definition
@@ -85,7 +85,7 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:5502",
     "http://localhost:3000",
     "http://127.0.0.1:9000",
-    "http://127.0.0.1:5503",
+    "http://localhost:5173",
     
 ]
 
@@ -97,6 +97,15 @@ CORS_ALLOWED_METHODS = [
     "DELETE",
     "OPTIONS",
 ] 
+
+CORS_ALLOW_HEADERS = (
+    "accept",
+    "authorization",
+    "content-type",
+    "user-agent",
+    "x-csrftoken",
+    "x-requested-with",
+)
 
 ROOT_URLCONF = 'amlpro.urls'
 

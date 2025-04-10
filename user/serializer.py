@@ -15,7 +15,7 @@ def validate_password(password):
     if check_password(password) == False:
         raise ValidationError("Password must contain at least one uppercase, one lowercase, one digit and one special character")
 
-class UserSerializer(serializers.ModelSerializer):
+class CustomUserSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomUser
         fields = [

@@ -10,6 +10,7 @@ class CustomUser(AbstractUser):
         STUDENT = 'STUDENT', 'Student'
     role = models.CharField(max_length=20, choices=ROLE.choices, default=ROLE.STUDENT)
     phone_number = models.CharField(max_length=15, blank=True, null=True)
+    email = models.EmailField(unique=True)
     groups = models.ManyToManyField(Group, related_name="customuser_set", blank=True)
     user_permissions = models.ManyToManyField(Permission, related_name="customuser_user_set", blank=True)
     created_at = models.DateTimeField(auto_now=True)

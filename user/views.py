@@ -1,7 +1,7 @@
 from django.shortcuts import render
 from rest_framework import status
 from .models import CustomUser
-from .serializer import UserSerializer
+from .serializer import CustomUserSerializer
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import Token
@@ -12,17 +12,12 @@ from django.contrib.auth import authenticate, login, logout
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.middleware.csrf import get_token
 from django.utils.decorators import method_decorator
-from django.http import JsonResponse
-from django.http import HttpResponseRedirect
-from django.contrib.auth import get_user_model
-
-
-# User = get_user_model()
-
+from django.http import JsonResponse, HttpResponseRedirect
 # Create your views here.
+
 class Signup(APIView):
     def post(self, request, format=None):
-        serializers = UserSerializer(data=request.data)
+        serializers = CustomUserSerializer(data=request.data)
         if serializers.is_valid():
             user = serializers.save()
             print(f"User created: {user}, ID: {user.id}")
@@ -30,32 +25,52 @@ class Signup(APIView):
             
             return Response({"token": token.key, "user": serializers.data}, status=status.HTTP_201_CREATED)
         return Response(serializers.errors, status=status.HTTP_400_BAD_REQUEST)
+    
 class Login(APIView):
-    permission_classes = [AllowAny]
     def post(self, request):
-        username = request.data.get('username')
-        email = request.data.get('email')
-        password = request.data.get('password')
-        user = authenticate(email=email, password=password)
+        email = request.data.get("email")
+        password = request.data.get("password")
 
+        
         if not email:
             return Response({"error": "Email is required"}, status=status.HTTP_400_BAD_REQUEST)
         if not password:
             return Response({"error": "Password is required"}, status=status.HTTP_400_BAD_REQUEST)
+
         
-        if user is not None:
-            login(request, user)
-            token, created = Token.objects.get_or_create(user=user)
-            return Response({'token': token.key}, status=status.HTTP_200_OK)
-        return Response({'error': 'Invalid credentials'}, status=status.HTTP_400_BAD_REQUEST)
-    
+        user = authenticate(request, username=email, password=password)
+
+        if user is None:
+            return Response({"error": "Invalid credentials, please try again"}, status=status.HTTP_400_BAD_REQUEST)
+
+        
+        login(request, user)
+        serializer = CustomUserSerializer(user)
+        user_data = serializer.data
+        token, created = Token.objects.get_or_create(user=user)
+
+        return Response({"token": token.key, "user": user_data, "message": "User logged in successfully"}, status=status.HTTP_200_OK)
+
 class Logout(APIView):
-    permission_classes = [IsAuthenticated]
     authentication_classes = [TokenAuthentication]
-    def post(self, request):
-        request.user.auth_token.delete()
-        return Response({"message": "User logged out successfully"}, status=status.HTTP_200_OK)
+    permission_classes = [IsAuthenticated]
     
+    def post(self, request, format=None):
+        try:
+            token = Token.objects.get(user=request.user)
+            token.delete()
+        except Token.DoesNotExist:
+            return Response(
+                {"error": "Invalid token or already logged out."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        Logout(request)
+
+        return Response({"message": "User logged out successfully"}, status=status.HTTP_200_OK) 
+    
+
+
+
 class Get_csrf_token(APIView):
     @method_decorator(ensure_csrf_cookie)
     def get(self, request, *args, **kwargs):
@@ -63,6 +78,7 @@ class Get_csrf_token(APIView):
         response = JsonResponse({'message': 'CSRF token set.'})
         response['X-CSRFToken'] = csrf_token
         return response
+    
 
 def social_callback(request):
     return HttpResponseRedirect("http://127.0.0.1:5503/course.html")

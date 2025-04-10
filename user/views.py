@@ -21,9 +21,9 @@ class Signup(APIView):
         if serializers.is_valid():
             user = serializers.save()
             print(f"User created: {user}, ID: {user.id}")
-            token, created = Token.objects.get_or_create(user=user)
+            # token, created = Token.objects.get_or_create(user=user)
             
-            return Response({"token": token.key, "user": serializers.data}, status=status.HTTP_201_CREATED)
+            return Response({"user": serializers.data}, status=status.HTTP_201_CREATED)
         return Response(serializers.errors, status=status.HTTP_400_BAD_REQUEST)
     
 class Login(APIView):
@@ -38,7 +38,7 @@ class Login(APIView):
             return Response({"error": "Password is required"}, status=status.HTTP_400_BAD_REQUEST)
 
         
-        user = authenticate(request, username=email, password=password)
+        user = authenticate(request, email=email, password=password)
 
         if user is None:
             return Response({"error": "Invalid credentials, please try again"}, status=status.HTTP_400_BAD_REQUEST)
@@ -47,9 +47,9 @@ class Login(APIView):
         login(request, user)
         serializer = CustomUserSerializer(user)
         user_data = serializer.data
-        token, created = Token.objects.get_or_create(user=user)
+        # token, created = Token.objects.get_or_create(user=user)
 
-        return Response({"token": token.key, "user": user_data, "message": "User logged in successfully"}, status=status.HTTP_200_OK)
+        return Response({ "user": user_data, "message": "User logged in successfully"}, status=status.HTTP_200_OK)
 
 class Logout(APIView):
     authentication_classes = [TokenAuthentication]

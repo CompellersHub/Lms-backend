@@ -2,6 +2,7 @@ from rest_framework import serializers
 from rest_framework.validators import ValidationError
 from .models import CustomUser
 import re
+from django.contrib.auth.hashers import make_password
 
 # This will check length and type of characters passed in password
 def check_password(password):
@@ -16,30 +17,27 @@ def validate_password(password):
         raise ValidationError("Password must contain at least one uppercase, one lowercase, one digit and one special character")
 
 class CustomUserSerializer(serializers.ModelSerializer):
+    password = serializers.CharField(write_only=True, validators=[validate_password])
+
     class Meta:
         model = CustomUser
         fields = [
             'id', 'username', 'email', 'password', 'first_name', 'last_name', 'role', 'phone_number', 'created_at'
         ]
-
         extra_kwargs = {
             'password': {'write_only': True, 'required': True},
             'created_at': {'read_only': True},
-            # 'username': {'required': True},
-            'phone_number':{'required': True},
+            'phone_number': {'required': True},
         }
 
-        def create(self, validated_data):
-            password = validate_password['password']
-            if not check_password(password):
-                raise ValidationError("Password must contain at least one uppercase, one lowercase, one digit and one special character")
-            
-            user = CustomUser.objects.create_user(
-                username=validated_data['username'],
-                email=validated_data['email'],
-                phone_number = validated_data['phone_number'],
-                password=password
-            )
-            return user
+    def create(self, validated_data):
+        password = validated_data.pop('password')
+        hashed_password = make_password(password)  # Hash the password here
 
-        
+        user = CustomUser.objects.create(
+            username=validated_data['username'],
+            email=validated_data['email'],
+            phone_number=validated_data['phone_number'],
+            password=hashed_password  # Save the hashed password
+        )
+        return user

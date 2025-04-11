@@ -29,7 +29,6 @@ ALLOWED_HOSTS =  [DOMAIN_NAME] if DOMAIN_NAME else ['*']
 INSTALLED_APPS = [
     
     'jazzmin',
-    # unfold
     "unfold.contrib.import_export",
     "import_export",
     'unfold',

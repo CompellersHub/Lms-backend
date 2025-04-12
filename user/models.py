@@ -11,14 +11,15 @@ class CustomUser(AbstractUser):
     role = models.CharField(max_length=20, choices=ROLE.choices, default=ROLE.STUDENT)
     phone_number = models.CharField(max_length=15, blank=True, null=True)
     email = models.EmailField(unique=True)
+    profile = models.ImageField(null=True)
     groups = models.ManyToManyField(Group, related_name="customuser_set", blank=True)
     user_permissions = models.ManyToManyField(Permission, related_name="customuser_user_set", blank=True)
     created_at = models.DateTimeField(auto_now=True)
 
-class Token(models.Model):
-    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="customuser")
-    key = models.CharField(max_length=40, primary_key=True)
-    created = models.DateTimeField(auto_now_add=True)
+# class Token(models.Model):
+#     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="customuser")
+#     key = models.CharField(max_length=40, primary_key=True)
+#     created = models.DateTimeField(auto_now_add=True)
 
 
     class Meta:
@@ -45,13 +46,14 @@ class Token(models.Model):
         return self.username
 
 class TeacherProfile(models.Model):
+    id = models.AutoField(primary_key=True)
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="teacher_profile")
     role = models.CharField(max_length=20, choices=CustomUser.ROLE.choices, default=CustomUser.ROLE.TEACHER)
     bio = models.TextField(blank=True, null=True)
     profile_picture = models.ImageField(upload_to='profile_pictures/', blank=True, null=True)
     phone_number = models.CharField(max_length=15, blank=True, null=True)
-    address = models.CharField(max_length=255, blank=True, null=True)
-    date_of_birth = models.DateField(blank=True, null=True)
+    past_experience = models.TextField(null=True)
+    course_taken = models.CharField(max_length=100 , null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

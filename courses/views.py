@@ -205,3 +205,9 @@ class CourseOrderItemAPIView(APIView):
         items = CourseOrderItem.objects.filter(order=order)
         serializer = CourseOrderItemSerializer(items, many=True)
         return Response(serializer.data)
+
+class Assignment(APIView):
+    def get(self, request, order_id):
+        assignment = Assignment.objects.all()
+        serializer = AssignmentSerializer(assignment, many=True)
+        return Response(serializer.data)

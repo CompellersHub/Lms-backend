@@ -29,6 +29,14 @@ class ModuleSerializer(serializers.ModelSerializer):
         module = Module.objects.create(**validated_data)
         return module
     
+class AssignmentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Assignment
+        fields = '__all__'
+
+
+
+    
 class VideoSerializer(serializers.ModelSerializer):
     class Meta:
         model = Video

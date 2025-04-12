@@ -49,7 +49,7 @@ class TeacherProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = TeacherProfile
         fields = [
-            'id', 'user', 'bio', 'profile_picture', 'phone_number', 'address', 'date_of_birth', 'created_at'
+            'id', 'user', 'role', 'bio', 'profile_picture', 'phone_number', 'past_experience', 'course_taken', 'created_at'
         ]
         extra_kwargs = {
             'user': {'required': True},

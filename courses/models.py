@@ -22,7 +22,6 @@ class Course(models.Model):
     name = models.CharField(max_length=150)
     course_image = models.ImageField(upload_to='course_images/')
     description = models.TextField()
-    student = models.ForeignKey(CustomUser, related_name='students', on_delete=models.CASCADE, blank=True, null=True)
     category = models.ForeignKey('Category', on_delete=models.CASCADE)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

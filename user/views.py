@@ -63,8 +63,18 @@ class Logout(APIView):
         return Response({"message": "User logged out successfully"}, status=status.HTTP_200_OK) 
     
 
-    
+class Teacher(APIView):
+    def post(self, request):
+        serializer = TeacherProfileSerializer(data=request.data)
+        if serializer.is_valid():
+            Teacher = serializer.save()
+            return Response({"Teacher": serializer.data}, status=status.HTTP_201_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+    def get(self, request):
+        teacher = TeacherProfile.objects.all()
+        serializer = TeacherProfileSerializer(teacher, many=True)
+        return Response(serializer.data)
 
 
 class Get_csrf_token(APIView):

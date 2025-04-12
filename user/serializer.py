@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from rest_framework.validators import ValidationError
-from .models import CustomUser
+from .models import *
 import re
 from django.contrib.auth.hashers import make_password
 
@@ -41,3 +41,23 @@ class CustomUserSerializer(serializers.ModelSerializer):
             password=hashed_password  # Save the hashed password
         )
         return user
+
+
+class TeacherProfileSerializer(serializers.ModelSerializer):
+    user = CustomUserSerializer()
+
+    class Meta:
+        model = TeacherProfile
+        fields = [
+            'id', 'user', 'bio', 'profile_picture', 'phone_number', 'address', 'date_of_birth', 'created_at'
+        ]
+        extra_kwargs = {
+            'user': {'required': True},
+            'created_at': {'read_only': True},
+        }
+
+    def create(self, validated_data):
+        user_data = validated_data.pop('user')
+        user = CustomUser.objects.create(**user_data)
+        teacher_profile = TeacherProfile.objects.create(user=user, **validated_data)
+        return teacher_profile

@@ -1,6 +1,6 @@
 from django.contrib import admin
 from unfold.admin import ModelAdmin
-from .models import Category, Course, Video, CourseOrder, CourseOrderItem
+from .models import *
 
 @admin.register(Category)
 class CategoryAdmin(ModelAdmin):
@@ -9,12 +9,30 @@ class CategoryAdmin(ModelAdmin):
 
 @admin.register(Course)
 class CourseAdmin(ModelAdmin):
-    list_display = ['name', 'category', 'price', 'created_by']
-    search_fields = ['name', 'category__name', 'created_by__email']
+    list_display = ['name', 'level', 'price', 'instructor', 'estimated_time']
+    search_fields = ['name', 'category__name', 'instructor__email']
+
+@admin.register(Assignment)
+class AssignmentAdmin(ModelAdmin):
+    list_display = ['title', 'course', 'teacher', 'due_date']
+    search_fields = ['title', 'course__name', 'teacher__email']
+    list_filter = ['course', 'teacher']
+
+@admin.register(Submission)
+class SubmissionAdmin(ModelAdmin):
+    list_display = ['student', 'assignment', 'submission_date', 'marks_obtained']
+    search_fields = ['student__email', 'assignment__title']
+    list_filter = ['student']
+
+@admin.register(Module)
+class ModuleAdmin(ModelAdmin):
+    list_display = ['title', 'course']
+    search_fields = ['title', 'course__name']
+    list_filter = ['course']
 
 @admin.register(Video)
 class VideoAdmin(ModelAdmin):
-    list_display = ['title', 'course', 'created_by']
+    list_display = ['title', 'course', 'module' ,'duration']
     search_fields = ['title', 'course__name', 'created_by__email']
 
 class CourseOrderItemInline(admin.TabularInline):

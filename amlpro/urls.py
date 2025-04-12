@@ -14,12 +14,12 @@ from rest_framework_simplejwt.views import (
 
 schema_view = get_schema_view(
     openapi.Info(
-        title="AmlPro Trainers API(ATA)",
+        title="TITANS CAREER API(TCA)",
         default_version='v1',
-        description="API documentation for AmlPro Trainers API",
+        description="API documentation for Titans Career API",
         terms_of_service="https://www.google.com/policies/terms/",
         contact=openapi.Contact(email=""),
-        license=openapi.License(name="AmlPro Trainers api licence"),
+        license=openapi.License(name="Titans Career api licence"),
     ),
     public=True,
     permission_classes=(permissions.AllowAny,),

@@ -28,3 +28,7 @@ class UserAdmin(ModelAdmin):
 
     has_social_accounts.boolean = True
     has_social_accounts.short_description = 'Linked Social Accounts'
+
+@admin.register(TeacherProfile)
+class TeacherAdmin(ModelAdmin):
+    list_display = []

@@ -1,13 +1,13 @@
 from django.shortcuts import render
 from rest_framework import status
-from .models import CustomUser
-from .serializer import CustomUserSerializer
+from .models import CustomUser, TeacherProfile
+from .serializer import CustomUserSerializer, TeacherProfileSerializer
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework_simplejwt.tokens import Token
-from rest_framework.authtoken.models import Token
+# from rest_framework_simplejwt.tokens import Token
+# from rest_framework.authtoken.models import Token
 from rest_framework.permissions import IsAuthenticated, AllowAny
-from rest_framework.authentication import TokenAuthentication
+from rest_framework.authentication import SessionAuthentication
 from django.contrib.auth import authenticate, login, logout
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.middleware.csrf import get_token
@@ -16,6 +16,7 @@ from django.http import JsonResponse, HttpResponseRedirect
 # Create your views here.
 
 class Signup(APIView):
+    permission_classes = [AllowAny]
     def post(self, request, format=None):
         serializers = CustomUserSerializer(data=request.data)
         if serializers.is_valid():
@@ -27,6 +28,7 @@ class Signup(APIView):
         return Response(serializers.errors, status=status.HTTP_400_BAD_REQUEST)
     
 class Login(APIView):
+    permission_classes = []
     def post(self, request):
         email = request.data.get("email")
         password = request.data.get("password")
@@ -52,21 +54,15 @@ class Login(APIView):
         return Response({ "user": user_data, "message": "User logged in successfully"}, status=status.HTTP_200_OK)
 
 class Logout(APIView):
-    authentication_classes = [TokenAuthentication]
+    authentication_classes = [SessionAuthentication]
     permission_classes = [IsAuthenticated]
     
     def post(self, request, format=None):
-        try:
-            token = Token.objects.get(user=request.user)
-            token.delete()
-        except Token.DoesNotExist:
-            return Response(
-                {"error": "Invalid token or already logged out."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
         Logout(request)
 
         return Response({"message": "User logged out successfully"}, status=status.HTTP_200_OK) 
+    
+
     
 
 

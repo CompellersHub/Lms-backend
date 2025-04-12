@@ -20,6 +20,15 @@ class CourseSerializer(serializers.ModelSerializer):
         course = Course.objects.create(**validated_data)
         return course
     
+class ModuleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Module
+        fields = '__all__'
+
+    def create(self, validated_data):
+        module = Module.objects.create(**validated_data)
+        return module
+    
 class VideoSerializer(serializers.ModelSerializer):
     class Meta:
         model = Video

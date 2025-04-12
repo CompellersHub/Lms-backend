@@ -141,8 +141,11 @@ AUTHENTICATION_BACKENDS = [
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        # 'rest_framework.authentication.SessionAuthentication',
-        'rest_framework.authentication.TokenAuthentication',
+        'rest_framework.authentication.SessionAuthentication',
+        #'rest_framework.authentication.TokenAuthentication',
+    ],
+         'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticatedOrReadOnly', #  desired default permission
     ],
 }
 
@@ -260,13 +263,13 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
 JAZZMIN_SETTINGS = {
-     "site_title": "Amlpro trainers",
-     "site_header": "Amlpro trainers",
+     "site_title": "Titans career",
+     "site_header": "Titans career",
      "site_logo": "/amlpro/staticfiles/logo/logo.jpg",
      "login_logo": "/amlpro/staticfiles/logo/logo.jpg",
-     "copyright": "Amlpro trainers site",
+     "copyright": "Titans career site",
      "topmenu_links":[
-          {"app": "Aml-pro-trainers"},
+          {"app": "Titans career"},
           {"name": "Support", "url": "https://chowdeck.com/store/alimosho-1/restaurants/mb-shawarma-bite", "new_window": True},
      ],
      "use_google_fonts_cdn": True,

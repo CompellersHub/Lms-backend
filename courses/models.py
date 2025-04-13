@@ -39,6 +39,7 @@ class Course(models.Model):
         return self.name
     
 class Assignment(models.Model):
+    id = models.AutoField(primary_key=True)
     teacher = models.ForeignKey(TeacherProfile, on_delete=models.CASCADE, related_name='teacher_assignments')
     title = models.CharField(max_length=200)
     description = models.TextField()
@@ -48,12 +49,15 @@ class Assignment(models.Model):
     total_marks = models.IntegerField(default=100)
     file = models.FileField(upload_to='assignments/', blank=True)
 
+    def __str__(self):
+        return f"{self.title} - {self.course.name}"
+
 class Submission(models.Model):
     student = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='student_submissions')
     assignment = models.ForeignKey('Assignment', on_delete=models.CASCADE, related_name='assignment_submissions')
     submission_date = models.DateTimeField(auto_now_add=True)
     file = models.FileField(upload_to='submissions/')
-    marks_obtained = models.IntegerField(default=0)
+    marks_obtained = models.IntegerField(default=0, blank=True, null=True)
     feedback = models.TextField(blank=True, null=True)
     marked_by = models.ForeignKey(TeacherProfile, on_delete=models.CASCADE, related_name='marked_assignments', blank=True, null=True)
 
@@ -74,9 +78,8 @@ class Module(models.Model):
 class Video(models.Model):
     id = models.AutoField(primary_key=True, editable=False)
     module = models.ForeignKey(Module, on_delete=models.CASCADE, related_name='video_classes', null=True)
-    course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name='video_classes')
     title = models.CharField(max_length=255)
-    video_url = models.URLField(null=True)  # Store the URL of the video (e.g., YouTube, Vimeo)
+    video_url = models.URLField(null=True, blank=True)  # Store the URL of the video (e.g., YouTube, Vimeo)
     description = models.TextField(blank=True, null=True)
     video_file = models.FileField(upload_to='video_files/', blank=True, null=True)  # Optional: Store the video file
     duration = models.CharField(max_length=50, blank=True, null=True, help_text="Duration of the video (e.g., '15 minutes', '30:45')")

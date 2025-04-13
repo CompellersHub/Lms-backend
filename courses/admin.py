@@ -32,8 +32,9 @@ class ModuleAdmin(ModelAdmin):
 
 @admin.register(Video)
 class VideoAdmin(ModelAdmin):
-    list_display = ['title', 'course', 'module' ,'duration']
+    list_display = ['title', 'module' ,'duration']
     search_fields = ['title', 'course__name', 'created_by__email']
+    list_filter = ['module']
 
 class CourseOrderItemInline(admin.TabularInline):
     model = CourseOrderItem

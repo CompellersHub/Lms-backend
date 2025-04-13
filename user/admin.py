@@ -31,4 +31,4 @@ class UserAdmin(ModelAdmin):
 
 @admin.register(TeacherProfile)
 class TeacherAdmin(ModelAdmin):
-    list_display = []
+    list_display = ['user', 'course_taken', 'bio', 'profile_picture']

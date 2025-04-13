@@ -2,6 +2,7 @@ from django.shortcuts import redirect, render
 from rest_framework import status
 from .models import *
 from .serializer import *
+from user.models import CustomUser
 import requests
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -211,3 +212,74 @@ class Assignment(APIView):
         assignment = Assignment.objects.all()
         serializer = AssignmentSerializer(assignment, many=True)
         return Response(serializer.data)
+
+
+class AssignmentDetail(APIView):
+    def get(self, request, pk):
+        assignment = Assignment.objects.get(id=pk)
+        serializer = AssignmentSerializer(assignment)
+        return Response(serializer.data)
+    
+    def put(self, request, pk):
+        assignment = Assignment.objects.get(id=pk)
+        serializer = AssignmentSerializer(instance=assignment, data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    def delete(self, request, pk):
+        assignment = Assignment.objects.get(id=pk)
+        assignment.delete()
+        return Response({'message': 'Assignment deleted successfully'}, status=status.HTTP_204_NO_CONTENT)
+
+class AssignmentByCourse(APIView):
+    def get(self, request, pk):
+        try:
+            assignment = Assignment.objects.get(id=pk)
+            course = Course.objects.filter(assignment=assignment)
+            serializer = AssignmentSerializer(course, many=True)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except assignment.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+
+
+class AssignmentSubmission(APIView):
+    def get(self, request):
+        assignment_submission = Submission.objects.all()
+        serializer = SubmissionSerializer(assignment_submission, many=True)
+        return Response(serializer.data)
+    
+    def post(self, request):
+        serializer = SubmissionSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST) 
+    
+class AssignmentSubmissionDetail(APIView):
+    def get(self, request, pk):
+        assignment_submission = Submission.objects.get(id=pk)
+        serializer = SubmissionSerializer(assignment_submission)
+        return Response(serializer.data)
+    
+    def put(self, request, pk):
+        assignment_submission = Submission.objects.get(id=pk)
+        serializer = SubmissionSerializer(instance=assignment_submission, data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    def delete(self, request, pk):
+        assignment_submission = Submission.objects.get(id=pk)
+        assignment_submission.delete()
+        return Response({'message': 'Assignment submission deleted successfully'}, status=status.HTTP_204_NO_CONTENT)
+    
+class AssignmentSubmissionByUser(APIView):
+    def get(self,request, pk):
+        assignment_submission = Submission.objects.all(id=pk)
+        user = CustomUser.objects.filter(assignment_submission=assignment_submission)
+        serializer = SubmissionSerializer(user, many=True)
+        return Response(serializer.data)
+    

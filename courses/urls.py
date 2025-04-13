@@ -13,4 +13,12 @@ urlpatterns = [
 
     path('pay/<int:order_id>/', views.initiate_paypad_payment, name='paypad_payment'),
     path('paypad/callback/', views.paypad_callback, name='paypad_callback'),
+
+    path('assignments/', views.Assignment.as_view(), name='assignments'),
+    path('assignments/<int:pk>/', views.AssignmentDetail.as_view(), name='assignment_detail'),
+    path('assignments/course/', views.AssignmentByCourse.as_view(), name='submission_list'),
+    path('submission/', views.AssignmentSubmission.as_view(), name='submission_detail'),
+    path('submission/<int:pk>/', views.AssignmentSubmissionDetail.as_view(), name='submission_detail'),
+    path('submission/user/', views.AssignmentSubmissionByUser.as_view(), name='submission_by_user'),
+
 ]

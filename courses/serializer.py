@@ -34,7 +34,14 @@ class AssignmentSerializer(serializers.ModelSerializer):
         model = Assignment
         fields = '__all__'
 
+class SubmissionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Submission
+        fields = '__all__'
 
+    def create(self, validated_data):
+        submission = Submission.objects.create(**validated_data)
+        return submission
 
     
 class VideoSerializer(serializers.ModelSerializer):

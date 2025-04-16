@@ -1,0 +1,25 @@
+name: Deployment
+run-name: "Deployment started by @${{github.actor}}"
+on:
+  workflow_dispatch:
+  #push:
+  #  branches: [main]
+
+jobs:      
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: executing remote ssh commands using password
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_KEY }}
+          script: |
+            cd /app/backend
+            git stash
+            git pull origin backup-main
+            .venv/bin/python3 manage.py collectstatic --noinput
+            # Note add `%dev ALL=NOPASSWD: /bin/systemctl` restart nginx to the /etc/sudoers.d/dev_priv file
+            sudo systemctl restart amlpro
+            sudo systemctl restart nginx

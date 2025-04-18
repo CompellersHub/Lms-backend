@@ -4,11 +4,25 @@ from pathlib import Path
 from django.templatetags.static import static
 from django.urls import reverse_lazy
 from django.utils.translation import gettext_lazy as _
+from pymongo import MongoClient
+
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 load_dotenv()
+
+
+MONGO_URI = os.getenv('MONGO_URI')
+MONGO_DATABASE_NAME = os.getenv('DATABASE_NAME')
+
+
+# uri = "MONGO_URI"
+# client = MongoClient(uri, ssl=True, ssl_cert_reqs='CERT_NONE')
+# db = client['MONGO_DATABASE_NAME']
+# print(db.list_collection_names())
+
+
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/

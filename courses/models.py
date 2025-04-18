@@ -38,7 +38,7 @@ class Course(models.Model):
     def __str__(self):
         return self.name
     
-class Assignment(models.Model):
+class Make_Assignment(models.Model):
     id = models.AutoField(primary_key=True)
     teacher = models.ForeignKey(TeacherProfile, on_delete=models.CASCADE, related_name='teacher_assignments')
     title = models.CharField(max_length=200)
@@ -54,7 +54,7 @@ class Assignment(models.Model):
 
 class Submission(models.Model):
     student = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='student_submissions')
-    assignment = models.ForeignKey('Assignment', on_delete=models.CASCADE, related_name='assignment_submissions')
+    assignment = models.ForeignKey('Make_Assignment', on_delete=models.CASCADE, related_name='assignment_submissions')
     submission_date = models.DateTimeField(auto_now_add=True)
     file = models.FileField(upload_to='submissions/')
     marks_obtained = models.IntegerField(default=0, blank=True, null=True)

@@ -1,60 +1,87 @@
+# myapp/models.py
+
+from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.db import models
-from django.contrib.auth.models import Group, Permission, AbstractUser
-from django.conf import settings
+from django.utils import timezone
 
-# Create your models here.
-class CustomUser(AbstractUser):
-    class ROLE(models.TextChoices):
-        ADMIN = 'ADMIN', 'Admin'
-        TEACHER = 'TEACHER', 'Teacher'
-        STUDENT = 'STUDENT', 'Student'
-    role = models.CharField(max_length=20, choices=ROLE.choices, default=ROLE.STUDENT)
-    phone_number = models.CharField(max_length=15, blank=True, null=True)
+class CustomUserManager(BaseUserManager):
+    def create_user(self, email, password=None, **extra_fields):
+        if not email:
+            raise ValueError('The Email field must be set')
+        email = self.normalize_email(email)
+        user = self.model(email=email, **extra_fields)
+        user.set_password(password)
+        user.save(using=self._db)
+        return user
+
+    def create_superuser(self, email, password=None, **extra_fields):
+        extra_fields.setdefault('is_staff', True)
+        extra_fields.setdefault('is_superuser', True)
+        extra_fields.setdefault('is_active', True)
+
+        if extra_fields.get('is_staff') is not True:
+            raise ValueError('Superuser must have is_staff=True.')
+        if extra_fields.get('is_superuser') is not True:
+            raise ValueError('Superuser must have is_superuser=True.')
+
+        return self.create_user(email, password, **extra_fields)
+
+class CustomUser(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(unique=True)
-    profile = models.ImageField(null=True)
-    groups = models.ManyToManyField(Group, related_name="customuser_set", blank=True)
-    user_permissions = models.ManyToManyField(Permission, related_name="customuser_user_set", blank=True)
-    created_at = models.DateTimeField(auto_now=True)
-
-# class Token(models.Model):
-#     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="customuser")
-#     key = models.CharField(max_length=40, primary_key=True)
-#     created = models.DateTimeField(auto_now_add=True)
-
-
-    class Meta:
-        permissions = [
-            ('Assign_teaching_position', 'Can assign teaching position'),
-            ('create_course_videos', 'can create course videos'),
-            ('create_course_notes', 'can create course notes'),
-            ('edit_course_notes', 'can create course notes'),
-            ('view_payments', 'can view payments'),
-            ('make_payments', 'can make payments'),
-            ('make_assignments', 'can make assignments'),
-            ('view_assignments', 'can view assignments'),
-            ('add_students_to_course', 'can add students to course'),
-            ('view_students_in_course', 'can view all students in course'),
-            ('edit_students_in_course', 'can edit all students in course'),
-            ('view_student_progress', 'view students progress'),
-            ('view_attendance_records', 'view attendance'),
-            ('send_assignments', 'can send assignments'),
-            ('view_course', 'can view all course')
-
-        ]
-
-    def _str__(self):
-        return self.username
-
-class TeacherProfile(models.Model):
-    id = models.AutoField(primary_key=True)
-    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="teacher_profile")
-    role = models.CharField(max_length=20, choices=CustomUser.ROLE.choices, default=CustomUser.ROLE.TEACHER)
-    bio = models.TextField(blank=True, null=True)
-    profile_picture = models.ImageField(upload_to='profile_pictures/', blank=True, null=True)
+    username = models.CharField(max_length=150, unique=True)
+    first_name = models.CharField(max_length=150, blank=True)
+    last_name = models.CharField(max_length=150, blank=True)
+    role = models.CharField(max_length=20, default='STUDENT')
     phone_number = models.CharField(max_length=15, blank=True, null=True)
-    past_experience = models.TextField(null=True)
-    course_taken = models.CharField(max_length=100 , null=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+    is_active = models.BooleanField(default=True)
+    is_staff = models.BooleanField(default=False)
+    date_joined = models.DateTimeField(default=timezone.now)
+
+    objects = CustomUserManager()
+
+    USERNAME_FIELD = 'username'
+    REQUIRED_FIELDS = ['email', 'password']
 
     def __str__(self):
-        return f"{self.user.username}'s Profile"
+        return self.email
+
+    @property
+    def is_anonymous(self):
+        """
+        Always return False. This is a way of comparing User objects to
+        anonymous users.
+        """
+        return False
+
+    @property
+    def is_authenticated(self):
+        """
+        Always return True. This is a way to tell if the user has been
+        authenticated in templates.
+        """
+        return True
+
+class TeacherProfile(models.Model):
+    user = models.OneToOneField(CustomUser, on_delete=models.CASCADE)
+    role = models.CharField(max_length=20, default='TEACHER')
+    bio = models.TextField(blank=True, null=True)
+    profile_picture = models.URLField(blank=True, null=True)
+    phone_number = models.CharField(max_length=15, blank=True, default='')
+    past_experience = models.TextField(blank=True, null=True)
+    course_taken = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def to_dict(self):
+        return {
+            "user_id": str(self.user.id),
+            "role": self.role,
+            "bio": self.bio,
+            "profile_picture": self.profile_picture,
+            "phone_number": self.phone_number,
+            "past_experience": self.past_experience,
+            "course_taken": self.course_taken,
+            "created_at": self.created_at.isoformat(),
+        }
+
+    def __str__(self):
+        return self.user.username

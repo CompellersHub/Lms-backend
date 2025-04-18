@@ -12,7 +12,7 @@ class CourseAdmin(ModelAdmin):
     list_display = ['name', 'level', 'price', 'instructor', 'estimated_time']
     search_fields = ['name', 'category__name', 'instructor__email']
 
-@admin.register(Assignment)
+@admin.register(Make_Assignment)
 class AssignmentAdmin(ModelAdmin):
     list_display = ['title', 'course', 'teacher', 'due_date']
     search_fields = ['title', 'course__name', 'teacher__email']

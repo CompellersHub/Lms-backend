@@ -26,14 +26,23 @@ class CategorySerializer(serializers.Serializer):
         return db.categories.find_one({"_id": category_id})
 
 
+# serializers.py
+
 class CourseSerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)
     name = serializers.CharField(max_length=200)
-    # Assuming your Course documents have 'category_id' (referencing a Category document)
-    category_id = serializers.CharField()
-    description = serializers.DictField()
+    course_image = serializers.URLField(allow_blank=True, required=False)
+    description = serializers.CharField()
+    category = serializers.CharField()  # Ensure this matches the field name in MongoDB
     price = serializers.FloatField()
-    # Add other fields based on your Course document structure
+    instructor = serializers.CharField(allow_null=True, required=False)  # Ensure this matches the field name in MongoDB
+    required_materials = serializers.CharField(allow_blank=True, required=False)
+    estimated_time = serializers.CharField(allow_blank=True, required=False)
+    level = serializers.ChoiceField(choices=[
+        ('beginner', 'Beginner'),
+        ('intermediate', 'Intermediate'),
+        ('advanced', 'Advanced'),
+    ])
 
     def to_representation(self, instance):
         instance['id'] = str(instance['_id'])

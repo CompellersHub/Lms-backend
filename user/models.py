@@ -27,12 +27,14 @@ class CustomUserManager(BaseUserManager):
         return self.create_user(email, password, **extra_fields)
 
 class CustomUser(AbstractBaseUser, PermissionsMixin):
+    id = models.AutoField(primary_key=True)
     email = models.EmailField(unique=True)
     username = models.CharField(max_length=150, unique=True)
     first_name = models.CharField(max_length=150, blank=True)
     last_name = models.CharField(max_length=150, blank=True)
     role = models.CharField(max_length=20, default='STUDENT')
     phone_number = models.CharField(max_length=15, blank=True, null=True)
+    profile_pic = models.ImageField(upload_to='profile_pics/', blank=True, null=True)
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     date_joined = models.DateTimeField(default=timezone.now)
@@ -44,6 +46,17 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return self.email
+    
+    def to_dict(self):
+        return {
+            "user_id": self.id,
+            "username": self.username,
+            "email": self.email,
+            "role": self.role,
+            "profile_picture": self.profile_pic.url if self.profile_pic else None,
+            "phone_number": self.phone_number,
+            
+        }
 
     @property
     def is_anonymous(self):
@@ -65,7 +78,7 @@ class TeacherProfile(models.Model):
     user = models.OneToOneField(CustomUser, on_delete=models.CASCADE)
     role = models.CharField(max_length=20, default='TEACHER')
     bio = models.TextField(blank=True, null=True)
-    profile_picture = models.URLField(blank=True, null=True)
+    profile_picture = models.ImageField(upload_to='teacher_pics/', blank=True, null=True)
     phone_number = models.CharField(max_length=15, blank=True, default='')
     past_experience = models.TextField(blank=True, null=True)
     course_taken = models.TextField(blank=True, null=True)
@@ -74,9 +87,10 @@ class TeacherProfile(models.Model):
     def to_dict(self):
         return {
             "user_id": str(self.user.id),
+            "name": str(self.user.username),
             "role": self.role,
             "bio": self.bio,
-            "profile_picture": self.profile_picture,
+            "profile_picture": self.profile_picture.url if self.profile_picture else None, 
             "phone_number": self.phone_number,
             "past_experience": self.past_experience,
             "course_taken": self.course_taken,

@@ -1,17 +1,20 @@
+# serializers.py
+
 import datetime
 from rest_framework import serializers
-from .mongo_utils import get_mongo_db
 from bson.objectid import ObjectId
+from .mongo_utils import get_mongo_db
+from user.serializer import TeacherProfileSerializer
 
 class CategorySerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)
     name = serializers.CharField(max_length=100)
-    # Assuming your Category documents in MongoDB have a 'description' field
     description = serializers.CharField(allow_blank=True, required=False)
 
     def to_representation(self, instance):
-        instance['id'] = str(instance['_id'])
-        del instance['_id']
+        if '_id' in instance:
+            instance['id'] = str(instance['_id'])
+            del instance['_id']
         return super().to_representation(instance)
 
     def create(self, validated_data):
@@ -25,17 +28,14 @@ class CategorySerializer(serializers.Serializer):
         db.categories.update_one({"_id": category_id}, {"$set": validated_data})
         return db.categories.find_one({"_id": category_id})
 
-
-# serializers.py
-
 class CourseSerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)
     name = serializers.CharField(max_length=200)
     course_image = serializers.URLField(allow_blank=True, required=False)
     description = serializers.CharField()
-    category = serializers.CharField()  # Ensure this matches the field name in MongoDB
+    category = CategorySerializer()
     price = serializers.FloatField()
-    instructor = serializers.CharField(allow_null=True, required=False)  # Ensure this matches the field name in MongoDB
+    instructor = TeacherProfileSerializer(allow_null=True, required=False)
     required_materials = serializers.CharField(allow_blank=True, required=False)
     estimated_time = serializers.CharField(allow_blank=True, required=False)
     level = serializers.ChoiceField(choices=[
@@ -45,8 +45,13 @@ class CourseSerializer(serializers.Serializer):
     ])
 
     def to_representation(self, instance):
-        instance['id'] = str(instance['_id'])
-        del instance['_id']
+        if '_id' in instance:
+            instance['id'] = str(instance['_id'])
+            del instance['_id']
+        if 'category' in instance and isinstance(instance['category'], dict):
+            instance['category'] = CategorySerializer().to_representation(instance['category'])
+        if 'instructor' in instance and isinstance(instance['instructor'], dict):
+            instance['instructor'] = TeacherProfileSerializer().to_representation(instance['instructor'])
         return super().to_representation(instance)
 
     def create(self, validated_data):
@@ -60,17 +65,16 @@ class CourseSerializer(serializers.Serializer):
         db.courses.update_one({"_id": course_id}, {"$set": validated_data})
         return db.courses.find_one({"_id": course_id})
 
-
 class ModuleSerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)
-    course_id = serializers.CharField() # Assuming a reference to a Course
+    course_id = serializers.CharField()
     title = serializers.CharField(max_length=200)
     order = serializers.IntegerField()
-    # Add other fields based on your Module document structure
 
     def to_representation(self, instance):
-        instance['id'] = str(instance['_id'])
-        del instance['_id']
+        if '_id' in instance:
+            instance['id'] = str(instance['_id'])
+            del instance['_id']
         return super().to_representation(instance)
 
     def create(self, validated_data):
@@ -84,18 +88,17 @@ class ModuleSerializer(serializers.Serializer):
         db.modules.update_one({"_id": module_id}, {"$set": validated_data})
         return db.modules.find_one({"_id": module_id})
 
-
 class AssignmentSerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)
-    module_id = serializers.CharField() # Assuming a reference to a Module
+    module_id = serializers.CharField()
     title = serializers.CharField(max_length=200)
     description = serializers.DictField()
     due_date = serializers.DateTimeField()
-    # Add other fields
 
     def to_representation(self, instance):
-        instance['id'] = str(instance['_id'])
-        del instance['_id']
+        if '_id' in instance:
+            instance['id'] = str(instance['_id'])
+            del instance['_id']
         return super().to_representation(instance)
 
     def create(self, validated_data):
@@ -109,24 +112,23 @@ class AssignmentSerializer(serializers.Serializer):
         db.assignments.update_one({"_id": assignment_id}, {"$set": validated_data})
         return db.assignments.find_one({"_id": assignment_id})
 
-
 class SubmissionSerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)
-    assignment_id = serializers.CharField() # Assuming a reference to an Assignment
-    user_id = serializers.CharField() # Assuming you store user IDs
+    assignment_id = serializers.CharField()
+    user_id = serializers.CharField()
     submission_date = serializers.DateTimeField(read_only=True)
-    # Add fields for the actual submission content (e.g., text, file path)
-    content = serializers.DictField() # Assuming a dictionary for submission content
-    file = serializers.FileField(allow_null=True, required=False) # Optional file upload
+    content = serializers.DictField()
+    file = serializers.FileField(allow_null=True, required=False)
 
     def to_representation(self, instance):
-        instance['id'] = str(instance['_id'])
-        del instance['_id']
+        if '_id' in instance:
+            instance['id'] = str(instance['_id'])
+            del instance['_id']
         return super().to_representation(instance)
 
     def create(self, validated_data):
         db = get_mongo_db()
-        validated_data['submission_date'] = datetime.utcnow() # Set submission date on creation
+        validated_data['submission_date'] = datetime.datetime.utcnow()
         result = db.submissions.insert_one(validated_data)
         return db.submissions.find_one({"_id": result.inserted_id})
 
@@ -136,20 +138,19 @@ class SubmissionSerializer(serializers.Serializer):
         db.submissions.update_one({"_id": submission_id}, {"$set": validated_data})
         return db.submissions.find_one({"_id": submission_id})
 
-
 class VideoSerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)
-    module_id = serializers.CharField() # Assuming a reference to a Module
+    module_id = serializers.CharField()
     title = serializers.CharField(max_length=200)
-    url = serializers.URLField(allow_null=True, required=False) # Optional URL for video
+    url = serializers.URLField(allow_null=True, required=False)
     duration = serializers.FloatField()
     description = serializers.DictField(allow_null=True, required=False)
-    file = serializers.FileField(allow_null=True, required=False) # Optional file upload
-    # Add other fields
+    file = serializers.FileField(allow_null=True, required=False)
 
     def to_representation(self, instance):
-        instance['id'] = str(instance['_id'])
-        del instance['_id']
+        if '_id' in instance:
+            instance['id'] = str(instance['_id'])
+            del instance['_id']
         return super().to_representation(instance)
 
     def create(self, validated_data):
@@ -163,13 +164,12 @@ class VideoSerializer(serializers.Serializer):
         db.videos.update_one({"_id": video_id}, {"$set": validated_data})
         return db.videos.find_one({"_id": video_id})
 
-
 class CourseOrderItemSerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)
-    order_id = serializers.CharField() # Assuming a reference to CourseOrder
-    course_id = serializers.CharField() # Assuming a reference to Course
+    order_id = serializers.CharField()
+    course_id = serializers.CharField()
     price = serializers.FloatField()
-    course_name = serializers.SerializerMethodField() # To fetch course name
+    course_name = serializers.SerializerMethodField()
 
     def get_course_name(self, instance):
         db = get_mongo_db()
@@ -178,7 +178,8 @@ class CourseOrderItemSerializer(serializers.Serializer):
 
     def to_representation(self, instance):
         representation = super().to_representation(instance)
-        representation['id'] = str(instance['_id'])
+        if '_id' in instance:
+            representation['id'] = str(instance['_id'])
         return representation
 
     def create(self, validated_data):
@@ -192,31 +193,31 @@ class CourseOrderItemSerializer(serializers.Serializer):
         db.course_order_items.update_one({"_id": item_id}, {"$set": validated_data})
         return db.course_order_items.find_one({"_id": item_id})
 
-
 class CourseOrderSerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)
-    user_id = serializers.CharField() # Assuming you store user IDs
+    user_id = serializers.CharField()
     total_price = serializers.FloatField(read_only=True)
     payment_status = serializers.CharField(default='pending')
     created_at = serializers.DateTimeField(read_only=True)
     updated_at = serializers.DateTimeField(read_only=True)
-    order_items = CourseOrderItemSerializer(many=True, read_only=True) # Consider how to handle creation
+    order_items = CourseOrderItemSerializer(many=True, read_only=True)
 
     def to_representation(self, instance):
         representation = super().to_representation(instance)
-        representation['id'] = str(instance['_id'])
+        if '_id' in instance:
+            representation['id'] = str(instance['_id'])
         return representation
 
     def create(self, validated_data):
         db = get_mongo_db()
-        validated_data['created_at'] = datetime.utcnow()
-        validated_data['updated_at'] = datetime.utcnow()
+        validated_data['created_at'] = datetime.datetime.utcnow()
+        validated_data['updated_at'] = datetime.datetime.utcnow()
         result = db.course_orders.insert_one(validated_data)
         return db.course_orders.find_one({"_id": result.inserted_id})
 
     def update(self, instance, validated_data):
         db = get_mongo_db()
-        validated_data['updated_at'] = datetime.utcnow()
+        validated_data['updated_at'] = datetime.datetime.utcnow()
         order_id = instance['_id']
         db.course_orders.update_one({"_id": order_id}, {"$set": validated_data})
         return db.course_orders.find_one({"_id": order_id})

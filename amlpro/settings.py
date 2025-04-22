@@ -57,6 +57,7 @@ INSTALLED_APPS = [
     
     'user',
     'courses',
+    'blog',
     'rest_framework',
     'rest_framework.authtoken',
     'payment',

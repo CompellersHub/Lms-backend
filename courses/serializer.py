@@ -67,7 +67,7 @@ class CourseSerializer(serializers.Serializer):
 
 class ModuleSerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)
-    course_id = serializers.CharField()
+    course = CourseSerializer()
     title = serializers.CharField(max_length=200)
     order = serializers.IntegerField()
 
@@ -75,6 +75,8 @@ class ModuleSerializer(serializers.Serializer):
         if '_id' in instance:
             instance['id'] = str(instance['_id'])
             del instance['_id']
+        if 'course' in instance and isinstance(instance['course'], dict):
+            instance['course'] = CourseSerializer().to_representation(instance['course'])
         return super().to_representation(instance)
 
     def create(self, validated_data):
@@ -90,17 +92,21 @@ class ModuleSerializer(serializers.Serializer):
 
 class AssignmentSerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)
-    module_id = serializers.CharField()
+    course = CourseSerializer()
     title = serializers.CharField(max_length=200)
+    total_marks = serializers.IntegerField(default=100)
     description = serializers.DictField()
     due_date = serializers.DateTimeField()
+    file = serializers.FileField()
 
     def to_representation(self, instance):
         if '_id' in instance:
             instance['id'] = str(instance['_id'])
             del instance['_id']
+        if 'course' in instance and isinstance(instance['course'], dict):
+            instance['course'] = CourseSerializer().to_representation(instance['course'])
         return super().to_representation(instance)
-
+    
     def create(self, validated_data):
         db = get_mongo_db()
         result = db.assignments.insert_one(validated_data)
@@ -114,7 +120,7 @@ class AssignmentSerializer(serializers.Serializer):
 
 class SubmissionSerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)
-    assignment_id = serializers.CharField()
+    assignment = AssignmentSerializer()
     user_id = serializers.CharField()
     submission_date = serializers.DateTimeField(read_only=True)
     content = serializers.DictField()
@@ -124,6 +130,8 @@ class SubmissionSerializer(serializers.Serializer):
         if '_id' in instance:
             instance['id'] = str(instance['_id'])
             del instance['_id']
+        if 'assignment' in instance and isinstance(instance['assignment'], dict):
+            instance['assignment'] = AssignmentSerializer().to_representation(instance['assignment'])
         return super().to_representation(instance)
 
     def create(self, validated_data):
@@ -140,10 +148,10 @@ class SubmissionSerializer(serializers.Serializer):
 
 class VideoSerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)
-    module_id = serializers.CharField()
+    module = ModuleSerializer()
     title = serializers.CharField(max_length=200)
     url = serializers.URLField(allow_null=True, required=False)
-    duration = serializers.FloatField()
+    duration = serializers.CharField()
     description = serializers.DictField(allow_null=True, required=False)
     file = serializers.FileField(allow_null=True, required=False)
 
@@ -151,6 +159,8 @@ class VideoSerializer(serializers.Serializer):
         if '_id' in instance:
             instance['id'] = str(instance['_id'])
             del instance['_id']
+        if 'module' in instance and isinstance(instance['module'], dict):
+            instance['module'] = ModuleSerializer().to_representation(instance['module'])
         return super().to_representation(instance)
 
     def create(self, validated_data):

@@ -130,6 +130,7 @@ class Courses(APIView):
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+
 class CourseDetail(APIView):
     permission_classes = [IsAuthenticated]
     def get_object(self, pk):
@@ -162,7 +163,7 @@ class CourseDetail(APIView):
         if course:
             db.courses.delete_one({"_id": ObjectId(pk)})
             return Response({'message': 'Course deleted successfully'}, status=status.HTTP_204_NO_CONTENT)
-        return Response(status=status.HTTP_404_NOT_FOUND)
+        return Response(status=status.HTTP_404_NOT_FOUND)  
 
 class Categories(APIView):
 
@@ -266,6 +267,7 @@ class Assignment(APIView):
         assignments = list(db.assignments.find())
         serializer = AssignmentSerializer(assignments, many=True)
         return Response(serializer.data)
+    
 
     def post(self, request):
         serializer = AssignmentSerializer(data=request.data)
@@ -275,12 +277,11 @@ class Assignment(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class AssignmentDetail(APIView):
-    def get_object(self, pk):
+    def get(self, request):
         db = get_mongo_db()
-        try:
-            return db.assignments.find_one({"_id": ObjectId(pk)})
-        except:
-            return None
+        assignments = list(db.assignments.find())
+        serializer = AssignmentSerializer(assignments, many=True)
+        return Response(serializer.data)
 
     def get(self, request, pk):
         assignment = self.get_object(pk)

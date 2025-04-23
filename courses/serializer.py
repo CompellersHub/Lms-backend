@@ -24,7 +24,7 @@ class CategorySerializer(serializers.Serializer):
 
     def update(self, instance, validated_data):
         db = get_mongo_db()
-        category_id = instance['_id']
+        category_id = ObjectId['_id']
         db.categories.update_one({"_id": category_id}, {"$set": validated_data})
         return db.categories.find_one({"_id": category_id})
 

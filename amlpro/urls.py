@@ -34,6 +34,7 @@ urlpatterns = [
     path('accounts/', include('allauth.urls')),
     path('api/auth/', include('dj_rest_auth.urls')),
     path('api/auth/social/', include('allauth.socialaccount.urls')),
+    path('blog/', include('blog.urls')),
     path('customuser/', include('user.urls')),
     path('courses/', include('courses.urls')),
     path('paypal/', include('payment.urls')),

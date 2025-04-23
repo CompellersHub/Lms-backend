@@ -20,6 +20,8 @@ from .serializer import (
     ModuleSerializer,
 )
 from .mongo_utils import get_mongo_db
+import logging
+from pymongo.errors import PyMongoError
 
 # PAYPAD_API_KEY = "your_paypad_api_key"  # Replace with your actual Paypad API Key
 # PAYPAD_BASE_URL = "https://paypad.com/api/v1"  # Adjust if Paypad has a different base URL
@@ -130,24 +132,36 @@ class Courses(APIView):
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+logging.basicConfig(level=logging.DEBUG)
 
 class CourseDetail(APIView):
-    permission_classes = [IsAuthenticated]
-    def get_object(self, pk):
+
+    def get_object(self, pk: str):
         db = get_mongo_db()
         try:
-            return db.courses.find_one({"_id": ObjectId(pk)})
-        except:
+            course = db.courses.find_one({"_id": ObjectId(pk)})
+            if course:
+                return course
+            else:
+                logging.error(f"No course found with id: {pk}")
+                return None
+        except PyMongoError as e:
+            logging.error(f"Database error: {e}")
+            return None
+        except Exception as e:
+            logging.error(f"An unexpected error occurred: {e}")
             return None
 
-    def get(self, request, pk):
+    def get(self, request, pk: str):
+        logging.debug(f"Attempting to retrieve course with id: {pk}")
         course = self.get_object(pk)
         if course:
             serializer = CourseSerializer(course)
             return Response(serializer.data)
         return Response(status=status.HTTP_404_NOT_FOUND)
 
-    def put(self, request, pk):
+    def put(self, request, pk: str):
+        logging.debug(f"Attempting to update course with id: {pk}")
         course = self.get_object(pk)
         if course:
             serializer = CourseSerializer(instance=course, data=request.data)
@@ -157,13 +171,14 @@ class CourseDetail(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         return Response(status=status.HTTP_404_NOT_FOUND)
 
-    def delete(self, request, pk):
+    def delete(self, request, pk: str):
+        logging.debug(f"Attempting to delete course with id: {pk}")
         db = get_mongo_db()
         course = self.get_object(pk)
         if course:
             db.courses.delete_one({"_id": ObjectId(pk)})
             return Response({'message': 'Course deleted successfully'}, status=status.HTTP_204_NO_CONTENT)
-        return Response(status=status.HTTP_404_NOT_FOUND)  
+        return Response(status=status.HTTP_404_NOT_FOUND)
 
 class Categories(APIView):
 

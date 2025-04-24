@@ -9,6 +9,8 @@ from django.http import JsonResponse
 from django.conf import settings
 from bson.objectid import ObjectId
 from datetime import datetime
+
+from user.serializer import CustomUserSerializer
 from .serializer import (
     CategorySerializer,
     CourseSerializer,
@@ -18,7 +20,10 @@ from .serializer import (
     SubmissionSerializer,
     VideoSerializer,
     ModuleSerializer,
+    NotificationSerializer,
+    LiveClassSerializer,
 )
+from .models import LiveClass, Notification
 from .mongo_utils import get_mongo_db
 import logging
 from pymongo.errors import PyMongoError
@@ -496,3 +501,22 @@ class VideoDetail(APIView):
             db.videos.delete_one({"_id": ObjectId(pk)})
             return Response({'message': 'Video deleted successfully'}, status=status.HTTP_204_NO_CONTENT)
         return Response(status=status.HTTP_404_NOT_FOUND)
+    
+class StartLiveClassView(APIView):
+
+    def get(self, request):
+        db = get_mongo_db()
+        live_classes = list(db.live_classes.find())
+        serializer = LiveClassSerializer(live_classes, many=True)
+        return Response(serializer.data)
+    
+    
+    
+    
+
+class StudentNotificationsView(APIView):
+    def get(self, request, student_id):
+        student = get_object_or_404(CustomUserSerializer, id=student_id)
+        notifications = Notification.objects.filter(student=student)
+        serializer = NotificationSerializer(notifications, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)

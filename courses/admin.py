@@ -26,15 +26,27 @@ class SubmissionAdmin(ModelAdmin):
 
 @admin.register(Module)
 class ModuleAdmin(ModelAdmin):
-    list_display = ['title', 'course']
-    search_fields = ['title', 'course__name']
-    list_filter = ['course']
+    list_display = ['title']
+    search_fields = ['title']
+    
 
 @admin.register(Video)
 class VideoAdmin(ModelAdmin):
-    list_display = ['title', 'module' ,'duration']
-    search_fields = ['title', 'course__name', 'created_by__email']
-    list_filter = ['module']
+    list_display = ['title' ,'duration']
+    search_fields = ['title', 'created_by__email']
+
+@admin.register(LiveClass)
+class LiveClassAdmin(ModelAdmin):
+    list_display = ['title', 'course', 'start_time', 'end_time']
+    search_fields = ['title', 'course__name']
+    list_filter = ['course']
+
+@admin.register(Notification)
+class NotificationAdmin(ModelAdmin):
+    list_display = ['student', 'message', 'created_at']
+    search_fields = ['student__email', 'message']
+    list_filter = ['student']
+
 
 class CourseOrderItemInline(admin.TabularInline):
     model = CourseOrderItem

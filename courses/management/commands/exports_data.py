@@ -21,7 +21,7 @@ class Command(BaseCommand):
         
 
 
-        # Export categories
+        # # Export categories
         # categories = Category.objects.all()
         # categories_data = [category.to_dict() for category in categories]
         # if categories_data:
@@ -30,16 +30,16 @@ class Command(BaseCommand):
         # else:
         #     self.stdout.write(self.style.WARNING('No categories data to export'))
 
-        # # Export courses
-        # courses = Course.objects.all()
-        # courses_data = [course.to_dict() for course in courses]
-        # if courses_data:
-        #     db.courses.insert_many(courses_data)
-        #     self.stdout.write(self.style.SUCCESS('Courses data exported successfully'))
-        # else:
-        #     self.stdout.write(self.style.WARNING('No courses data to export'))
+        # Export courses
+        courses = Course.objects.all()
+        courses_data = [course.to_dict() for course in courses]
+        if courses_data:
+            db.courses.insert_many(courses_data)
+            self.stdout.write(self.style.SUCCESS('Courses data exported successfully'))
+        else:
+            self.stdout.write(self.style.WARNING('No courses data to export'))
 
-        # # Export assignments
+        # Export assignments
         # assignments = Make_Assignment.objects.all()
         # assignments_data = [assignment.to_dict() for assignment in assignments]
         # if assignments_data:
@@ -93,20 +93,20 @@ class Command(BaseCommand):
         # else:
         #     self.stdout.write(self.style.WARNING('No course order items data to export'))
 
-        # Export Live class
-        live_classes = LiveClass.objects.all()
-        live_classes_data = [live_class.to_dict() for live_class in live_classes]
-        if live_classes_data:
-            db.live_classes.insert_many(live_classes_data)
-            self.stdout.write(self.style.SUCCESS('Live classes data exported successfully'))
-        else:
-            self.stdout.write(self.style.WARNING('No live classes data to export'))
+        # # Export Live class
+        # live_classes = LiveClass.objects.all()
+        # live_classes_data = [live_class.to_dict() for live_class in live_classes]
+        # if live_classes_data:
+        #     db.live_classes.insert_many(live_classes_data)
+        #     self.stdout.write(self.style.SUCCESS('Live classes data exported successfully'))
+        # else:
+        #     self.stdout.write(self.style.WARNING('No live classes data to export'))
 
-        # Export notifications
-        notifications = Notification.objects.all()
-        notifications_data = [notification.to_dict() for notification in notifications]
-        if notifications_data:
-            db.notifications.insert_many(notifications_data)
-            self.stdout.write(self.style.SUCCESS('Notifications data exported successfully'))
-        else:
-            self.stdout.write(self.style.WARNING('No notifications data to export'))
+        # # Export notifications
+        # notifications = Notification.objects.all()
+        # notifications_data = [notification.to_dict() for notification in notifications]
+        # if notifications_data:
+        #     db.notifications.insert_many(notifications_data)
+        #     self.stdout.write(self.style.SUCCESS('Notifications data exported successfully'))
+        # else:
+        #     self.stdout.write(self.style.WARNING('No notifications data to export'))

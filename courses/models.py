@@ -89,6 +89,8 @@ class Course(models.Model):
     instructor = models.ForeignKey(TeacherProfile, on_delete=models.CASCADE, related_name='instructor_courses', null=True)
     module = models.ManyToManyField(Module, related_name='course_modules', blank=True)
     required_materials = models.TextField(blank=True, null=True)
+    learning_outcomes = models.TextField(blank=True, null=True)
+    target_audience = models.TextField(blank=True, null=True)
     estimated_time = models.CharField(max_length=100, blank=True, null=True)
     level = models.CharField(
         max_length=20,
@@ -110,6 +112,8 @@ class Course(models.Model):
             "updated_at": self.updated_at.isoformat(),
             "price": self.price,
             "student": [student.to_dict() for student in self.student.all()],
+            "learning_outcomes": self.learning_outcomes,
+            "target_audience": self.target_audience,
             "module": [module.to_dict() for module in self.module.all()],
             "instructor": self.instructor.to_dict() if self.instructor else None,
             "required_materials": self.required_materials,

@@ -87,6 +87,8 @@ class CourseSerializer(serializers.Serializer):
     category = CategorySerializer()
     module = ModuleSerializer(many=True, required=False)
     price = serializers.FloatField()
+    target_audience = serializers.CharField(allow_blank=True, required=False)
+    learning_outcomes = serializers.CharField(allow_blank=True, required=False)
     students = CustomUserSerializer(many=True, required=False)
     instructor = TeacherProfileSerializer(allow_null=True, required=False)
     required_materials = serializers.CharField(allow_blank=True, required=False)

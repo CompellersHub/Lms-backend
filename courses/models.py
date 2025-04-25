@@ -103,7 +103,7 @@ class RequiredMaterial(models.Model):
             "name1": self.name1,
             "name2": self.name2,
             "name3": self.name3,
-            "name4": self.name4  }
+            "name4": self.name4,  }
     
 class LearningOutcome(models.Model):
     outcome1 = models.CharField(max_length=200)

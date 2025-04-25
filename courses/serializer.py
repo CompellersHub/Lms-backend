@@ -110,12 +110,14 @@ class ModuleSerializer(serializers.Serializer):
         return db.modules.find_one({"_id": module_id})
     
 class RequiredMaterialSerializer(serializers.Serializer):
-    name1 = serializers.CharField(max_length=200)
-    name2 = serializers.CharField(max_length=200)
-    name3 = serializers.CharField(max_length=200)
-    name4 = serializers.CharField(max_length=200)
+    name1 = serializers.CharField(max_length=300)
+    name2 = serializers.CharField(max_length=300)
+    name3 = serializers.CharField(max_length=300)
+    name4 = serializers.CharField(max_length=300)
 
     def to_representation(self, instance):
+        if instance is None:
+            return {}
         if '_id' in instance:
             instance['id'] = str(instance['_id'])
             del instance['_id']
@@ -196,7 +198,7 @@ class CourseSerializer(serializers.Serializer):
     learning_outcomes = LearningOutcomeSerializer(required=False)  # Ensure it's not a list
     students = CustomUserSerializer(many=True, required=False, allow_null=True)
     instructor = TeacherProfileSerializer(allow_null=True, required=False)
-    required_materials = RequiredMaterialSerializer(many=True, required=False)
+    # required_materials = RequiredMaterialSerializer(many=True, required=False)
     estimated_time = serializers.CharField(allow_blank=True, required=False)
     level = serializers.ChoiceField(choices=[
         ('beginner', 'Beginner'),
@@ -222,8 +224,8 @@ class CourseSerializer(serializers.Serializer):
             instance['target_audience'] = TargetAudienceSerializer().to_representation(instance['target_audience'])
         if 'learning_outcomes' in instance and isinstance(instance['learning_outcomes'], dict):
             instance['learning_outcomes'] = LearningOutcomeSerializer().to_representation(instance['learning_outcomes'])
-        if 'required_materials' in instance and isinstance(instance['required_materials'], dict):
-            instance['required_materials'] = RequiredMaterialSerializer().to_representation(instance['required_materials'])
+        # if 'required_materials' in instance and isinstance(instance['required_materials'], dict):
+        #     instance['required_materials'] = RequiredMaterialSerializer().to_representation(instance['required_materials'])
         return super().to_representation(instance)
 
     def create(self, validated_data):

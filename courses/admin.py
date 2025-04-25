@@ -28,6 +28,18 @@ class SubmissionAdmin(ModelAdmin):
 class ModuleAdmin(ModelAdmin):
     list_display = ['title']
     search_fields = ['title']
+
+@admin.register(RequiredMaterial)
+class RequiredMaterialsAdmin(ModelAdmin):
+    list_display = ['name1', 'name2', 'name3']
+
+@admin.register(LearningOutcome)
+class LearningOutcomesAdmin(ModelAdmin):
+    list_display = ['outcome1', 'outcome2', 'outcome3']
+
+@admin.register(TargetAudience)
+class TargetAudienceAdmin(ModelAdmin):
+    list_display = ['audience1', 'audience2', 'audience3']
     
 
 @admin.register(Video)

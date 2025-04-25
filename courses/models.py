@@ -39,9 +39,27 @@ class Video(models.Model):
             "title": self.title,
             "video_url": self.video_url,
             "description": self.description,
-            "video_file": self.video_file.url if self.video_file else None,
             "duration": self.duration,
             "order": self.order,
+            "created_at": self.created_at.isoformat(),
+            "updated_at": self.updated_at.isoformat(),
+        }
+
+class CourseNote(models.Model):
+    id = models.AutoField(primary_key=True, editable=False)
+    title = models.CharField(max_length=255)
+    note_file = models.FileField(upload_to='course_notes/')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return self.title
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "title": self.title,
+            "note_file": self.note_file.url if self.note_file else None,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
         }
@@ -49,7 +67,8 @@ class Video(models.Model):
 class Module(models.Model):
     id = models.AutoField(primary_key=True, editable=False)
     title = models.CharField(max_length=200)
-    video = models.ManyToManyField('Video', related_name='module_videos', blank=True)
+    video = models.ForeignKey('Video', related_name='module_videos', blank=True, on_delete=models.CASCADE, unique=True, null=True)
+    course_note = models.ForeignKey('CourseNote', related_name='module_notes', blank=True, on_delete=models.CASCADE, unique=True, null=True)
     order = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -65,9 +84,61 @@ class Module(models.Model):
             "id": self.id,
             "title": self.title,
             "order": self.order,
-            "video": [video.to_dict() for video in self.video.all()],
+            "video": self.video.to_dict() if self.video else None,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
+        }
+
+class RequiredMaterial(models.Model):
+    name1 = models.CharField(max_length=200)
+    name2 = models.CharField(max_length=200)
+    name3 = models.CharField(max_length=200)
+    name4 = models.CharField(max_length=200)
+
+    def __str__(self):
+        return f"{self.name1}, {self.name2}, {self.name3}, {self.name4}"
+
+    def to_dict(self):
+        return {
+            "name1": self.name1,
+            "name2": self.name2,
+            "name3": self.name3,
+            "name4": self.name4  }
+    
+class LearningOutcome(models.Model):
+    outcome1 = models.CharField(max_length=200)
+    outcome2 = models.CharField(max_length=200)
+    outcome3 = models.CharField(max_length=200)
+    outcome4 = models.CharField(max_length=200)
+
+    def __str__(self):
+        return f"{self.outcome1}, {self.outcome2}, {self.outcome3}, {self.outcome4}"
+
+    def to_dict(self):
+        return {
+            "outcome1": self.outcome1,
+            "outcome2": self.outcome2,
+            "outcome3": self.outcome3,
+            "outcome4": self.outcome4,
+        }
+    
+class TargetAudience(models.Model):
+    id = models.AutoField(primary_key=True, editable=False)
+    audience1 = models.CharField(max_length=200)
+    audience2 = models.CharField(max_length=200)
+    audience3 = models.CharField(max_length=200)
+    audience4 = models.CharField(max_length=200)
+
+    def __str__(self):
+        return f"{self.audience1}, {self.audience2}, {self.audience3}, {self.audience4}"
+    
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "audience1": self.audience1,
+            "audience2": self.audience2,
+            "audience3": self.audience3,
+            "audience4": self.audience4,
         }
 
 class Course(models.Model):
@@ -77,9 +148,13 @@ class Course(models.Model):
         ('advanced', 'Advanced'),
     ]
 
+
+
     id = models.AutoField(primary_key=True, editable=False)
     name = models.CharField(max_length=150)
     course_image = models.ImageField(upload_to='course_images/')
+    preview_url = models.URLField(null=True, blank=True)
+    preview_description = models.CharField(max_length=255, null=True, blank=True)
     description = models.TextField()
     category = models.ForeignKey('Category', on_delete=models.CASCADE)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -87,10 +162,10 @@ class Course(models.Model):
     student = models.ManyToManyField(CustomUser, related_name='student_courses', blank=True)
     price = models.FloatField(default=0)
     instructor = models.ForeignKey(TeacherProfile, on_delete=models.CASCADE, related_name='instructor_courses', null=True)
-    module = models.ManyToManyField(Module, related_name='course_modules', blank=True)
-    required_materials = models.TextField(blank=True, null=True)
-    learning_outcomes = models.TextField(blank=True, null=True)
-    target_audience = models.TextField(blank=True, null=True)
+    module = models.ForeignKey(Module, related_name='course_modules', on_delete=models.CASCADE, blank=True, null=True, unique=True)
+    required_materials = models.ForeignKey('RequiredMaterial', on_delete=models.CASCADE, blank=True, null=True)
+    learning_outcomes = models.ForeignKey('LearningOutcome', on_delete=models.CASCADE, blank=True, null=True)
+    target_audience = models.ForeignKey('TargetAudience', on_delete=models.CASCADE, blank=True, null=True)
     estimated_time = models.CharField(max_length=100, blank=True, null=True)
     level = models.CharField(
         max_length=20,
@@ -106,17 +181,19 @@ class Course(models.Model):
             "id": self.id,
             "name": self.name,
             "course_image": self.course_image.url if self.course_image else None,
+            "preview_url": self.preview_url,
+            "preview_description": self.preview_description,
             "description": self.description,
             "category": self.category.to_dict(),
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
             "price": self.price,
             "student": [student.to_dict() for student in self.student.all()],
-            "learning_outcomes": self.learning_outcomes,
-            "target_audience": self.target_audience,
-            "module": [module.to_dict() for module in self.module.all()],
+            "learning_outcomes": self.learning_outcomes.to_dict() if self.learning_outcomes else None,
+            "target_audience": self.target_audience.to_dict() if self.target_audience else None,
+            "module": self.module.to_dict() if self.module else None,
             "instructor": self.instructor.to_dict() if self.instructor else None,
-            "required_materials": self.required_materials,
+            "required_materials": self.required_materials.to_dict() if self.required_materials else None,
             "estimated_time": self.estimated_time,
             "level": self.level,
         }

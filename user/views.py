@@ -1,3 +1,5 @@
+# views.py
+
 from django.shortcuts import render
 from rest_framework import status
 from .serializer import CustomUserSerializer, TeacherProfileSerializer
@@ -12,6 +14,7 @@ from django.utils.decorators import method_decorator
 from django.http import JsonResponse, HttpResponseRedirect
 from courses.mongo_utils import get_mongo_db
 from bson import ObjectId
+from django.contrib.auth import logout
 
 class Signup(APIView):
     permission_classes = [AllowAny]
@@ -20,8 +23,9 @@ class Signup(APIView):
         serializer = CustomUserSerializer(data=request.data)
         if serializer.is_valid():
             user = serializer.save()
-            print(f"User created: {user}, ID: {user['id']}")
-            return Response({"user": serializer.data}, status=status.HTTP_201_CREATED)
+            user_data = serializer.data
+            user_data['id'] = str(user_data['id'])  # Ensure ObjectId is converted to string
+            return Response({"user": user_data}, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class Login(APIView):
@@ -42,6 +46,7 @@ class Login(APIView):
         if user and check_password(password, user['password']):
             serializer = CustomUserSerializer(user)
             user_data = serializer.data
+            user_data['id'] = str(user_data['id'])  # Ensure ObjectId is converted to string
             return Response({"user": user_data, "message": "User logged in successfully"}, status=status.HTTP_200_OK)
 
         return Response({"error": "Invalid credentials, please try again"}, status=status.HTTP_400_BAD_REQUEST)
@@ -51,7 +56,7 @@ class Logout(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, format=None):
-        Logout(request)
+        logout(request)
         return Response({"message": "User logged out successfully"}, status=status.HTTP_200_OK)
 
 class Teacher(APIView):
@@ -59,7 +64,9 @@ class Teacher(APIView):
         serializer = TeacherProfileSerializer(data=request.data)
         if serializer.is_valid():
             teacher = serializer.save()
-            return Response({"Teacher": serializer.data}, status=status.HTTP_201_CREATED)
+            teacher_data = serializer.data
+            teacher_data['id'] = str(teacher_data['id'])  # Ensure ObjectId is converted to string
+            return Response({"Teacher": teacher_data}, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def get(self, request):

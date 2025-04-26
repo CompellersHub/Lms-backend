@@ -3,14 +3,25 @@ from django.dispatch import receiver
 from pymongo import MongoClient
 from .models import *
 import os
+from bson import ObjectId
+from courses.mongo_utils import get_mongo_db
 
-MONGO_URI = os.getenv('MONGO_URI')
-MONGO_DATABASE_NAME = os.getenv('DATABASE_NAME')
+def model_to_dict(instance):
+    return instance.to_dict()
 
-        # Connect to MongoDB
-client = MongoClient(MONGO_URI, ssl=True, ssl_cert_reqs='CERT_NONE')
-db = client[MONGO_DATABASE_NAME]
+# Signal to handle saving and updating models
+@receiver(post_save, sender=CustomUser)
+@receiver(post_save, sender=TeacherProfile)
+def sync_to_mongodb(sender, instance, **kwargs):
+    db = get_mongo_db()
+    collection_name = sender.__name__.lower() + 's'
+    data = model_to_dict(instance)
+    db[collection_name].update_one({"_id": ObjectId(instance.pk)}, {"$set": data}, upsert=True)
 
-def export_to_mongo(instance):
-    if isinstance(instance, CustomUser):
-        collection = db.users
+# Signal to handle deleting models
+@receiver(post_delete, sender=CustomUser)
+@receiver(post_delete, sender=TeacherProfile)
+def delete_from_mongodb(sender, instance, **kwargs):
+    db = get_mongo_db()
+    collection_name = sender.__name__.lower() + 's'
+    db[collection_name].delete_one({"_id": ObjectId(instance.pk)})

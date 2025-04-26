@@ -43,8 +43,9 @@ class CustomUserSerializer(serializers.Serializer):
         return value
 
     def to_representation(self, instance):
-        instance['id'] = str(instance['_id'])
-        del instance['_id']
+        if '_id' in instance:
+            instance['id'] = str(instance['_id'])
+            del instance['_id']
         return super().to_representation(instance)
 
     def create(self, validated_data):

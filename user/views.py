@@ -23,8 +23,7 @@ class Signup(APIView):
         serializer = CustomUserSerializer(data=request.data)
         if serializer.is_valid():
             user = serializer.save()
-            user_data = serializer.data
-            user_data['id'] = str(user_data['id'])  # Ensure ObjectId is converted to string
+            user_data = serializer.data  # Ensure ObjectId is converted to string
             return Response({"user": user_data}, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -46,7 +45,7 @@ class Login(APIView):
         if user and check_password(password, user['password']):
             serializer = CustomUserSerializer(user)
             user_data = serializer.data
-            user_data['id'] = str(user_data['id'])  # Ensure ObjectId is converted to string
+            # user_data['id'] = int(user_data['id'])  # Ensure ObjectId is converted to string
             return Response({"user": user_data, "message": "User logged in successfully"}, status=status.HTTP_200_OK)
 
         return Response({"error": "Invalid credentials, please try again"}, status=status.HTTP_400_BAD_REQUEST)

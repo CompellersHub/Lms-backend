@@ -16,7 +16,9 @@ def sync_to_mongodb(sender, instance, **kwargs):
     db = get_mongo_db()
     collection_name = sender.__name__.lower() + 's'
     data = model_to_dict(instance)
-    db[collection_name].update_one({"_id": ObjectId(instance.pk)}, {"$set": data}, upsert=True)
+    # Convert primary key to string
+    data['_id'] = str(instance.pk)
+    db[collection_name].update_one({"_id": data['_id']}, {"$set": data}, upsert=True)
 
 # Signal to handle deleting models
 @receiver(post_delete, sender=CustomUser)
@@ -24,4 +26,5 @@ def sync_to_mongodb(sender, instance, **kwargs):
 def delete_from_mongodb(sender, instance, **kwargs):
     db = get_mongo_db()
     collection_name = sender.__name__.lower() + 's'
-    db[collection_name].delete_one({"_id": ObjectId(instance.pk)})
+    # Convert primary key to string
+    db[collection_name].delete_one({"_id": str(instance.pk)})

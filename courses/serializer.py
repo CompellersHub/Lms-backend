@@ -87,8 +87,7 @@ class ModuleSerializer(serializers.Serializer):
     course_note = CourseNoteSerializer(required=False)
 
     def to_representation(self, instance):
-        if instance is None:
-            return {}
+        
         if '_id' in instance:
             instance['id'] = str(instance['_id'])
             del instance['_id']
@@ -192,13 +191,13 @@ class CourseSerializer(serializers.Serializer):
     preview_description = serializers.CharField(max_length=255, allow_blank=True, required=False)
     description = serializers.CharField()
     category = CategorySerializer()
-    modules = ModuleSerializer(many=True, required=False)
+    module = ModuleSerializer(required=False)
     price = serializers.FloatField()
-    target_audience = TargetAudienceSerializer(required=False)  # Ensure it's not a list
+    target_audience = TargetAudienceSerializer(required=False)  
     learning_outcomes = LearningOutcomeSerializer(required=False)  # Ensure it's not a list
     students = CustomUserSerializer(many=True, required=False, allow_null=True)
     instructor = TeacherProfileSerializer(allow_null=True, required=False)
-    # required_materials = RequiredMaterialSerializer(many=True, required=False)
+    required_materials = RequiredMaterialSerializer(required=False)
     estimated_time = serializers.CharField(allow_blank=True, required=False)
     level = serializers.ChoiceField(choices=[
         ('beginner', 'Beginner'),
@@ -216,16 +215,16 @@ class CourseSerializer(serializers.Serializer):
             instance['category'] = CategorySerializer().to_representation(instance['category'])
         if 'instructor' in instance and isinstance(instance['instructor'], dict):
             instance['instructor'] = TeacherProfileSerializer().to_representation(instance['instructor'])
-        if 'modules' in instance and isinstance(instance['modules'], list):
-            instance['modules'] = [ModuleSerializer().to_representation(module) for module in instance['modules']]
-        if 'students' in instance and isinstance(instance['students'], list):
-            instance['students'] = [CustomUserSerializer().to_representation(student) for student in instance['students']]
+        if 'module' in instance and isinstance(instance['module'], dict):
+            instance['module'] = ModuleSerializer().to_representation(instance['module'])
+        if 'students' in instance and isinstance(instance['students'], dict):
+            instance['students'] = CustomUserSerializer().to_representation(instance['students'])
         if 'target_audience' in instance and isinstance(instance['target_audience'], dict):
             instance['target_audience'] = TargetAudienceSerializer().to_representation(instance['target_audience'])
         if 'learning_outcomes' in instance and isinstance(instance['learning_outcomes'], dict):
             instance['learning_outcomes'] = LearningOutcomeSerializer().to_representation(instance['learning_outcomes'])
-        # if 'required_materials' in instance and isinstance(instance['required_materials'], dict):
-        #     instance['required_materials'] = RequiredMaterialSerializer().to_representation(instance['required_materials'])
+        if 'required_materials' in instance and isinstance(instance['required_materials'], dict):
+            instance['required_materials'] = RequiredMaterialSerializer().to_representation(instance['required_materials'])
         return super().to_representation(instance)
 
     def create(self, validated_data):

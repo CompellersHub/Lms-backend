@@ -66,6 +66,8 @@ class CustomUserSerializer(serializers.Serializer):
 class TeacherProfileSerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)
     user_id = serializers.CharField()
+    first_name = serializers.CharField(max_length=150, allow_blank=True, required=False)
+    last_name = serializers.CharField(max_length=150, allow_blank=True, required=False)
     role = serializers.CharField(max_length=20, default='TEACHER')
     bio = serializers.CharField(allow_blank=True, required=False)
     profile_picture = serializers.CharField(allow_blank=True, required=False)

@@ -50,6 +50,8 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     def to_dict(self):
         return {
             "user_id": self.id,
+            "first_name": self.first_name,
+            "last_name": self.last_name,
             "username": self.username,
             "email": self.email,
             "role": self.role,
@@ -87,7 +89,8 @@ class TeacherProfile(models.Model):
     def to_dict(self):
         return {
             "user_id": str(self.user.id),
-            "name": str(self.user.username),
+            "first_name": str(self.user.first_name),
+            "last_name": str(self.user.last_name),
             "role": self.role,
             "bio": self.bio,
             "profile_picture": self.profile_picture.url if self.profile_picture else None, 

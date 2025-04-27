@@ -108,6 +108,31 @@ class ModuleSerializer(serializers.Serializer):
         db.modules.update_one({"_id": module_id}, {"$set": validated_data})
         return db.modules.find_one({"_id": module_id})
     
+class CurriculumSerializer(serializers.Serializer):
+    id = serializers.CharField(read_only=True)
+    title = serializers.CharField(max_length=200)
+    module = ModuleSerializer(required=False)
+
+
+    def to_representation(self, instance):
+        if '_id' in instance:
+            instance['id'] = str(instance['_id'])
+            del instance['_id']
+        if 'module' in instance and isinstance(instance['module'], dict):
+            instance['module'] = ModuleSerializer().to_representation(instance['module'])
+        return super().to_representation(instance)
+
+    def create(self, validated_data):
+        db = get_mongo_db()
+        result = db.curriculums.insert_one(validated_data)
+        return db.curriculums.find_one({"_id": result.inserted_id})
+
+    def update(self, instance, validated_data):
+        db = get_mongo_db()
+        curriculum_id = ObjectId(instance['id'])
+        db.curriculums.update_one({"_id": curriculum_id}, {"$set": validated_data})
+        return db.curriculums.find_one({"_id": curriculum_id})
+    
 class RequiredMaterialSerializer(serializers.Serializer):
     name1 = serializers.CharField(max_length=300)
     name2 = serializers.CharField(max_length=300)
@@ -190,8 +215,8 @@ class CourseSerializer(serializers.Serializer):
     preview_url = serializers.URLField(allow_blank=True, required=False)
     preview_description = serializers.CharField(max_length=255, allow_blank=True, required=False)
     description = serializers.CharField()
+    curriculum = CurriculumSerializer(required=False)
     category = CategorySerializer()
-    module = ModuleSerializer(required=False)
     price = serializers.FloatField()
     target_audience = TargetAudienceSerializer(required=False)  
     learning_outcomes = LearningOutcomeSerializer(required=False)  # Ensure it's not a list
@@ -215,8 +240,8 @@ class CourseSerializer(serializers.Serializer):
             instance['category'] = CategorySerializer().to_representation(instance['category'])
         if 'instructor' in instance and isinstance(instance['instructor'], dict):
             instance['instructor'] = TeacherProfileSerializer().to_representation(instance['instructor'])
-        if 'module' in instance and isinstance(instance['module'], dict):
-            instance['module'] = ModuleSerializer().to_representation(instance['module'])
+        if 'curriculum' in instance and isinstance(instance['curriculum'], dict):
+            instance['curriculum'] = CurriculumSerializer().to_representation(instance['curriculum'])
         if 'students' in instance and isinstance(instance['students'], dict):
             instance['students'] = CustomUserSerializer().to_representation(instance['students'])
         if 'target_audience' in instance and isinstance(instance['target_audience'], dict):

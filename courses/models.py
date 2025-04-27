@@ -85,6 +85,26 @@ class Module(models.Model):
             "title": self.title,
             "order": self.order,
             "video": self.video.to_dict() if self.video else None,
+            "course_note": self.course_note.to_dict() if self.course_note else None,
+            "created_at": self.created_at.isoformat(),
+            "updated_at": self.updated_at.isoformat(),
+        }
+
+class Curriculum(models.Model):
+    id = models.AutoField(primary_key=True, editable=False)
+    title = models.CharField(max_length=200)
+    module = models.ForeignKey('module', on_delete=models.CASCADE, related_name='curriculum')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return self.title
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "title": self.title,
+            "module": self.module.to_dict() if self.module else None,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
         }
@@ -162,7 +182,7 @@ class Course(models.Model):
     student = models.ManyToManyField(CustomUser, related_name='student_courses', blank=True)
     price = models.FloatField(default=0)
     instructor = models.ForeignKey(TeacherProfile, on_delete=models.CASCADE, related_name='instructor_courses', null=True)
-    module = models.ForeignKey(Module, related_name='course_modules', on_delete=models.CASCADE, blank=True, null=True, unique=True)
+    curriculum = models.ForeignKey('Curriculum', blank=True, null=True, on_delete=models.CASCADE)
     required_materials = models.ForeignKey('RequiredMaterial', on_delete=models.CASCADE, blank=True, null=True)
     learning_outcomes = models.ForeignKey('LearningOutcome', on_delete=models.CASCADE, blank=True, null=True)
     target_audience = models.ForeignKey('TargetAudience', on_delete=models.CASCADE, blank=True, null=True)
@@ -191,7 +211,7 @@ class Course(models.Model):
             "student": [student.to_dict() for student in self.student.all()],
             "learning_outcomes": self.learning_outcomes.to_dict() if self.learning_outcomes else None,
             "target_audience": self.target_audience.to_dict() if self.target_audience else None,
-            "module": self.module.to_dict() if self.module else None,
+            "curriculum": self.curriculum.to_dict() if self.curriculum else None,
             "instructor": self.instructor.to_dict() if self.instructor else None,
             "required_materials": self.required_materials.to_dict() if self.required_materials else None,
             "estimated_time": self.estimated_time,

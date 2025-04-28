@@ -20,7 +20,7 @@ class CourseNoteAdmin(ModelAdmin):
 
 @admin.register(Curriculum)
 class CurriculumAdmin(ModelAdmin):
-    list_display = ['title', 'module']
+    list_display = ['title']
     search_fields = ['title']
     
 

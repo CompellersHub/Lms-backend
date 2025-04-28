@@ -67,8 +67,8 @@ class CourseNote(models.Model):
 class Module(models.Model):
     id = models.AutoField(primary_key=True, editable=False)
     title = models.CharField(max_length=200)
-    video = models.ForeignKey('Video', related_name='module_videos', blank=True, on_delete=models.CASCADE, unique=True, null=True)
-    course_note = models.ForeignKey('CourseNote', related_name='module_notes', blank=True, on_delete=models.CASCADE, unique=True, null=True)
+    video = models.ManyToManyField('Video', blank=True, null=True)
+    course_note = models.ForeignKey('CourseNote', blank=True, on_delete=models.CASCADE, unique=True, null=True)
     order = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -84,7 +84,7 @@ class Module(models.Model):
             "id": self.id,
             "title": self.title,
             "order": self.order,
-            "video": self.video.to_dict() if self.video else None,
+            "video": [video.to_dict() for video in self.video.all()] if self.video else None,
             "course_note": self.course_note.to_dict() if self.course_note else None,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
@@ -93,7 +93,7 @@ class Module(models.Model):
 class Curriculum(models.Model):
     id = models.AutoField(primary_key=True, editable=False)
     title = models.CharField(max_length=200)
-    module = models.ForeignKey('module', on_delete=models.CASCADE, related_name='curriculum')
+    module = models.ManyToManyField('Module', blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -104,7 +104,7 @@ class Curriculum(models.Model):
         return {
             "id": self.id,
             "title": self.title,
-            "module": self.module.to_dict() if self.module else None,
+            "module": [module.to_dict() for module in self.module.all()] if self.module else None,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
         }
@@ -211,7 +211,7 @@ class Course(models.Model):
             "student": [student.to_dict() for student in self.student.all()],
             "learning_outcomes": self.learning_outcomes.to_dict() if self.learning_outcomes else None,
             "target_audience": self.target_audience.to_dict() if self.target_audience else None,
-            "curriculum": self.curriculum.to_dict() if self.curriculum else None,
+            "curriculum": [module.to_dict() for module in self.curriculum.module.all()] if self.curriculum else None,
             "instructor": self.instructor.to_dict() if self.instructor else None,
             "required_materials": self.required_materials.to_dict() if self.required_materials else None,
             "estimated_time": self.estimated_time,

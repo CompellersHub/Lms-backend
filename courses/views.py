@@ -19,7 +19,7 @@ from .serializer import (
     AssignmentSerializer,
     SubmissionSerializer,
     VideoSerializer,
-    ModuleSerializer,
+    ModuleInCourseSerializer,
     NotificationSerializer,
     LiveClassSerializer,
 )
@@ -397,11 +397,11 @@ class Module(APIView):
     def get(self, request):
         db = get_mongo_db()
         modules = list(db.modules.find())
-        serializer = ModuleSerializer(modules, many=True)
+        serializer = ModuleInCourseSerializer(modules, many=True)
         return Response(serializer.data)
 
     def post(self, request):
-        serializer = ModuleSerializer(data=request.data)
+        serializer = ModuleInCourseSerializer(data=request.data)
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -411,7 +411,7 @@ class ModuleByCourse(APIView):
     def get(self, request, course_id):
         db = get_mongo_db()
         modules = list(db.modules.find({"course_id": course_id}))
-        serializer = ModuleSerializer(modules, many=True)
+        serializer = ModuleInCourseSerializer(modules, many=True)
         return Response(serializer.data)
 
 class ModuleDetail(APIView):
@@ -425,14 +425,14 @@ class ModuleDetail(APIView):
     def get(self, request, pk):
         module = self.get_object(pk)
         if module:
-            serializer = ModuleSerializer(module)
+            serializer = ModuleInCourseSerializer(module)
             return Response(serializer.data)
         return Response(status=status.HTTP_404_NOT_FOUND)
 
     def put(self, request, pk):
         module = self.get_object(pk)
         if module:
-            serializer = ModuleSerializer(instance=module, data=request.data)
+            serializer = ModuleInCourseSerializer(instance=module, data=request.data)
             if serializer.is_valid():
                 serializer.save()
                 return Response(serializer.data, status=status.HTTP_200_OK)

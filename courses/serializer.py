@@ -74,58 +74,26 @@ class CourseNoteSerializer(serializers.Serializer):
         db.course_notes.update_one({"_id": note_id}, {"$set": validated_data})
         return db.course_notes.find_one({"_id": note_id})
 
-class ModuleSerializer(serializers.Serializer):
+class ModuleInCourseSerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)
     title = serializers.CharField(max_length=200)
     order = serializers.IntegerField()
-    video = VideoSerializer(required=False)
+    video = VideoSerializer(many=True, required=False) # Changed to many=True
     course_note = CourseNoteSerializer(required=False)
+    created_at = serializers.DateTimeField(read_only=True)
+    updated_at = serializers.DateTimeField(read_only=True)
 
     def to_representation(self, instance):
         if '_id' in instance:
             instance['id'] = str(instance['_id'])
             del instance['_id']
-        if 'video' in instance and isinstance(instance['video'], dict):
-            instance['video'] = VideoSerializer().to_representation(instance['video'])
+        if 'video' in instance and isinstance(instance['video'], list):
+            instance['video'] = [VideoSerializer().to_representation(item) for item in instance['video']]
+        elif 'video' in instance and isinstance(instance['video'], dict):
+            instance['video'] = VideoSerializer().to_representation(instance['video']) # Handle single video object as well
         if 'course_note' in instance and isinstance(instance['course_note'], dict):
             instance['course_note'] = CourseNoteSerializer().to_representation(instance['course_note'])
         return super().to_representation(instance)
-
-    def create(self, validated_data):
-        db = get_mongo_db()
-        result = db.modules.insert_one(validated_data)
-        return db.modules.find_one({"_id": result.inserted_id})
-
-    def update(self, instance, validated_data):
-        db = get_mongo_db()
-        module_id = ObjectId(instance['id'])
-        db.modules.update_one({"_id": module_id}, {"$set": validated_data})
-        return db.modules.find_one({"_id": module_id})
-
-class CurriculumSerializer(serializers.Serializer):
-    id = serializers.CharField(read_only=True)
-    module = ModuleSerializer(required=False, many=True)
-
-    def to_representation(self, instance):
-        if '_id' in instance:
-            instance['id'] = str(instance['_id'])
-            del instance['_id']
-        if 'module' in instance and isinstance(instance['module'], list):
-            instance['module'] = [ModuleSerializer().to_representation(item) for item in instance['module']]
-        elif 'module' in instance and isinstance(instance['module'], dict):
-            instance['module'] = [ModuleSerializer().to_representation(instance['module'])]
-        return super().to_representation(instance)
-
-    def create(self, validated_data):
-        db = get_mongo_db()
-        result = db.curriculums.insert_one(validated_data)
-        return db.curriculums.find_one({"_id": result.inserted_id})
-
-    def update(self, instance, validated_data):
-        db = get_mongo_db()
-        curriculum_id = ObjectId(instance['id'])
-        db.curriculums.update_one({"_id": curriculum_id}, {"$set": validated_data})
-        return db.curriculums.find_one({"_id": curriculum_id})
 
 class RequiredMaterialSerializer(serializers.Serializer):
     name1 = serializers.CharField(max_length=300)
@@ -205,7 +173,7 @@ class CourseSerializer(serializers.Serializer):
     preview_url = serializers.URLField(allow_blank=True, required=False)
     preview_description = serializers.CharField(max_length=255, allow_blank=True, required=False)
     description = serializers.CharField()
-    curriculum = CurriculumSerializer(required=False)
+    curriculum = ModuleInCourseSerializer(many=True, required=False) # Use the new serializer and many=True
     category = CategorySerializer()
     price = serializers.FloatField()
     target_audience = TargetAudienceSerializer(required=False)
@@ -230,11 +198,10 @@ class CourseSerializer(serializers.Serializer):
             instance['category'] = CategorySerializer().to_representation(instance['category'])
         if 'instructor' in instance and isinstance(instance['instructor'], dict):
             instance['instructor'] = TeacherProfileSerializer().to_representation(instance['instructor'])
-        if 'curriculum' in instance:
-            if isinstance(instance['curriculum'], list):
-                instance['curriculum'] = [CurriculumSerializer().to_representation(item) for item in instance['curriculum']]
-            elif isinstance(instance['curriculum'], dict):
-                instance['curriculum'] = [CurriculumSerializer().to_representation(instance['curriculum'])]
+        if 'curriculum' in instance and isinstance(instance['curriculum'], list):
+            instance['curriculum'] = [ModuleInCourseSerializer().to_representation(item) for item in instance['curriculum']]
+        elif 'curriculum' in instance and isinstance(instance['curriculum'], dict):
+            instance['curriculum'] = [ModuleInCourseSerializer().to_representation(instance['curriculum'])] # Handle single embedded object?
         if 'students' in instance and isinstance(instance['students'], list):
             instance['students'] = [CustomUserSerializer().to_representation(student) for student in instance['students']]
         if 'target_audience' in instance and isinstance(instance['target_audience'], dict):
@@ -261,6 +228,8 @@ class CourseSerializer(serializers.Serializer):
             return db.courses.find_one({"_id": course_id})
         except Exception as e:
             raise serializers.ValidationError(f"Error updating data: {e}")
+
+# ... (rest of your serializers remain the same)
 
 class LiveClassSerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)

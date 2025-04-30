@@ -97,7 +97,8 @@ MIDDLEWARE = [
 ]
 
 CORS_ALLOWED_ORIGINS = [
-    "https://pro-trainers.com",
+    "https://titanscareers.com",
+    "https://lms-react-frontend-sand.vercel.app",
     "http://127.0.0.1:5502",
     "http://localhost:3000",
     "http://127.0.0.1:9000",

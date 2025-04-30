@@ -18,7 +18,7 @@ class Category(models.Model):
 class Video(models.Model):
     id = models.AutoField(primary_key=True, editable=False)
     title = models.CharField(max_length=255)
-    video_url = models.URLField(null=True, blank=True)
+    video_id = models.CharField(null=True, blank=True, max_length=60)
     description = models.TextField(blank=True, null=True)
     video_file = models.FileField(upload_to='video_files/', blank=True, null=True)
     duration = models.CharField(max_length=50, blank=True, null=True, help_text="Duration of the video (e.g., '15 minutes', '30:45')")
@@ -37,7 +37,7 @@ class Video(models.Model):
         return {
             "id": self.id,
             "title": self.title,
-            "video_url": self.video_url,
+            "video_id": self.video_id,
             "description": self.description,
             "duration": self.duration,
             "order": self.order,
@@ -173,7 +173,7 @@ class Course(models.Model):
     id = models.AutoField(primary_key=True, editable=False)
     name = models.CharField(max_length=150)
     course_image = models.ImageField(upload_to='course_images/')
-    preview_url = models.URLField(null=True, blank=True)
+    preview_id = models.CharField(null=True, blank=True, max_length=60)
     preview_description = models.CharField(max_length=255, null=True, blank=True)
     description = models.TextField()
     category = models.ForeignKey('Category', on_delete=models.CASCADE)
@@ -201,7 +201,7 @@ class Course(models.Model):
             "id": self.id,
             "name": self.name,
             "course_image": self.course_image.url if self.course_image else None,
-            "preview_url": self.preview_url,
+            "preview_url": self.preview_id,
             "preview_description": self.preview_description,
             "description": self.description,
             "category": self.category.to_dict(),

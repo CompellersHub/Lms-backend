@@ -201,7 +201,7 @@ class Course(models.Model):
             "id": self.id,
             "name": self.name,
             "course_image": self.course_image.url if self.course_image else None,
-            "preview_url": self.preview_id,
+            "preview_id": self.preview_id,
             "preview_description": self.preview_description,
             "description": self.description,
             "category": self.category.to_dict(),

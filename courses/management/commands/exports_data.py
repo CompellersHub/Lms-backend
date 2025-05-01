@@ -22,13 +22,13 @@ class Command(BaseCommand):
 
 
         # Export categories
-        # categories = Category.objects.all()
-        # categories_data = [category.to_dict() for category in categories]
-        # if categories_data:
-        #     db.categories.insert_many(categories_data)
-        #     self.stdout.write(self.style.SUCCESS('Categories data exported successfully'))
-        # else:
-        #     self.stdout.write(self.style.WARNING('No categories data to export'))
+        categories = Category.objects.all()
+        categories_data = [category.to_dict() for category in categories]
+        if categories_data:
+            db.categories.insert_many(categories_data)
+            self.stdout.write(self.style.SUCCESS('Categories data exported successfully'))
+        else:
+            self.stdout.write(self.style.WARNING('No categories data to export'))
 
         # Export courses
         courses = Course.objects.all()
@@ -39,32 +39,32 @@ class Command(BaseCommand):
         else:
             self.stdout.write(self.style.WARNING('No courses data to export'))
 
-        # # Export curriculum
-        # curriculums = Curriculum.objects.all()
-        # curriculums_data = [curriculum.to_dict() for curriculum in curriculums]
-        # if curriculums_data:
-        #     db.curriculums.insert_many(curriculums_data)
-        #     self.stdout.write(self.style.SUCCESS('Curriculums data exported successfully'))
-        # else:
-        #     self.stdout.write(self.style.WARNING('No curriculums data to export'))
+        # Export curriculum
+        curriculums = Curriculum.objects.all()
+        curriculums_data = [curriculum.to_dict() for curriculum in curriculums]
+        if curriculums_data:
+            db.curriculums.insert_many(curriculums_data)
+            self.stdout.write(self.style.SUCCESS('Curriculums data exported successfully'))
+        else:
+            self.stdout.write(self.style.WARNING('No curriculums data to export'))
 
-        # # Export CourseNote
-        # course_notes = CourseNote.objects.all()
-        # course_notes_data = [note.to_dict() for note in course_notes]
-        # if course_notes_data:
-        #     db.course_notes.insert_many(course_notes_data)
-        #     self.stdout.write(self.style.SUCCESS('Course notes data exported successfully'))
-        # else:
-        #     self.stdout.write(self.style.WARNING('No course notes data to export'))
+        # Export CourseNote
+        course_notes = CourseNote.objects.all()
+        course_notes_data = [note.to_dict() for note in course_notes]
+        if course_notes_data:
+            db.course_notes.insert_many(course_notes_data)
+            self.stdout.write(self.style.SUCCESS('Course notes data exported successfully'))
+        else:
+            self.stdout.write(self.style.WARNING('No course notes data to export'))
 
         # Export Required_materials
-        # required_materials = RequiredMaterial.objects.all()
-        # required_materials_data = [material.to_dict() for material in required_materials]
-        # if required_materials_data:
-        #     db.required_materials.insert_many(required_materials_data)
-        #     self.stdout.write(self.style.SUCCESS('Required materials data exported successfully'))
-        # else:
-        #     self.stdout.write(self.style.WARNING('No required materials data to export'))
+        required_materials = RequiredMaterial.objects.all()
+        required_materials_data = [material.to_dict() for material in required_materials]
+        if required_materials_data:
+            db.required_materials.insert_many(required_materials_data)
+            self.stdout.write(self.style.SUCCESS('Required materials data exported successfully'))
+        else:
+            self.stdout.write(self.style.WARNING('No required materials data to export'))
 
         # # Export course note
         course_notes = CourseNote.objects.all()
@@ -76,41 +76,41 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING('No course notes data to export'))
 
         # Export Learning_outcome
-        # learning_outcomes = LearningOutcome.objects.all()
-        # learning_outcomes_data = [outcome.to_dict() for outcome in learning_outcomes]
-        # if learning_outcomes_data:
-        #     db.learning_outcomes.insert_many(learning_outcomes_data)
-        #     self.stdout.write(self.style.SUCCESS('Learning outcomes data exported successfully'))
-        # else:
-            # self.stdout.write(self.style.WARNING('No learning outcomes data to export'))
+        learning_outcomes = LearningOutcome.objects.all()
+        learning_outcomes_data = [outcome.to_dict() for outcome in learning_outcomes]
+        if learning_outcomes_data:
+            db.learning_outcomes.insert_many(learning_outcomes_data)
+            self.stdout.write(self.style.SUCCESS('Learning outcomes data exported successfully'))
+        else:
+            self.stdout.write(self.style.WARNING('No learning outcomes data to export'))
 
 
         # Export Target_audience
-        # target_audiences = TargetAudience.objects.all()
-        # target_audiences_data = [audience.to_dict() for audience in target_audiences]
-        # if target_audiences_data:
-        #     db.target_audiences.insert_many(target_audiences_data)
-        #     self.stdout.write(self.style.SUCCESS('Target audiences data exported successfully'))
-        # else:
-        #     self.stdout.write(self.style.WARNING('No target audiences data to export'))
+        target_audiences = TargetAudience.objects.all()
+        target_audiences_data = [audience.to_dict() for audience in target_audiences]
+        if target_audiences_data:
+            db.target_audiences.insert_many(target_audiences_data)
+            self.stdout.write(self.style.SUCCESS('Target audiences data exported successfully'))
+        else:
+            self.stdout.write(self.style.WARNING('No target audiences data to export'))
 
-        # # Export assignments
-        # assignments = Make_Assignment.objects.all()
-        # assignments_data = [assignment.to_dict() for assignment in assignments]
-        # if assignments_data:
-        #     db.assignments.insert_many(assignments_data)
-        #     self.stdout.write(self.style.SUCCESS('Assignments data exported successfully'))
-        # else:
-        #     self.stdout.write(self.style.WARNING('No assignments data to export'))
+        # Export assignments
+        assignments = Make_Assignment.objects.all()
+        assignments_data = [assignment.to_dict() for assignment in assignments]
+        if assignments_data:
+            db.assignments.insert_many(assignments_data)
+            self.stdout.write(self.style.SUCCESS('Assignments data exported successfully'))
+        else:
+            self.stdout.write(self.style.WARNING('No assignments data to export'))
 
-        # # Export submissions
-        # submissions = Submission.objects.all()
-        # submissions_data = [submission.to_dict() for submission in submissions]
-        # if submissions_data:
-        #     db.submissions.insert_many(submissions_data)
-        #     self.stdout.write(self.style.SUCCESS('Submissions data exported successfully'))
-        # else:
-        #     self.stdout.write(self.style.WARNING('No submissions data to export'))
+        # Export submissions
+        submissions = Submission.objects.all()
+        submissions_data = [submission.to_dict() for submission in submissions]
+        if submissions_data:
+            db.submissions.insert_many(submissions_data)
+            self.stdout.write(self.style.SUCCESS('Submissions data exported successfully'))
+        else:
+            self.stdout.write(self.style.WARNING('No submissions data to export'))
 
         # # Export modules
         modules = Module.objects.all()

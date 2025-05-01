@@ -170,7 +170,7 @@ class CourseSerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)
     name = serializers.CharField(max_length=200)
     course_image = serializers.URLField(allow_blank=True, required=False)
-    preview_id = serializers.CharField(allow_blank=True, required=False)
+    preview_id = serializers.CharField(allow_blank=True, required=False, max_length=200)
     preview_description = serializers.CharField(max_length=255, allow_blank=True, required=False)
     description = serializers.CharField()
     curriculum = ModuleInCourseSerializer(many=True, required=False) # Use the new serializer and many=True

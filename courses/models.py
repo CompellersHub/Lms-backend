@@ -113,10 +113,10 @@ class RequiredMaterial(models.Model):
     name1 = models.CharField(max_length=200)
     name2 = models.CharField(max_length=200)
     name3 = models.CharField(max_length=200)
-    name4 = models.CharField(max_length=200)
+    name4 = models.CharField(max_length=200, null=True, blank=True)
 
     def __str__(self):
-        return f"{self.name1}, {self.name2}, {self.name3}, {self.name4}"
+        return f"{self.name1}, {self.name2}"
 
     def to_dict(self):
         return {
@@ -129,10 +129,10 @@ class LearningOutcome(models.Model):
     outcome1 = models.CharField(max_length=200)
     outcome2 = models.CharField(max_length=200)
     outcome3 = models.CharField(max_length=200)
-    outcome4 = models.CharField(max_length=200)
+    outcome4 = models.CharField(max_length=200,  null=True, blank=True)
 
     def __str__(self):
-        return f"{self.outcome1}, {self.outcome2}, {self.outcome3}, {self.outcome4}"
+        return f"{self.outcome1}, {self.outcome2}"
 
     def to_dict(self):
         return {
@@ -147,10 +147,10 @@ class TargetAudience(models.Model):
     audience1 = models.CharField(max_length=200)
     audience2 = models.CharField(max_length=200)
     audience3 = models.CharField(max_length=200)
-    audience4 = models.CharField(max_length=200)
+    audience4 = models.CharField(max_length=200, null=True, blank=True)
 
     def __str__(self):
-        return f"{self.audience1}, {self.audience2}, {self.audience3}, {self.audience4}"
+        return f"{self.audience1}, {self.audience2}"
     
     def to_dict(self):
         return {

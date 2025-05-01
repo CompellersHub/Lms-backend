@@ -21,7 +21,11 @@ class Command(BaseCommand):
         db = client[MONGO_DATABASE_NAME]
 
 def model_to_dict(instance):
-    return instance.to_dict()
+    # Assuming your model_to_dict already handles serialization correctly
+    data = instance.to_dict()
+    # Optionally, keep the original Django ID
+    data['django_id'] = instance.pk
+    return data
 
 # Signal to handle saving and updating models
 @receiver(post_save, sender=Category)
@@ -42,8 +46,16 @@ def sync_to_mongodb(sender, instance, **kwargs):
     db = get_mongo_db()
     collection_name = sender.__name__.lower() + 's'
     data = model_to_dict(instance)
-    data['_id'] = str(instance.pk)
-    db[collection_name].update_one({"_id": data['_id']}, {"$set": data}, upsert=True)
+
+    # Check if a document with the Django ID exists
+    existing_document = db[collection_name].find_one({"django_id": instance.pk})
+
+    if existing_document:
+        # Update the existing document
+        db[collection_name].update_one({"_id": existing_document['_id']}, {"$set": data})
+    else:
+        # Insert a new document with a new ObjectId
+        db[collection_name].insert_one(data)
 
 # Signal to handle deleting models
 @receiver(post_delete, sender=Category)
@@ -63,4 +75,5 @@ def sync_to_mongodb(sender, instance, **kwargs):
 def delete_from_mongodb(sender, instance, **kwargs):
     db = get_mongo_db()
     collection_name = sender.__name__.lower() + 's'
-    db[collection_name].delete_one({"_id": str(instance.pk)})
+    # Delete based on the Django ID
+    db[collection_name].delete_one({"django_id": instance.pk})

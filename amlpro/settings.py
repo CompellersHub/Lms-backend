@@ -95,15 +95,18 @@ MIDDLEWARE = [
     "allauth.account.middleware.AccountMiddleware",
 ]
 
-CORS_ALLOWED_ORIGINS = [
-    "https://titanscareers.com",
-    "https://lms-react-frontend-sand.vercel.app",
-    "http://127.0.0.1:5502",
-    "http://localhost:3000",
-    "http://127.0.0.1:9000",
-    "http://localhost:5173",
+# CORS_ALLOWED_ORIGINS = [
+#     "https://titanscareers.com",
+#     "https://lms-react-frontend-sand.vercel.app",
+#     "http://127.0.0.1:5502",
+#     "http://localhost:3000",
+#     "http://127.0.0.1:9000",
+#     "http://localhost:5173",
     
-]
+# ]
+
+CORS_ORIGIN_ALLOW_ALL = True
+
 
 CORS_ALLOWED_METHODS = [
     "GET",

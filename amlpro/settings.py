@@ -174,8 +174,8 @@ ACCOUNT_UNIQUE_EMAIL = True
 
 
 
-LOGIN_REDIRECT_URL = '/'
-ACCOUNT_LOGOUT_REDIRECT_URL = '/'
+LOGIN_REDIRECT_URL = 'https://lms-react-frontend-sand.vercel.app/'
+ACCOUNT_LOGOUT_REDIRECT_URL = 'https://lms-react-frontend-sand.vercel.app/'
 
 SOCIALACCOUNT_FORMS = {
     'disconnect': 'allauth.socialaccount.forms.DisconnectForm',

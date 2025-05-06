@@ -73,6 +73,13 @@ class Teacher(APIView):
         teachers = db.teacher_profiles.find()
         serializer = TeacherProfileSerializer([teacher for teacher in teachers], many=True)
         return Response(serializer.data)
+    
+class Student(APIView):
+    def get(self, request):
+        db = get_mongo_db()
+        students = db.users.find()
+        serializer = CustomUserSerializer([student for student in students], many=True)
+        return Response(serializer.data)
 
 class GetCSRFToken(APIView):
     @method_decorator(ensure_csrf_cookie)

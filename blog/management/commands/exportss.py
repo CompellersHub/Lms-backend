@@ -3,7 +3,7 @@
 import json
 from django.core.management.base import BaseCommand
 from pymongo import MongoClient
-from blog.models import Category, Blog 
+from blog.models import Category, Blog, BlogUser
 import os # Use absolute import
 
 class Command(BaseCommand):
@@ -37,4 +37,10 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING('No teachers data to export'))
 
         # Export courses
-        
+        bloguser = BlogUser.objects.all()
+        bloguser_data = [bloguser.to_dict() for bloguser in bloguser]
+        if bloguser_data:
+            db.bloguser.insert_many(bloguser_data)
+            self.stdout.write(self.style.SUCCESS('bloguser data exported successfully'))
+        else:
+            self.stdout.write(self.style.WARNING('No students data to export'))

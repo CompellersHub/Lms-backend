@@ -8,5 +8,6 @@ urlpatterns = [
     path('logout/', views.Logout.as_view(), name='logout'),
     path('csrftoken/', views.GetCSRFToken.as_view(), name='csrf_token'),
     path("callback/", social_callback, name="social_callback"),
+    path("student/", views.Student.as_view(), name='student'),
     path("teacher/", views.Teacher.as_view(), name='teacher')
 ]

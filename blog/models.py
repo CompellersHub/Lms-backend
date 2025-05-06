@@ -1,5 +1,7 @@
 from django.db import models
+from django.conf import settings
 from user.models import *
+from django.contrib.auth.models import AbstractUser, Group, Permission
 # Create your models here.
 
 class Category(models.Model):
@@ -14,10 +16,50 @@ class Category(models.Model):
             "id": self.id,
             "name": self.name
         }
+    
+
+class BlogUser(AbstractUser):
+    id = models.AutoField(primary_key=True)
+    username = models.CharField(max_length=150, unique=True)
+    email = models.EmailField(unique=True)
+    phone_number = models.CharField(max_length=15, null=True, blank=True)
+    profile_pic = models.ImageField(upload_to='profile_pics/', null=True, blank=True)
+
+    groups = models.ManyToManyField(
+        Group,
+        related_name='bloguser_set',  # Unique related_name
+        related_query_name='bloguser',
+        blank=True,
+        help_text='The groups this user belongs to. A user will get all permissions granted to each of their groups.',
+        verbose_name='groups'
+    )
+    user_permissions = models.ManyToManyField(
+        Permission,
+        related_name='bloguser_set',  # Unique related_name
+        related_query_name='bloguser',
+        blank=True,
+        help_text='Specific permissions for this user.',
+        verbose_name='user permissions'
+    )
+
+    def __str__(self):
+        return self.username
+    
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "username": self.username,
+            "email": self.email,
+            "phone_number": self.phone_number,
+            "profile_pic": self.profile_pic.url if self.profile_pic else None
+        }
+    
+
+
 
 class Blog(models.Model):
     id = models.AutoField(primary_key=True)
-    teacher = models.ForeignKey(TeacherProfile, on_delete=models.CASCADE)
+    created_by = models.ForeignKey(BlogUser, on_delete=models.CASCADE, default=None, null=True)
     category = models.ForeignKey('Category', on_delete=models.CASCADE)
     image = models.ImageField(upload_to='blog_images/')
     title = models.CharField(max_length=150)
@@ -33,7 +75,9 @@ class Blog(models.Model):
             "title": self.title,
             "image": self.image.url if self.image else None,
             "category": self.category.to_dict(),
-            "teacher": self.teacher.to_dict() if self.teacher else None,
+            "created_by": self.created_by.to_dict() if self.created_by else None,
             "description": self.description,
             "created_at": self.created_at.isoformat()
         }
+    
+    

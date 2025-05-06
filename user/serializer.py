@@ -6,7 +6,7 @@ from courses.mongo_utils import get_mongo_db
 from bson import ObjectId
 from django.contrib.auth.hashers import make_password
 import re
-from datetime import datetime
+import datetime
 
 def check_password(password):
     password_pattern = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$"

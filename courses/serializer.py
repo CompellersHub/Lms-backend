@@ -2,7 +2,7 @@ import datetime
 from rest_framework import serializers
 from bson.objectid import ObjectId
 from .mongo_utils import get_mongo_db
-from user.serializer import TeacherProfileSerializer, CustomUserSerializer
+# from user.serializer import TeacherProfileSerializer, CustomUserSerializer
 
 class CategorySerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)
@@ -178,7 +178,7 @@ class CourseSerializer(serializers.Serializer):
     price = serializers.FloatField()
     target_audience = TargetAudienceSerializer(required=False)
     learning_outcomes = LearningOutcomeSerializer(required=False)
-    instructor = TeacherProfileSerializer(allow_null=True, required=False)
+    instructor = 'user.serializer.TeacherProfileSerializer'
     required_materials = RequiredMaterialSerializer(required=False)
     estimated_time = serializers.CharField(allow_blank=True, required=False)
     level = serializers.ChoiceField(choices=[
@@ -188,26 +188,55 @@ class CourseSerializer(serializers.Serializer):
     ])
 
     def to_representation(self, instance):
-        if instance is None:
-            return {}
-        if '_id' in instance:
-            instance['id'] = str(instance['_id'])
-            del instance['_id']
+        representation = super().to_representation(instance)
+
+        if hasattr(instance, '_id'):
+            representation['id'] = str(instance._id)
+        elif '_id' in instance:
+            representation['id'] = str(instance['_id'])
+
+        if '_id' in representation:
+            del representation['_id']
+
+        instructor_data = instance.get('instructor')
+        representation['instructor'] = None  # Initialize as None
+
+        if instructor_data:
+            from user.serializer import TeacherProfileSerializer
+            if isinstance(instructor_data, dict):
+                # Case 1: Embedded Teacher Profile data
+                representation['instructor'] = TeacherProfileSerializer().to_representation(instructor_data)
+            elif isinstance(instructor_data, str):
+                # Case 2: instructor field contains a string (potential ObjectId representation)
+                try:
+                    teacher_profile_id = ObjectId(instructor_data)
+                    db = get_mongo_db()
+                    teacher_profile = db.teacher_profiles.find_one({"_id": teacher_profile_id})
+                    if teacher_profile:
+                        representation['instructor'] = TeacherProfileSerializer().to_representation(teacher_profile)
+                except Exception as e:
+                    print(f"Error fetching TeacherProfile with ID '{instructor_data}': {e}")
+            elif isinstance(instructor_data, ObjectId):
+                # Case 3: instructor field contains an ObjectId
+                db = get_mongo_db()
+                teacher_profile = db.teacher_profiles.find_one({"_id": instructor_data})
+                if teacher_profile:
+                    representation['instructor'] = TeacherProfileSerializer().to_representation(teacher_profile)
+
         if 'category' in instance and isinstance(instance['category'], dict):
-            instance['category'] = CategorySerializer().to_representation(instance['category'])
-        if 'instructor' in instance and isinstance(instance['instructor'], dict):
-            instance['instructor'] = TeacherProfileSerializer().to_representation(instance['instructor'])
+            representation['category'] = CategorySerializer().to_representation(instance['category'])
         if 'curriculum' in instance and isinstance(instance['curriculum'], list):
-            instance['curriculum'] = [ModuleInCourseSerializer().to_representation(item) for item in instance['curriculum']]
+            representation['curriculum'] = [ModuleInCourseSerializer().to_representation(item) for item in instance['curriculum']]
         elif 'curriculum' in instance and isinstance(instance['curriculum'], dict):
-            instance['curriculum'] = [ModuleInCourseSerializer().to_representation(instance['curriculum'])] # Handle single embedded object?
+            representation['curriculum'] = [ModuleInCourseSerializer().to_representation(instance['curriculum'])]
         if 'target_audience' in instance and isinstance(instance['target_audience'], dict):
-            instance['target_audience'] = TargetAudienceSerializer().to_representation(instance['target_audience'])
+            representation['target_audience'] = TargetAudienceSerializer().to_representation(instance['target_audience'])
         if 'learning_outcomes' in instance and isinstance(instance['learning_outcomes'], dict):
-            instance['learning_outcomes'] = LearningOutcomeSerializer().to_representation(instance['learning_outcomes'])
+            representation['learning_outcomes'] = LearningOutcomeSerializer().to_representation(instance['learning_outcomes'])
         if 'required_materials' in instance and isinstance(instance['required_materials'], dict):
-            instance['required_materials'] = RequiredMaterialSerializer().to_representation(instance['required_materials'])
-        return super().to_representation(instance)
+            representation['required_materials'] = RequiredMaterialSerializer().to_representation(instance['required_materials'])
+
+        return representation
 
     def create(self, validated_data):
         db = get_mongo_db()
@@ -258,7 +287,7 @@ class LiveClassSerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)
     title = serializers.CharField(max_length=200)
     course = CourseSerializer()
-    teacher = TeacherProfileSerializer()
+    teacher = 'user.serializer.TeacherProfileSerializer'
     description = serializers.CharField()
     date = serializers.DateTimeField()
     duration = serializers.IntegerField()
@@ -271,6 +300,7 @@ class LiveClassSerializer(serializers.Serializer):
         if 'course' in instance and isinstance(instance['course'], dict):
             instance['course'] = CourseSerializer().to_representation(instance['course'])
         if 'teacher' in instance and isinstance(instance['teacher'], dict):
+            from user.serializer import TeacherProfileSerializer # Local import
             instance['teacher'] = TeacherProfileSerializer().to_representation(instance['teacher'])
         return super().to_representation(instance)
 

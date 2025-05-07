@@ -102,7 +102,7 @@ class Login(APIView):
             return Response({"error": "Password is required"}, status=status.HTTP_400_BAD_REQUEST)
 
         db = get_mongo_db()
-        user = db.users.find_one({"email": email})
+        user = db.customusers.find_one({"email": email})
 
         if user and check_password(password, user['password']):
             serializer = CustomUserSerializer(user)
@@ -139,14 +139,14 @@ class Teacher(APIView):
 class Student(APIView):
     def get(self, request):
         db = get_mongo_db()
-        students = db.users.find()
+        students = db.customusers.find()
         serializer = CustomUserSerializer([student for student in students], many=True)
         return Response(serializer.data)
     
 class StudentDetail(APIView):
     def get(self, request, student_id):
         db = get_mongo_db()
-        student = db.users.find_one({"_id": ObjectId(student_id)})
+        student = db.customusers.find_one({"_id": ObjectId(student_id)})
         if not student:
             return Response({"error": "Student not found"}, status=status.HTTP_404_NOT_FOUND)
         serializer = CustomUserSerializer(student)
@@ -154,7 +154,7 @@ class StudentDetail(APIView):
 
     def put(self, request, student_id):
         db = get_mongo_db()
-        student = db.users.find_one({"_id": ObjectId(student_id)})
+        student = db.customusers.find_one({"_id": ObjectId(student_id)})
         if not student:
             return Response({"error": "Student not found"}, status=status.HTTP_404_NOT_FOUND)
         serializer = CustomUserSerializer(student, data=request.data)

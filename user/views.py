@@ -33,6 +33,7 @@ logger = logging.getLogger(__name__)
 logger = logging.getLogger(__name__)
 
 class GoogleLoginView(APIView):
+    permission_classes = [AllowAny]
     def post(self, request):
         logger.info("Received Google login request")
         token = request.data.get('token')
@@ -43,7 +44,7 @@ class GoogleLoginView(APIView):
 
         try:
             # Verify the Google ID token
-            idinfo = id_token.verify_oauth2_token(token, requests.Request(), settings.GOOGLE_CLIENT_ID)
+            idinfo = id_token.verify_oauth2_token(token, requests.Request(), os.getenv('CLIENT_ID'))
             if idinfo['iss'] not in ['accounts.google.com', 'https://accounts.google.com']:
                 raise ValueError('Wrong issuer.')
 

@@ -15,6 +15,67 @@ from django.http import JsonResponse, HttpResponseRedirect
 from courses.mongo_utils import get_mongo_db
 from bson import ObjectId
 from django.contrib.auth import logout
+from google.oauth2 import id_token
+from google.auth.transport import requests
+from allauth.socialaccount.providers.google.views import GoogleOAuth2Adapter
+from allauth.socialaccount.providers.oauth2.client import OAuth2Error
+import jwt
+from datetime import datetime, timedelta
+from django.conf import settings
+import os
+import logging
+
+db = get_mongo_db()
+users_collection = db['users']
+
+logger = logging.getLogger(__name__)
+
+logger = logging.getLogger(__name__)
+
+class GoogleLoginView(APIView):
+    def post(self, request):
+        logger.info("Received Google login request")
+        token = request.data.get('token')
+
+        if not token:
+            logger.error("Token is missing from the request")
+            return Response({'error': 'Token is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            # Verify the Google ID token
+            idinfo = id_token.verify_oauth2_token(token, requests.Request(), settings.GOOGLE_CLIENT_ID)
+            if idinfo['iss'] not in ['accounts.google.com', 'https://accounts.google.com']:
+                raise ValueError('Wrong issuer.')
+
+            # Extract user info from the token
+            user_info = {
+                'google_id': idinfo['sub'],
+                'email': idinfo['email'],
+                'name': idinfo['name'],
+                'picture': idinfo.get('picture', ''),
+                'last_login': datetime.utcnow(),
+            }
+
+            # Check if the user already exists in the database
+            user = users_collection.find_one({'google_id': idinfo['sub']})
+            if not user:
+                # Create a new user if not exists
+                users_collection.insert_one(user_info)
+                user = user_info
+
+            # Create a session for the user
+            request.session['user_id'] = str(user['_id'])
+            request.session.modified = True
+
+            logger.info(f"Successfully logged in user: {user_info['email']}")
+            return Response({'message': 'Login successful'}, status=status.HTTP_200_OK)
+
+        except ValueError as e:
+            logger.error(f"Error verifying Google token: {e}")
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            logger.error(f"Unexpected error: {e}")
+            return Response({'error': 'An unexpected error occurred'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class Signup(APIView):
     permission_classes = [AllowAny]

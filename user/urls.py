@@ -9,5 +9,6 @@ urlpatterns = [
     path('csrftoken/', views.GetCSRFToken.as_view(), name='csrf_token'),
     path("callback/", social_callback, name="social_callback"),
     path("student/", views.Student.as_view(), name='student'),
-    path("teacher/", views.Teacher.as_view(), name='teacher')
+    path("teacher/", views.Teacher.as_view(), name='teacher'),
+    path('api/google-login/', views.GoogleLoginView.as_view(), name='google-login'),
 ]

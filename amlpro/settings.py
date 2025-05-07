@@ -95,17 +95,17 @@ MIDDLEWARE = [
     "allauth.account.middleware.AccountMiddleware",
 ]
 
-# CORS_ALLOWED_ORIGINS = [
-#     "https://titanscareers.com",
-#     "https://lms-react-frontend-sand.vercel.app",
-#     "http://127.0.0.1:5502",
-#     "http://localhost:3000",
-#     "http://127.0.0.1:9000",
-#     "http://localhost:5173",
+CORS_ALLOWED_ORIGINS = [
+    "https://titanscareers.com",
+    "https://lms-react-frontend-sand.vercel.app",
+    "http://127.0.0.1:5502",
+    "http://localhost:3000",
+    "http://127.0.0.1:9000",
+    "http://localhost:5173",
     
-# ]
+]
 
-CORS_ORIGIN_ALLOW_ALL = True
+
 
 
 CORS_ALLOWED_METHODS = [
@@ -174,8 +174,8 @@ ACCOUNT_UNIQUE_EMAIL = True
 
 
 
-LOGIN_REDIRECT_URL = 'https://lms-react-frontend-sand.vercel.app/'
-ACCOUNT_LOGOUT_REDIRECT_URL = 'https://lms-react-frontend-sand.vercel.app/'
+LOGIN_REDIRECT_URL = 'http://localhost:5173/'
+ACCOUNT_LOGOUT_REDIRECT_URL = 'http://localhost:5173/'
 
 SOCIALACCOUNT_FORMS = {
     'disconnect': 'allauth.socialaccount.forms.DisconnectForm',

@@ -160,6 +160,8 @@ class TargetAudience(models.Model):
             "audience3": self.audience3,
             "audience4": self.audience4,
         }
+    
+
 
 class Course(models.Model):
     LEVEL_CHOICES = [
@@ -179,7 +181,6 @@ class Course(models.Model):
     category = models.ForeignKey('Category', on_delete=models.CASCADE)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    student = models.ManyToManyField(CustomUser, related_name='student_courses', blank=True)
     price = models.FloatField(default=0)
     instructor = models.ForeignKey(TeacherProfile, on_delete=models.CASCADE, related_name='instructor_courses', null=True)
     curriculum = models.ForeignKey('Curriculum', blank=True, null=True, on_delete=models.CASCADE)
@@ -208,7 +209,6 @@ class Course(models.Model):
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
             "price": self.price,
-            "student": [student.to_dict() for student in self.student.all()],
             "learning_outcomes": self.learning_outcomes.to_dict() if self.learning_outcomes else None,
             "target_audience": self.target_audience.to_dict() if self.target_audience else None,
             "curriculum": [module.to_dict() for module in self.curriculum.module.all()] if self.curriculum else None,
@@ -216,6 +216,28 @@ class Course(models.Model):
             "required_materials": self.required_materials.to_dict() if self.required_materials else None,
             "estimated_time": self.estimated_time,
             "level": self.level,
+        }
+    
+
+class CourseLibrary(models.Model):
+    id = models.AutoField(primary_key=True, editable=False)
+    title = models.CharField(max_length=200)
+    course = models.ForeignKey('Course', on_delete=models.CASCADE, related_name='course_library')
+    file = models.FileField(upload_to='course_library/')
+    url = models.URLField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Library for {self.course.name}"
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "title": self.title,
+            "course": self.course.to_dict(),
+            "created_at": self.created_at.isoformat(),
+            "updated_at": self.updated_at.isoformat(),
         }
 
 class Make_Assignment(models.Model):

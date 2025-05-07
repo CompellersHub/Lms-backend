@@ -9,11 +9,13 @@ from django.http import JsonResponse
 from django.conf import settings
 from bson.objectid import ObjectId
 from datetime import datetime
+from bson.errors import InvalidId
 
 from user.serializer import CustomUserSerializer
 from .serializer import (
     CategorySerializer,
     CourseSerializer,
+    CourseLibrarySerializer,
     CourseOrderSerializer,
     CourseOrderItemSerializer,
     AssignmentSerializer,
@@ -184,6 +186,62 @@ class CourseDetail(APIView):
             db.courses.delete_one({"_id": ObjectId(pk)})
             return Response({'message': 'Course deleted successfully'}, status=status.HTTP_204_NO_CONTENT)
         return Response(status=status.HTTP_404_NOT_FOUND)
+    
+class CourseLibrary(APIView):
+    def get(self, request):
+        db = get_mongo_db()
+        course_libraries = list(db.course_libraries.find())
+        serializer = CourseLibrarySerializer(course_libraries, many=True)
+        return Response(serializer.data)
+
+    def post(self, request):
+        serializer = CourseLibrarySerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+class CourseLibraryDetail(APIView):
+    def get_object(self, pk: str):
+        db = get_mongo_db()
+        try:
+            course_library = db.course_libraries.find_one({"_id": ObjectId(pk)})
+            if course_library:
+                return course_library
+            else:
+                logging.error(f"No course library found with id: {pk}")
+                return None
+        except PyMongoError as e:
+            logging.error(f"Database error: {e}")
+            return None
+        except Exception as e:
+            logging.error(f"An unexpected error occurred: {e}")
+            return None
+
+    def get(self, request, pk: str):
+        course_library = self.get_object(pk)
+        if course_library:
+            serializer = CourseLibrarySerializer(course_library)
+            return Response(serializer.data)
+        return Response(status=status.HTTP_404_NOT_FOUND)
+
+    def put(self, request, pk: str):
+        course_library = self.get_object(pk)
+        if course_library:
+            serializer = CourseLibrarySerializer(instance=course_library, data=request.data)
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data, status=status.HTTP_200_OK)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        return Response(status=status.HTTP_404_NOT_FOUND)
+
+    def delete(self, request, pk: str):
+        db = get_mongo_db()
+        course_library = self.get_object(pk)
+        if course_library:
+            db.course_libraries.delete_one({"_id": ObjectId(pk)})
+            return Response({'message': 'Course library deleted successfully'}, status=status.HTTP_204_NO_CONTENT)
+        return Response(status=status.HTTP_404_NOT_FOUND)
 
 class Categories(APIView):
 
@@ -297,13 +355,13 @@ class Assignment(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class AssignmentDetail(APIView):
-    def get(self, request):
+    def get(self, pk: str):
         db = get_mongo_db()
-        assignments = list(db.assignments.find())
+        assignments = db.assignments.find_one({"_id": ObjectId(pk)})
         serializer = AssignmentSerializer(assignments, many=True)
         return Response(serializer.data)
 
-    def get(self, request, pk):
+    def get(self, request, pk: str):
         assignment = self.get_object(pk)
         if assignment:
             serializer = AssignmentSerializer(assignment)
@@ -328,16 +386,31 @@ class AssignmentDetail(APIView):
             return Response({'message': 'Assignment deleted successfully'}, status=status.HTTP_204_NO_CONTENT)
         return Response(status=status.HTTP_404_NOT_FOUND)
 
+logger = logging.getLogger(__name__)
+
 class AssignmentByCourse(APIView):
     def get(self, request, pk):
         db = get_mongo_db()
         try:
-            # Assuming 'course_id' in Assignment refers to the Course _id as a string
-            assignments = list(db.assignments.find({"course_id": pk}))
+            # Validate the course_id
+            course_id = ObjectId(pk)
+
+            # Fetch assignments for the given course_id
+            assignments = list(db.assignments.find({"course_id": course_id}))
+
+            if not assignments:
+                return Response({"detail": "No assignments found for this course."}, status=status.HTTP_404_NOT_FOUND)
+
             serializer = AssignmentSerializer(assignments, many=True)
             return Response(serializer.data, status=status.HTTP_200_OK)
-        except:
-            return Response(status=status.HTTP_404_NOT_FOUND)
+
+        except InvalidId:
+            logger.error(f"Invalid course ID format: {pk}")
+            return Response({"detail": "Invalid course ID format."}, status=status.HTTP_400_BAD_REQUEST)
+
+        except Exception as e:
+            logger.error(f"An error occurred while retrieving assignments: {e}")
+            return Response({"detail": "An error occurred while retrieving assignments."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class AssignmentSubmission(APIView):
     def get(self, request):

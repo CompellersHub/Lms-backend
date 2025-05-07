@@ -22,9 +22,9 @@ def sync_to_mongodb(sender, instance, **kwargs):
     db[collection_name].update_one({"_id": data['_id']}, {"$set": data}, upsert=True)
 
 # Signal to handle deleting models
-@receiver(post_save, sender=Category)
-@receiver(post_save, sender=Blog)
-@receiver(post_save, sender=BlogUser)
+@receiver(post_delete, sender=Category)
+@receiver(post_delete, sender=Blog)
+@receiver(post_delete, sender=BlogUser)
 def delete_from_mongodb(sender, instance, **kwargs):
     db = get_mongo_db()
     collection_name = sender.__name__.lower() + 's'

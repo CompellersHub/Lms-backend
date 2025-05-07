@@ -16,18 +16,18 @@ urlpatterns = [
 
     path('assignments/', views.Assignment.as_view(), name='assignments'),
     path('assignments/<str:pk>/', views.AssignmentDetail.as_view(), name='assignment_detail'),
-    path('assignments/course/', views.AssignmentByCourse.as_view(), name='submission_list'),
+    path('assignments/course/<str:pk>', views.AssignmentByCourse.as_view(), name='submission_list'),
     path('submission/', views.AssignmentSubmission.as_view(), name='submission_detail'),
     path('submission/<str:pk>/', views.AssignmentSubmissionDetail.as_view(), name='submission_detail'),
-    path('submission/user/', views.AssignmentSubmissionByUser.as_view(), name='submission_by_user'),
+    path('submission/user/<str:pk>/', views.AssignmentSubmissionByUser.as_view(), name='submission_by_user'),
 
     path('modules/', views.Module.as_view(), name='modules'),
     path('modules/<str:pk>/', views.ModuleDetail.as_view(), name='module_detail'),
-    path('modules/course/', views.ModuleByCourse.as_view(), name='module_by_course'),
+    path('modules/course/<str:pk>/', views.ModuleByCourse.as_view(), name='module_by_course'),
 
     path('videos/', views.Video.as_view(), name='videos'),
     path('videos/<str:pk>/', views.VideoDetail.as_view(), name='video_detail'),
-    path('videos/module/', views.VideoByModule.as_view(), name='video_by_module'),
+    path('videos/module/<str:pk>/', views.VideoByModule.as_view(), name='video_by_module'),
     
     path('start_live_class/<str:course_id>/', views.StartLiveClassView.as_view(), name='start_live_class'),
     path('student_notifications/<str:customuser_id>/', views.StudentNotificationsView.as_view(), name='student_notifications'),

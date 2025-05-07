@@ -2,7 +2,7 @@
 
 from django.shortcuts import render
 from rest_framework import status
-from .serializer import CustomUserSerializer, TeacherProfileSerializer
+from .serializer import CustomUserSerializer, TeacherProfileSerializer, NotificationSerializer
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
@@ -141,6 +141,26 @@ class Student(APIView):
         students = db.users.find()
         serializer = CustomUserSerializer([student for student in students], many=True)
         return Response(serializer.data)
+    
+class StudentDetail(APIView):
+    def get(self, request, student_id):
+        db = get_mongo_db()
+        student = db.users.find_one({"_id": ObjectId(student_id)})
+        if not student:
+            return Response({"error": "Student not found"}, status=status.HTTP_404_NOT_FOUND)
+        serializer = CustomUserSerializer(student)
+        return Response(serializer.data)
+
+    def put(self, request, student_id):
+        db = get_mongo_db()
+        student = db.users.find_one({"_id": ObjectId(student_id)})
+        if not student:
+            return Response({"error": "Student not found"}, status=status.HTTP_404_NOT_FOUND)
+        serializer = CustomUserSerializer(student, data=request.data)
+        if serializer.is_valid():
+            updated_student = serializer.save()
+            return Response({"student": updated_student}, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)      
 
 class GetCSRFToken(APIView):
     @method_decorator(ensure_csrf_cookie)
@@ -150,5 +170,14 @@ class GetCSRFToken(APIView):
         response['X-CSRFToken'] = csrf_token
         return response
 
+class StudentNotificationsView(APIView):
+    def get(self, request, student_id):
+        student = db.users.find_one({"_id": ObjectId(student_id)})
+        if not student:
+            return Response({"error": "Student not found"}, status=status.HTTP_404_NOT_FOUND)
+        notifications = db.notifications.find({"student_id": ObjectId(student_id)})
+        serializer = NotificationSerializer([notification for notification in notifications], many=True)
+        return Response(serializer.data)
+    
 def social_callback(request):
     return HttpResponseRedirect("http://127.0.0.1:5503/course.html")

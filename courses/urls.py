@@ -30,6 +30,6 @@ urlpatterns = [
     path('videos/module/<str:pk>/', views.VideoByModule.as_view(), name='video_by_module'),
     
     path('start_live_class/<str:course_id>/', views.StartLiveClassView.as_view(), name='start_live_class'),
-    path('student_notifications/<str:customuser_id>/', views.StudentNotificationsView.as_view(), name='student_notifications'),
+    
 
 ]

@@ -12,6 +12,8 @@ def model_to_dict(instance):
 # Signal to handle saving and updating models
 @receiver(post_save, sender=CustomUser)
 @receiver(post_save, sender=TeacherProfile)
+@receiver(post_save, sender=Submission)
+@receiver(post_save, sender=Notification)
 def sync_to_mongodb(sender, instance, **kwargs):
     db = get_mongo_db()
     collection_name = sender.__name__.lower() + 's'
@@ -23,6 +25,9 @@ def sync_to_mongodb(sender, instance, **kwargs):
 # Signal to handle deleting models
 @receiver(post_delete, sender=CustomUser)
 @receiver(post_delete, sender=TeacherProfile)
+@receiver(post_delete, sender=Submission)
+@receiver(post_delete, sender=Notification)
+
 def delete_from_mongodb(sender, instance, **kwargs):
     db = get_mongo_db()
     collection_name = sender.__name__.lower() + 's'

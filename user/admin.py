@@ -32,3 +32,16 @@ class UserAdmin(ModelAdmin):
 @admin.register(TeacherProfile)
 class TeacherAdmin(ModelAdmin):
     list_display = ['user', 'course_taken', 'bio', 'profile_picture']
+
+
+@admin.register(Submission)
+class SubmissionAdmin(ModelAdmin):
+    list_display = ['student', 'assignment', 'submission_date', 'marks_obtained']
+    search_fields = ['student__email', 'assignment__title']
+    list_filter = ['student']
+
+@admin.register(Notification)
+class NotificationAdmin(ModelAdmin):
+    list_display = ['student', 'message', 'created_at']
+    search_fields = ['student__email', 'message']
+    list_filter = ['student']

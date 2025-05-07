@@ -38,11 +38,10 @@ def model_to_dict(instance):
 @receiver(post_save, sender=Course)
 @receiver(post_save, sender=CourseLibrary)
 @receiver(post_save, sender=Make_Assignment)
-@receiver(post_save, sender=Submission)
-@receiver(post_save, sender=CourseOrder)
-@receiver(post_save, sender=CourseOrderItem)
+# @receiver(post_save, sender=CourseOrder)
+# @receiver(post_save, sender=CourseOrderItem)
 @receiver(post_save, sender=LiveClass)
-@receiver(post_save, sender=Notification)
+# @receiver(post_save, sender=Notification)
 def sync_to_mongodb(sender, instance, **kwargs):
     db = get_mongo_db()
     collection_name = sender.__name__.lower() + 's'
@@ -69,11 +68,9 @@ def sync_to_mongodb(sender, instance, **kwargs):
 @receiver(post_delete, sender=Course)
 @receiver(post_delete, sender=CourseLibrary)
 @receiver(post_delete, sender=Make_Assignment)
-@receiver(post_delete, sender=Submission)
-@receiver(post_delete, sender=CourseOrder)
-@receiver(post_delete, sender=CourseOrderItem)
+# @receiver(post_delete, sender=CourseOrder)
+# @receiver(post_delete, sender=CourseOrderItem)
 @receiver(post_delete, sender=LiveClass)
-@receiver(post_delete, sender=Notification)
 def delete_from_mongodb(sender, instance, **kwargs):
     db = get_mongo_db()
     collection_name = sender.__name__.lower() + 's'

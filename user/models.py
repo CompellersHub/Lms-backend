@@ -1,9 +1,6 @@
-# myapp/models.py
-
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin, Group, Permission
 from django.db import models
 from django.utils import timezone
-# from courses.models import Course
 
 class CustomUserManager(BaseUserManager):
     def create_user(self, email, password=None, **extra_fields):
@@ -34,7 +31,7 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     first_name = models.CharField(max_length=150, blank=True)
     last_name = models.CharField(max_length=150, blank=True)
     role = models.CharField(max_length=20, default='STUDENT')
-    # course = models.ForeignKey(Course, on_delete=models.CASCADE, blank=True, null=True)
+    course = models.ManyToManyField('courses.Course',  blank=True, null=True)
     phone_number = models.CharField(max_length=15, blank=True, null=True)
     profile_pic = models.ImageField(upload_to='profile_pics/', blank=True, null=True)
     is_active = models.BooleanField(default=True)
@@ -65,7 +62,7 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return self.username
-    
+
     def to_dict(self):
         return {
             "user_id": self.id,
@@ -76,7 +73,6 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
             "role": self.role,
             "profile_picture": self.profile_pic.url if self.profile_pic else None,
             "phone_number": self.phone_number,
-            
         }
 
     @property
@@ -112,7 +108,7 @@ class TeacherProfile(models.Model):
             "last_name": str(self.user.last_name),
             "role": self.role,
             "bio": self.bio,
-            "profile_picture": self.profile_picture.url if self.profile_picture else None, 
+            "profile_picture": self.profile_picture.url if self.profile_picture else None,
             "phone_number": self.phone_number,
             "past_experience": self.past_experience,
             "course_taken": self.course_taken,
@@ -122,4 +118,39 @@ class TeacherProfile(models.Model):
     def __str__(self):
         return self.user.username
 
+class Submission(models.Model):
+    student = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='student_submissions')
+    assignment = models.ForeignKey('courses.Make_Assignment', on_delete=models.CASCADE, related_name='assignment_submissions')
+    submission_date = models.DateTimeField(auto_now_add=True)
+    file = models.FileField(upload_to='submissions/')
+    marks_obtained = models.IntegerField(default=0, blank=True, null=True)
+    feedback = models.TextField(blank=True, null=True)
+    marked_by = models.ForeignKey('TeacherProfile', on_delete=models.CASCADE, related_name='marked_assignments', blank=True, null=True)
 
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "student": self.student.to_dict(),
+            "assignment": self.assignment.to_dict(),
+            "submission_date": self.submission_date.isoformat(),
+            "file": self.file.url if self.file else None,
+            "marks_obtained": self.marks_obtained,
+            "feedback": self.feedback,
+            "marked_by": self.marked_by.to_dict() if self.marked_by else None,
+        }
+
+class Notification(models.Model):
+    student = models.ForeignKey(CustomUser, on_delete=models.CASCADE)
+    message = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Notification for {self.student.user.username}"
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "student": self.student.to_dict(),
+            "message": self.message,
+            "created_at": self.created_at.isoformat(),
+        }

@@ -93,3 +93,29 @@ class TeacherProfileSerializer(serializers.Serializer):
         profile_id = ObjectId(instance['id'])
         db.teacher_profiles.update_one({"_id": profile_id}, {"$set": validated_data})
         return db.teacher_profiles.find_one({"_id": profile_id})
+
+class NotificationSerializer(serializers.Serializer):
+    id = serializers.CharField(read_only=True)
+    student = CustomUserSerializer()
+    message = serializers.CharField()
+    is_read = serializers.BooleanField(default=False)
+    created_at = serializers.DateTimeField(read_only=True)
+
+    def to_representation(self, instance):
+        if '_id' in instance:
+            instance['id'] = str(instance['_id'])
+            del instance['_id']
+        if 'student' in instance and isinstance(instance['student'], dict):
+            instance['student'] = CustomUserSerializer().to_representation(instance['student'])
+        return super().to_representation(instance)
+
+    def create(self, validated_data):
+        db = get_mongo_db()
+        result = db.notifications.insert_one(validated_data)
+        return db.notifications.find_one({"_id": result.inserted_id})
+
+    def update(self, instance, validated_data):
+        db = get_mongo_db()
+        notification_id = ObjectId(instance['id'])
+        db.notifications.update_one({"_id": notification_id}, {"$set": validated_data})
+        return db.notifications.find_one({"_id": notification_id})

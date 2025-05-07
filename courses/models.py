@@ -1,6 +1,6 @@
 from django.db import models
 from django.utils import timezone
-from user.models import CustomUser, TeacherProfile  # Ensure these are correctly imported
+from user.models import TeacherProfile  # Ensure these are correctly imported
 
 class Category(models.Model):
     id = models.AutoField(primary_key=True, editable=False)
@@ -182,7 +182,7 @@ class Course(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     price = models.FloatField(default=0)
-    instructor = models.ForeignKey(TeacherProfile, on_delete=models.CASCADE, related_name='instructor_courses', null=True)
+    instructor = models.ForeignKey('user.TeacherProfile', on_delete=models.CASCADE, related_name='instructor_courses', null=True)
     curriculum = models.ForeignKey('Curriculum', blank=True, null=True, on_delete=models.CASCADE)
     required_materials = models.ForeignKey('RequiredMaterial', on_delete=models.CASCADE, blank=True, null=True)
     learning_outcomes = models.ForeignKey('LearningOutcome', on_delete=models.CASCADE, blank=True, null=True)
@@ -242,7 +242,7 @@ class CourseLibrary(models.Model):
 
 class Make_Assignment(models.Model):
     id = models.AutoField(primary_key=True)
-    teacher = models.ForeignKey(TeacherProfile, on_delete=models.CASCADE, related_name='teacher_assignments')
+    teacher = models.ForeignKey('user.TeacherProfile', on_delete=models.CASCADE, related_name='teacher_assignments')
     title = models.CharField(max_length=200)
     description = models.TextField()
     upload_date = models.DateTimeField(auto_now_add=True)
@@ -267,70 +267,51 @@ class Make_Assignment(models.Model):
             "file": self.file.url if self.file else None,
         }
 
-class Submission(models.Model):
-    student = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='student_submissions')
-    assignment = models.ForeignKey('Make_Assignment', on_delete=models.CASCADE, related_name='assignment_submissions')
-    submission_date = models.DateTimeField(auto_now_add=True)
-    file = models.FileField(upload_to='submissions/')
-    marks_obtained = models.IntegerField(default=0, blank=True, null=True)
-    feedback = models.TextField(blank=True, null=True)
-    marked_by = models.ForeignKey(TeacherProfile, on_delete=models.CASCADE, related_name='marked_assignments', blank=True, null=True)
 
-    def to_dict(self):
-        return {
-            "id": self.id,
-            "student": self.student.to_dict(),
-            "assignment": self.assignment.to_dict(),
-            "submission_date": self.submission_date.isoformat(),
-            "file": self.file.url if self.file else None,
-            "marks_obtained": self.marks_obtained,
-            "feedback": self.feedback,
-            "marked_by": self.marked_by.to_dict() if self.marked_by else None,
-        }
 
-class CourseOrder(models.Model):
-    id = models.AutoField(primary_key=True, editable=False)
-    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE)
-    total_price = models.FloatField(default=0)
-    payment_status = models.CharField(
-        max_length=20,
-        choices=[('pending', 'Pending'), ('paid', 'Paid'), ('failed', 'Failed')],
-        default='pending'
-    )
-    paypad_reference = models.CharField(max_length=100, blank=True, null=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+# class CourseOrder(models.Model):
+#     id = models.AutoField(primary_key=True, editable=False)
+#     user = models.ForeignKey(CustomUser, on_delete=models.CASCADE)
+#     total_price = models.FloatField(default=0)
+#     payment_status = models.CharField(
+#         max_length=20,
+#         choices=[('pending', 'Pending'), ('paid', 'Paid'), ('failed', 'Failed')],
+#         default='pending'
+#     )
+#     paypad_reference = models.CharField(max_length=100, blank=True, null=True)
+#     created_at = models.DateTimeField(auto_now_add=True)
+#     updated_at = models.DateTimeField(auto_now=True)
 
-    def __str__(self):
-        return f"Order {self.id} - {self.payment_status}"
+#     def __str__(self):
+#         return f"Order {self.id} - {self.payment_status}"
 
-    def to_dict(self):
-        return {
-            "id": self.id,
-            "user": self.user.to_dict(),
-            "total_price": self.total_price,
-            "payment_status": self.payment_status,
-            "paypad_reference": self.paypad_reference,
-            "created_at": self.created_at.isoformat(),
-            "updated_at": self.updated_at.isoformat(),
-        }
+#     def to_dict(self):
+#         return {
+#             "id": self.id,
+#             "user": self.user.to_dict(),
+#             "total_price": self.total_price,
+#             "payment_status": self.payment_status,
+#             "paypad_reference": self.paypad_reference,
+#             "created_at": self.created_at.isoformat(),
+#             "updated_at": self.updated_at.isoformat(),
+#         }
 
-class CourseOrderItem(models.Model):
-    id = models.AutoField(primary_key=True, editable=False)
-    order = models.ForeignKey(CourseOrder, on_delete=models.CASCADE, related_name='order_items')
-    course = models.ForeignKey('Course', on_delete=models.CASCADE)
-    price = models.FloatField(default=0)
+# class CourseOrderItem(models.Model):
+#     id = models.AutoField(primary_key=True, editable=False)
+#     order = models.ForeignKey(CourseOrder, on_delete=models.CASCADE, related_name='order_items')
+#     course = models.ForeignKey('Course', on_delete=models.CASCADE)
+#     price = models.FloatField(default=0)
 
-    def __str__(self):
-        return f"{self.course.name} in Order {self.order.id}"
+#     def __str__(self):
+#         return f"{self.course.name} in Order {self.order.id}"
 
-    def to_dict(self):
-        return {
-            "id": self.id,
-            "order": self.order.to_dict(),
-            "course": self.course.to_dict(),
-            "price": self.price,
-        }
+#     def to_dict(self):
+#         return {
+#             "id": self.id,
+#             "order": self.order.to_dict(),
+#             "course": self.course.to_dict(),
+#             "price": self.price,
+#         }
 
 
 class LiveClass(models.Model):
@@ -357,18 +338,4 @@ class LiveClass(models.Model):
             
         }
 
-class Notification(models.Model):
-    student = models.ForeignKey(CustomUser, on_delete=models.CASCADE)
-    message = models.TextField()
-    created_at = models.DateTimeField(auto_now_add=True)
 
-    def __str__(self):
-        return f"Notification for {self.student.user.username}"
-
-    def to_dict(self):
-        return {
-            "id": self.id,
-            "student": self.student.to_dict(),
-            "message": self.message,
-            "created_at": self.created_at.isoformat(),
-        }

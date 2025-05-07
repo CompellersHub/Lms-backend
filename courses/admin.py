@@ -30,11 +30,7 @@ class AssignmentAdmin(ModelAdmin):
     search_fields = ['title', 'course__name', 'teacher__email']
     list_filter = ['course', 'teacher']
 
-@admin.register(Submission)
-class SubmissionAdmin(ModelAdmin):
-    list_display = ['student', 'assignment', 'submission_date', 'marks_obtained']
-    search_fields = ['student__email', 'assignment__title']
-    list_filter = ['student']
+
 
 @admin.register(Module)
 class ModuleAdmin(ModelAdmin):
@@ -70,27 +66,23 @@ class LiveClassAdmin(ModelAdmin):
     search_fields = ['title', 'course__name']
     list_filter = ['course']
 
-@admin.register(Notification)
-class NotificationAdmin(ModelAdmin):
-    list_display = ['student', 'message', 'created_at']
-    search_fields = ['student__email', 'message']
-    list_filter = ['student']
 
 
-class CourseOrderItemInline(admin.TabularInline):
-    model = CourseOrderItem
-    extra = 1 
 
-@admin.register(CourseOrder)
-class CourseOrderAdmin(ModelAdmin):
-    list_display = ['id', 'user', 'total_price', 'payment_status', 'created_at']
-    list_filter = ['payment_status', 'created_at']
-    search_fields = ['user__email']
-    ordering = ['-created_at']
-    inlines = [CourseOrderItemInline]  
+# class CourseOrderItemInline(admin.TabularInline):
+#     model = CourseOrderItem
+#     extra = 1 
 
-@admin.register(CourseOrderItem)
-class CourseOrderItemAdmin(ModelAdmin):
-    list_display = ['id', 'order', 'course', 'price']
-    list_filter = ['order']
-    search_fields = ['course__name']
+# @admin.register(CourseOrder)
+# class CourseOrderAdmin(ModelAdmin):
+#     list_display = ['id', 'user', 'total_price', 'payment_status', 'created_at']
+#     list_filter = ['payment_status', 'created_at']
+#     search_fields = ['user__email']
+#     ordering = ['-created_at']
+#     inlines = [CourseOrderItemInline]  
+
+# @admin.register(CourseOrderItem)
+# class CourseOrderItemAdmin(ModelAdmin):
+#     list_display = ['id', 'order', 'course', 'price']
+#     list_filter = ['order']
+#     search_fields = ['course__name']

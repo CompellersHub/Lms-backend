@@ -22,10 +22,10 @@ from .serializer import (
     SubmissionSerializer,
     VideoSerializer,
     ModuleInCourseSerializer,
-    NotificationSerializer,
+    # NotificationSerializer,
     LiveClassSerializer,
 )
-from .models import LiveClass, Notification
+from .models import LiveClass
 from .mongo_utils import get_mongo_db
 import logging
 from pymongo.errors import PyMongoError
@@ -587,9 +587,3 @@ class StartLiveClassView(APIView):
     
     
 
-class StudentNotificationsView(APIView):
-    def get(self, request, student_id):
-        student = get_object_or_404(CustomUserSerializer, id=student_id)
-        notifications = Notification.objects.filter(student=student)
-        serializer = NotificationSerializer(notifications, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)

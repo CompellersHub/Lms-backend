@@ -16,7 +16,7 @@ with open('users.json', 'r') as users_file:
     users_data = json.load(users_file)
     for user in users_data:
         user['created_at'] = datetime.fromisoformat(user['created_at'])
-        db.users.insert_one(user)
+        db.customusers.insert_one(user)
 
 # Import teachers
 with open('teachers.json', 'r') as teachers_file:

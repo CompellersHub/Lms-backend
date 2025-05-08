@@ -430,3 +430,15 @@ class CourseOrderSerializer(serializers.Serializer):
         order_id = ObjectId(instance['id'])
         db.course_orders.update_one({"_id": order_id}, {"$set": validated_data})
         return db.course_orders.find_one({"_id": order_id})
+
+
+class CourseProgressDetailsSerializer(serializers.Serializer):
+    completed = serializers.IntegerField()
+    total = serializers.IntegerField()
+
+class CourseProgressResponseSerializer(serializers.Serializer):
+    user_id = serializers.CharField()
+    course_id = serializers.CharField()
+    course_name = serializers.CharField()
+    progress_percentage = serializers.IntegerField()
+    details = serializers.DictField(child=CourseProgressDetailsSerializer())

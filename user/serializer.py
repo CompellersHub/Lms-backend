@@ -6,7 +6,7 @@ from courses.mongo_utils import get_mongo_db
 from bson import ObjectId
 from django.contrib.auth.hashers import make_password
 import re
-import datetime
+from django.utils import timezone
 import logging
 
 logger = logging.getLogger(__name__)
@@ -73,7 +73,7 @@ class CustomUserSerializer(serializers.Serializer):
     def create(self, validated_data):
         db = get_mongo_db()
         validated_data['password'] = make_password(validated_data['password'])
-        validated_data['created_at'] = datetime.utcnow()
+        validated_data['created_at'] = timezone.now()  # Use timezone.now()
         result = db.customusers.insert_one(validated_data)
         return db.customusers.find_one({"_id": result.inserted_id})
 
@@ -106,7 +106,7 @@ class TeacherProfileSerializer(serializers.Serializer):
 
     def create(self, validated_data):
         db = get_mongo_db()
-        validated_data['created_at'] = datetime.utcnow()
+        validated_data['created_at'] = timezone.now()  # Use timezone.now()
         result = db.teacher_profiles.insert_one(validated_data)
         return db.teacher_profiles.find_one({"_id": result.inserted_id})
 
@@ -141,3 +141,14 @@ class NotificationSerializer(serializers.Serializer):
         notification_id = ObjectId(instance['id'])
         db.notifications.update_one({"_id": notification_id}, {"$set": validated_data})
         return db.notifications.find_one({"_id": notification_id})
+
+class CourseProgressDetailsSerializer(serializers.Serializer):
+    completed = serializers.IntegerField()
+    total = serializers.IntegerField()
+
+class CourseProgressResponseSerializer(serializers.Serializer):
+    user_id = serializers.CharField()
+    course_id = serializers.CharField()
+    course_name = serializers.CharField()
+    progress_percentage = serializers.IntegerField()
+    details = serializers.DictField(child=CourseProgressDetailsSerializer())

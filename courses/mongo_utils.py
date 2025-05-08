@@ -21,6 +21,6 @@ class Command(BaseCommand):
 
     def handle(self, *args, **kwargs):
         db = get_mongo_db()
-        db.users.create_index("username", unique=True)
-        db.users.create_index("email", unique=True)
+        db.customusers.create_index("username", unique=True)
+        db.customusers.create_index("email", unique=True)
         self.stdout.write(self.style.SUCCESS('Unique indexes created successfully'))

@@ -10,6 +10,7 @@ from django.conf import settings
 from bson.objectid import ObjectId
 from datetime import datetime
 from bson.errors import InvalidId
+import json
 
 from user.serializer import CustomUserSerializer
 from .serializer import (
@@ -586,4 +587,112 @@ class StartLiveClassView(APIView):
     
     
     
+class TrackVideoProgressView(APIView):
+    def post(self, request, user_id, video_id):
+        try:
+            user_oid = ObjectId(user_id)
+            video_oid = ObjectId(video_id)
+            data = json.loads(request.body.decode('utf-8'))
+            current_time = data.get('currentTime', 0)
 
+            db = get_mongo_db()
+            # Update user's progress for this video in your database
+            db.user_video_progress.update_one(
+                {"user_id": user_oid, "video_id": video_oid},
+                {"$set": {"last_watched_time": current_time}},
+                upsert=True
+            )
+
+            # Get video duration (you might store this in your video document)
+            video = db.videos.find_one({"_id": video_oid}, {"duration": 1})
+            if video and video.get('duration'):
+                duration_parts = video['duration'].split(':')
+                total_seconds = int(duration_parts[0]) * 3600 + int(duration_parts[1]) * 60 + int(duration_parts[2])
+                completion_threshold = 0.95
+                if current_time / total_seconds >= completion_threshold:
+                    # Mark video as completed for the user
+                    db.user_video_progress.update_one(
+                        {"user_id": user_oid, "video_id": video_oid},
+                        {"$set": {"completed": True}}
+                    )
+                    return Response({"message": "Video marked as completed"}, status=200)
+
+            return Response({"message": "Progress tracked"}, status=200)
+
+        except Exception as e:
+            return Response({"error": str(e)}, status=400)
+
+    
+class CourseProgressDetailView(APIView):
+    def get(self, request, user_id, course_id):
+        db = get_mongo_db()
+
+        try:
+            user_oid = ObjectId(user_id)
+            course_oid = ObjectId(course_id)
+        except Exception:
+            return Response({"error": "Invalid user_id or course_id"}, status=400)
+
+        user = db.customusers.find_one({"_id": user_oid})
+        course = db.courses.find_one({"_id": course_oid})
+
+        if not user or not course:
+            return Response({"error": "User or course not found"}, status=404)
+
+        # Fetch activity counts
+        completed_videos_count = db.user_course_activity.count_documents(
+            {"user_id": user_oid, "course_id": course_oid, "activity_type": "video_completed"}
+        )
+        opened_notes_count = db.user_course_activity.count_documents(
+            {"user_id": user_oid, "course_id": course_oid, "activity_type": "note_opened"}
+        )
+        assignments_submitted_count = db.user_course_activity.count_documents(
+            {"user_id": user_oid, "course_id": course_oid, "activity_type": "assignment_submitted"}
+        )
+        pdfs_viewed_count = db.user_course_activity.count_documents(
+            {"user_id": user_oid, "course_id": course_oid, "activity_type": "pdf_viewed"}
+        )
+
+        # Get total counts from the course structure
+        total_videos = 0
+        total_notes = 0
+        total_assignments = 0 # You'll need to define where this comes from in your Course model
+        total_pdfs = 0 # You'll need to define where blog PDFs related to a course are tracked
+
+        if course.get('curriculum'):
+            for module in course['curriculum']:
+                if module.get('video'):
+                    total_videos += len(module['video'])
+                if module.get('course_note'):
+                    total_notes += 1 # Assuming one note per module for simplicity
+
+        # You'll need a way to link blog PDFs to courses to get total_pdfs
+
+        # Calculate overall progress (you might need to weigh these differently)
+        total_progress_points = (completed_videos_count if total_videos > 0 else 0) + \
+                                (opened_notes_count if total_notes > 0 else 0) + \
+                                (assignments_submitted_count if total_assignments > 0 else 0) + \
+                                (pdfs_viewed_count if total_pdfs > 0 else 0)
+
+        total_possible_points = (total_videos if total_videos > 0 else 1) + \
+                                (total_notes if total_notes > 0 else 1) + \
+                                (total_assignments if total_assignments > 0 else 1) + \
+                                (total_pdfs if total_pdfs > 0 else 1) # Avoid division by zero
+
+        progress_percentage = int((total_progress_points / total_possible_points) * 100) if total_possible_points > 0 else 0
+
+        response_data = {
+            "user_id": str(user['_id']),
+            "course_id": str(course['_id']),
+            "course_name": course.get('name'),
+            "progress_percentage": progress_percentage,
+            "details": {
+                "videos": {"completed": completed_videos_count, "total": total_videos},
+                "course_notes": {"opened": opened_notes_count, "total": total_notes},
+                "assignments": {"submitted": assignments_submitted_count, "total": total_assignments},
+                "blog_pdfs": {"viewed": pdfs_viewed_count, "total": total_pdfs},
+            }
+        }
+
+        # Serialize the response (create a specific serializer for this)
+        return Response(response_data)

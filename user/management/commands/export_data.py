@@ -22,7 +22,7 @@ class Command(BaseCommand):
         users = CustomUser.objects.all()
         users_data = [user.to_dict() for user in users]
         if users_data:
-            db.users.insert_many(users_data)
+            db.customusers.insert_many(users_data)
             self.stdout.write(self.style.SUCCESS('Users data exported successfully'))
         else:
             self.stdout.write(self.style.WARNING('No users data to export'))

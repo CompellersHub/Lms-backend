@@ -34,6 +34,7 @@ logger = logging.getLogger(__name__)
 
 class GoogleLoginView(APIView):
     permission_classes = [AllowAny]
+
     def post(self, request):
         logger.info("Received Google login request")
         token = request.data.get('token')
@@ -60,9 +61,12 @@ class GoogleLoginView(APIView):
             # Check if the user already exists in the database
             user = users_collection.find_one({'google_id': idinfo['sub']})
             if not user:
+                logger.info(f"Creating new user: {user_info['email']}")
                 # Create a new user if not exists
                 users_collection.insert_one(user_info)
                 user = user_info
+            else:
+                logger.info(f"User already exists: {user_info['email']}")
 
             # Create a session for the user
             request.session['user_id'] = str(user['_id'])

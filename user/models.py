@@ -69,6 +69,7 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
             "first_name": self.first_name,
             "last_name": self.last_name,
             "username": self.username,
+            "password": self.password,
             "course": [course.to_dict() for course in self.course.all()],
             "email": self.email,
             "role": self.role,

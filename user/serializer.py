@@ -7,7 +7,9 @@ from bson import ObjectId
 from django.contrib.auth.hashers import make_password
 import re
 import datetime
+import logging
 
+logger = logging.getLogger(__name__)
 
 def check_password(password):
     password_pattern = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$"
@@ -31,7 +33,6 @@ class CustomUserSerializer(serializers.Serializer):
     role = serializers.CharField(max_length=20, default='STUDENT')
     phone_number = serializers.CharField(max_length=15, allow_blank=True, required=False)
     created_at = serializers.DateTimeField(read_only=True)
-
 
     def validate_username(self, value):
         db = get_mongo_db()
@@ -65,7 +66,7 @@ class CustomUserSerializer(serializers.Serializer):
                 try:
                     representation['course'].append(CourseSerializer().to_representation(course_data))
                 except Exception as e:
-                    print(f"Error serializing embedded course data: {e}")
+                    logger.error(f"Error serializing embedded course data: {e}")
 
         return representation
 
@@ -81,7 +82,7 @@ class CustomUserSerializer(serializers.Serializer):
         user_id = ObjectId(instance['id'])
         if 'password' in validated_data:
             validated_data['password'] = make_password(validated_data['password'])
-        db.users.update_one({"_id": user_id}, {"$set": validated_data})
+        db.customusers.update_one({"_id": user_id}, {"$set": validated_data})
         return db.customusers.find_one({"_id": user_id})
 
 class TeacherProfileSerializer(serializers.Serializer):

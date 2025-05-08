@@ -3,6 +3,8 @@ from rest_framework import serializers
 from bson.objectid import ObjectId
 from .mongo_utils import get_mongo_db
 # from user.serializer import TeacherProfileSerializer, CustomUserSerializer
+import logging
+
 
 class CategorySerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)
@@ -254,12 +256,37 @@ class CourseSerializer(serializers.Serializer):
             return db.courses.find_one({"_id": course_id})
         except Exception as e:
             raise serializers.ValidationError(f"Error updating data: {e}")
+
+class CourseLibraryVideoSerializer(serializers.Serializer):
+    id = serializers.CharField(read_only=True)
+    title = serializers.CharField(max_length=200)
+    video_file = serializers.FileField(allow_null=True, required=False)
+    video_id = serializers.CharField(allow_null=True, required=False)
+    created_at = serializers.DateTimeField(read_only=True)
+
+    def to_representation(self, instance):
+        if '_id' in instance:
+            instance['id'] = str(instance['_id'])
+            del instance['_id']
+        
+
+    def create(self, validated_data):
+        db = get_mongo_db()
+        result = db.course_library_videos.insert_one(validated_data)
+        return db.course_library_videos.find_one({"_id": result.inserted_id})
+
+    def update(self, instance, validated_data):
+        db = get_mongo_db()
+        video_id = ObjectId(instance['id'])
+        db.course_library_videos.update_one({"_id": video_id}, {"$set": validated_data})
+        return db.course_library_videos.find_one({"_id": video_id})
         
 class CourseLibrarySerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)
     course = CourseSerializer()
     file = serializers.FileField(allow_null=True, required=False)
     url = serializers.URLField(allow_null=True, required=False)
+    video = CourseLibraryVideoSerializer(many=True, required=False)
     created_at = serializers.DateTimeField(read_only=True)
 
     def to_representation(self, instance):
@@ -268,6 +295,8 @@ class CourseLibrarySerializer(serializers.Serializer):
             del instance['_id']
         if 'course' in instance and isinstance(instance['course'], dict):
             instance['course'] = CourseSerializer().to_representation(instance['course'])
+        if 'video' in instance and isinstance(instance['video'], list):
+            instance['video'] = [CourseLibraryVideoSerializer().to_representation(item) for item in instance['video']]
         return super().to_representation(instance)
 
     def create(self, validated_data):
@@ -317,33 +346,81 @@ class LiveClassSerializer(serializers.Serializer):
 
 
 
+logger = logging.getLogger(__name__)
+
 class AssignmentSerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)
+    teacher = 'user.serializer.TeacherProfileSerializer'
     course = CourseSerializer()
     title = serializers.CharField(max_length=200)
     total_marks = serializers.IntegerField(default=100)
-    description = serializers.DictField()
+    description = serializers.CharField()
     due_date = serializers.DateTimeField()
     file = serializers.FileField()
 
     def to_representation(self, instance):
-        if '_id' in instance:
-            instance['id'] = str(instance['_id'])
-            del instance['_id']
+        representation = super().to_representation(instance)
+
+        if hasattr(instance, '_id'):
+            representation['id'] = str(instance._id)
+        elif '_id' in instance:
+            representation['id'] = str(instance['_id'])
+
+        if '_id' in representation:
+            del representation['_id']
+
+        teacher_data = instance.get('teacher')
+        representation['teacher'] = None  # Initialize as None
+
+        if teacher_data:
+            from user.serializer import TeacherProfileSerializer
+            if isinstance(teacher_data, dict):
+                # Case 1: Embedded Teacher Profile data
+                representation['teacher'] = TeacherProfileSerializer().to_representation(teacher_data)
+            elif isinstance(teacher_data, str):
+                # Case 2: instructor field contains a string (potential ObjectId representation)
+                try:
+                    teacher_profile_id = ObjectId(teacher_data)
+                    db = get_mongo_db()
+                    teacher_profile = db.teacher_profiles.find_one({"_id": teacher_profile_id})
+                    if teacher_profile:
+                        representation['teacher'] = TeacherProfileSerializer().to_representation(teacher_profile)
+                except Exception as e:
+                    print(f"Error fetching TeacherProfile with ID '{teacher_data}': {e}")
+            elif isinstance(teacher_data, ObjectId):
+                # Case 3: instructor field contains an ObjectId
+                db = get_mongo_db()
+                teacher_profile = db.teacher_profiles.find_one({"_id": teacher_data})
+                if teacher_profile:
+                    representation['teacher'] = TeacherProfileSerializer().to_representation(teacher_profile)
         if 'course' in instance and isinstance(instance['course'], dict):
             instance['course'] = CourseSerializer().to_representation(instance['course'])
         return super().to_representation(instance)
 
     def create(self, validated_data):
         db = get_mongo_db()
-        result = db.assignments.insert_one(validated_data)
-        return db.assignments.find_one({"_id": result.inserted_id})
+        try:
+            logger.info(f"Validated data type: {type(validated_data)}")
+            logger.info(f"Validated data content: {validated_data}")
+            result = db.make_assignments.insert_one(validated_data)
+            return db.make_assignments.find_one({"_id": result.inserted_id})
+        except Exception as e:
+            logger.error(f"Error creating assignment: {e}")
+            raise serializers.ValidationError("Error creating assignment in the database.")
 
     def update(self, instance, validated_data):
         db = get_mongo_db()
         assignment_id = ObjectId(instance['id'])
-        db.assignments.update_one({"_id": assignment_id}, {"$set": validated_data})
-        return db.assignments.find_one({"_id": assignment_id})
+        try:
+            logger.info(f"Instance type: {type(instance)}")
+            logger.info(f"Instance content: {instance}")
+            logger.info(f"Validated data type: {type(validated_data)}")
+            logger.info(f"Validated data content: {validated_data}")
+            db.make_assignments.update_one({"_id": assignment_id}, {"$set": validated_data})
+            return db.make_assignments.find_one({"_id": assignment_id})
+        except Exception as e:
+            logger.error(f"Error updating assignment: {e}")
+            raise serializers.ValidationError("Error updating assignment in the database.")
 
 class SubmissionSerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)

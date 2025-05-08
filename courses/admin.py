@@ -42,6 +42,11 @@ class CourseLibraryAdmin(ModelAdmin):
     list_display = ['title', 'course']
     search_fields = ['title', 'course__name']
 
+@admin.register(CourseLibraryVideo)
+class CourseLibraryVideoAdmin(ModelAdmin):
+    list_display = ['title', 'video_id']
+    search_fields = ['title']
+
 @admin.register(RequiredMaterial)
 class RequiredMaterialsAdmin(ModelAdmin):
     list_display = ['name1', 'name2', 'name3']

@@ -343,7 +343,7 @@ class CourseOrderItemAPIView(APIView):
 class Assignment(APIView):
     def get(self, request):
         db = get_mongo_db()
-        assignments = list(db.assignments.find())
+        assignments = list(db.make_assignments.find())
         serializer = AssignmentSerializer(assignments, many=True)
         return Response(serializer.data)
     
@@ -358,7 +358,7 @@ class Assignment(APIView):
 class AssignmentDetail(APIView):
     def get(self, pk: str):
         db = get_mongo_db()
-        assignments = db.assignments.find_one({"_id": ObjectId(pk)})
+        assignments = db.make_assignments.find_one({"_id": ObjectId(pk)})
         serializer = AssignmentSerializer(assignments, many=True)
         return Response(serializer.data)
 
@@ -383,7 +383,7 @@ class AssignmentDetail(APIView):
         db = get_mongo_db()
         assignment = self.get_object(pk)
         if assignment:
-            db.assignments.delete_one({"_id": ObjectId(pk)})
+            db.make_assignments.delete_one({"_id": ObjectId(pk)})
             return Response({'message': 'Assignment deleted successfully'}, status=status.HTTP_204_NO_CONTENT)
         return Response(status=status.HTTP_404_NOT_FOUND)
 
@@ -397,7 +397,7 @@ class AssignmentByCourse(APIView):
             course_id = ObjectId(pk)
 
             # Fetch assignments for the given course_id
-            assignments = list(db.assignments.find({"course_id": course_id}))
+            assignments = list(db.make_assignments.find({"course_id": course_id}))
 
             if not assignments:
                 return Response({"detail": "No assignments found for this course."}, status=status.HTTP_404_NOT_FOUND)

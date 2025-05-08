@@ -217,12 +217,32 @@ class Course(models.Model):
             "estimated_time": self.estimated_time,
             "level": self.level,
         }
-    
+class CourseLibraryVideo(models.Model):
+    id = models.AutoField(primary_key=True, editable=False)
+    title = models.CharField(max_length=200)
+    video_file = models.FileField(upload_to='course_library/', blank=True, null=True)
+    video_id = models.CharField(max_length=50 , blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return self.title
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "title": self.title,
+            "video_file": self.video_file.url if self.video_file else None,
+            "video_id": self.video_id,
+            "created_at": self.created_at.isoformat(),
+            "updated_at": self.updated_at.isoformat(),
+        }
 
 class CourseLibrary(models.Model):
     id = models.AutoField(primary_key=True, editable=False)
     title = models.CharField(max_length=200)
     course = models.ForeignKey('Course', on_delete=models.CASCADE, related_name='course_library')
+    courselibraryvideo = models.ManyToManyField('CourseLibraryVideo', blank=True, null=True)
     file = models.FileField(upload_to='course_library/')
     url = models.URLField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -236,6 +256,7 @@ class CourseLibrary(models.Model):
             "id": self.id,
             "title": self.title,
             "course": self.course.to_dict(),
+            "courselibraryvideo": [video.to_dict() for video in self.courselibraryvideo.all()] if self.courselibraryvideo else None,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
         }

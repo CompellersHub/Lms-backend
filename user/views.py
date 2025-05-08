@@ -144,9 +144,9 @@ class Student(APIView):
         return Response(serializer.data)
     
 class StudentDetail(APIView):
-    def get(self, request, student_id):
+    def get(self, request, pk):
         db = get_mongo_db()
-        student = db.customusers.find_one({"_id": ObjectId(student_id)})
+        student = db.customusers.find_one({"_id": ObjectId(pk)})
         if not student:
             return Response({"error": "Student not found"}, status=status.HTTP_404_NOT_FOUND)
         serializer = CustomUserSerializer(student)

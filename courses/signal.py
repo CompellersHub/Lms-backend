@@ -7,6 +7,8 @@ from django.dispatch import receiver
 from django.db.models.signals import post_save, post_delete
 from bson import ObjectId
 from .mongo_utils import get_mongo_db
+import logging
+
 
 class Command(BaseCommand):
     help = 'Export data from Django models to MongoDB'
@@ -21,9 +23,22 @@ class Command(BaseCommand):
         db = client[MONGO_DATABASE_NAME]
 
 def model_to_dict(instance):
-    # Assuming your model_to_dict already handles serialization correctly
-    data = instance.to_dict()
-    # Optionally, keep the original Django ID
+    data = {}
+    for field in instance._meta.fields:
+        data[field.name] = getattr(instance, field.name)
+    # Handle ForeignKey relationships for serialization
+    for field in instance._meta.related_objects:
+        if field.many_to_one:
+            related_instance = getattr(instance, field.name)
+            if related_instance:
+                data[field.name + '_id'] = related_instance.pk
+        elif field.one_to_many:
+            related_manager = getattr(instance, field.name)
+            data[field.name] = [rel.pk for rel in related_manager.all()]
+        elif field.many_to_many:
+            related_manager = getattr(instance, field.name)
+            data[field.name + '_ids'] = [rel.pk for rel in related_manager.all()]
+
     data['django_id'] = instance.pk
     return data
 
@@ -43,13 +58,16 @@ def model_to_dict(instance):
 # @receiver(post_save, sender=CourseOrder)
 # @receiver(post_save, sender=CourseOrderItem)
 @receiver(post_save, sender=LiveClass)
-# @receiver(post_save, sender=Notification)
 def sync_to_mongodb(sender, instance, **kwargs):
     db = get_mongo_db()
     collection_name = sender.__name__.lower() + 's'
     data = model_to_dict(instance)
 
-    # Check if a document with the Django ID exists
+    # For Make_Assignment, store course_id as ObjectId
+    if sender == Make_Assignment and 'course_id' in data:
+        data['course'] = ObjectId(data['course_id'])
+        del data['course_id'] # Remove the django_id version
+
     existing_document = db[collection_name].find_one({"django_id": instance.pk})
 
     if existing_document:
@@ -80,3 +98,26 @@ def delete_from_mongodb(sender, instance, **kwargs):
     collection_name = sender.__name__.lower() + 's'
     # Delete based on the Django ID
     db[collection_name].delete_one({"django_id": instance.pk})
+
+logger = logging.getLogger(__name__)
+
+@receiver(post_save, sender=CourseEnrollment)
+def course_enrollment_post_save(sender, instance, created, **kwargs):
+    db = get_mongo_db()
+    if created:
+        user_id = str(instance.user_id.id)
+        course_id = str(instance.course_id.id)
+
+        user = db['users'].find_one({'_id': ObjectId(user_id)})
+        course = db['courses'].find_one({'_id': ObjectId(course_id)})
+
+        if user and course:
+            db['users'].update_one(
+                {'_id': ObjectId(user_id)},
+                {'$push': {'enrolled_courses': {'course_id': ObjectId(course_id), 'enrollment_date': instance.enrollment_date}}}
+            )
+            logger.info(f"User {user.get('email', 'unknown')} enrolled in course {course.get('name', 'unknown')}")
+        else:
+            logger.warning(f"User or Course not found in MongoDB for enrollment. Django User ID: {user_id}, Django Course ID: {course_id}")
+    else:
+        logger.info(f"Course enrollment updated for user {instance.user_id.email} and course {instance.course_id.name}")

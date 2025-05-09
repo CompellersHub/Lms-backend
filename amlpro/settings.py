@@ -227,11 +227,9 @@ SOCIALACCOUNT_PROVIDERS = {
 
 import paypalrestsdk
 
-paypalrestsdk.configure({
-    "mode": "sandbox",  # or "live"
-    "client_id": os.getenv("PAYPAL_CLIENT_ID"),
-    "client_secret": os.getenv("PAYPAL_SECRET")
-})
+PAYPAL_CLIENT_ID = os.getenv('PAYPAL_CLIENT_ID')
+PAYPAL_CLIENT_SECRET = os.getenv('PAYPAL_CLIENT_SECRET')
+PAYPAL_MODE = os.getenv('PAYPAL_MODE', 'sandbox')
 
 SITE_ID = 1
 

@@ -7,10 +7,15 @@ from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.conf import settings
-from bson.objectid import ObjectId
+from bson.objectid import ObjectId, InvalidId
 from datetime import datetime
 from bson.errors import InvalidId
 import json
+import paypalrestsdk
+from courses.models import Course, CourseEnrollment
+
+from django.contrib.auth import get_user_model
+
 
 from user.serializer import CustomUserSerializer
 from .serializer import (
@@ -30,6 +35,10 @@ from .models import LiveClass
 from .mongo_utils import get_mongo_db
 import logging
 from pymongo.errors import PyMongoError
+
+
+
+db = get_mongo_db()
 
 # PAYPAD_API_KEY = "your_paypad_api_key"  # Replace with your actual Paypad API Key
 # PAYPAD_BASE_URL = "https://paypad.com/api/v1"  # Adjust if Paypad has a different base URL
@@ -389,15 +398,17 @@ class AssignmentDetail(APIView):
 
 logger = logging.getLogger(__name__)
 
+
+
 class AssignmentByCourse(APIView):
-    def get(self, request, pk):
+    def get(self, request, course_id):
         db = get_mongo_db()
         try:
             # Validate the course_id
-            course_id = ObjectId(pk)
+            course_oid = ObjectId(course_id)
 
-            # Fetch assignments for the given course_id
-            assignments = list(db.make_assignments.find({"course_id": course_id}))
+            # Fetch assignments for the given course_id by querying the embedded course.id
+            assignments = list(db.make_assignments.find({"course.id": course_oid}))
 
             if not assignments:
                 return Response({"detail": "No assignments found for this course."}, status=status.HTTP_404_NOT_FOUND)
@@ -406,13 +417,13 @@ class AssignmentByCourse(APIView):
             return Response(serializer.data, status=status.HTTP_200_OK)
 
         except InvalidId:
-            logger.error(f"Invalid course ID format: {pk}")
+            logger.error(f"Invalid course ID format: {course_id}")
             return Response({"detail": "Invalid course ID format."}, status=status.HTTP_400_BAD_REQUEST)
 
         except Exception as e:
             logger.error(f"An error occurred while retrieving assignments: {e}")
             return Response({"detail": "An error occurred while retrieving assignments."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
+        
 class AssignmentSubmission(APIView):
     def get(self, request):
         db = get_mongo_db()
@@ -696,3 +707,115 @@ class CourseProgressDetailView(APIView):
 
         # Serialize the response (create a specific serializer for this)
         return Response(response_data)
+
+
+        User = get_user_model()
+
+logger = logging.getLogger(__name__)
+
+class InitiatePaymentView(APIView):
+    def post(self, request, course_id):
+        try:
+            try:
+                course_oid = ObjectId(course_id)
+                course_from_mongo = db['courses'].find_one({'_id': course_oid}, {'name': 1, 'price': 1})
+                if not course_from_mongo:
+                    logger.error(f"Course not found in MongoDB: {course_id}")
+                    return Response({'error': 'Course not found in MongoDB'}, status=status.HTTP_404_NOT_FOUND)
+                course_name = course_from_mongo.get('name')
+                course_price = course_from_mongo.get('price')
+
+                if course_price is None:
+                    logger.error(f"Course price not found in MongoDB: {course_id}")
+                    return Response({'error': 'Course price not found in MongoDB'}, status=status.HTTP_400_BAD_REQUEST)
+
+                user = request.user  # Assuming user is authenticated
+
+                paypalrestsdk.configure({
+                    "mode": settings.PAYPAL_MODE,
+                    "client_id": settings.PAYPAL_CLIENT_ID,
+                    "client_secret": settings.PAYPAL_CLIENT_SECRET
+                })
+
+                payment = paypalrestsdk.Payment({
+                    "intent": "sale",
+                    "payer": {
+                        "payment_method": "paypal"
+                    },
+                    "transactions": [{
+                        "amount": {
+                            "total": str(course_price),
+                            "currency": "GBP"  # Or your desired currency
+                        },
+                        "description": f"Payment for course: {course_name}"
+                    }],
+                    "redirect_urls": {
+                        "return_url": request.build_absolute_uri(f'/courses/payment/capture/{course_id}/'),
+                        "cancel_url": request.build_absolute_uri(f'/courses/payment/cancel/{course_id}/')
+                    }
+                })
+
+                if payment.create():
+                    for link in payment.links:
+                        if link.rel == "approval_url":
+                            approval_url = str(link.href)
+                            return Response({'approval_url': approval_url}, status=status.HTTP_200_OK)
+                else:
+                    logger.error(f"Error creating PayPal payment: {payment.error}")
+                    return Response({'error': payment.error}, status=status.HTTP_400_BAD_REQUEST)
+
+            except InvalidId:
+                logger.error(f"Invalid course_id format: {course_id}")
+                return Response({'error': 'Invalid course_id format'}, status=status.HTTP_400_BAD_REQUEST)
+
+        except Exception as e:
+            logger.error(f"Unexpected error: {str(e)}")
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class CapturePaymentView(APIView):
+    def get(self, request, course_id):
+        payment_id = request.GET.get('paymentId')
+        payer_id = request.GET.get('PayerID')
+
+        if not payment_id or not payer_id:
+            logger.error("Payment ID or Payer ID missing")
+            return Response({'error': 'Payment ID or Payer ID missing'}, status=status.HTTP_400_BAD_REQUEST)
+
+        paypalrestsdk.configure({
+            "mode": settings.PAYPAL_MODE,
+            "client_id": settings.PAYPAL_CLIENT_ID,
+            "client_secret": settings.PAYPAL_CLIENT_SECRET
+        })
+
+        payment = paypalrestsdk.Payment.find(payment_id)
+
+        if payment.execute({"payer_id": payer_id}):
+            try:
+                user = request.user  # Assuming user is authenticated
+
+                try:
+                    course_oid = ObjectId(course_id)
+                    course_from_mongo = db['courses'].find_one({'_id': course_oid})
+                    if not course_from_mongo:
+                        logger.error(f"Course not found in MongoDB: {course_id}")
+                        return Response({'error': 'Course not found in MongoDB'}, status=status.HTTP_404_NOT_FOUND)
+
+                    CourseEnrollment.objects.create(user_id=user, course_id=course_id)
+                    logger.info(f"User {user.id} enrolled in course {course_id}")
+                    return Response({'message': f'Payment successful! You are now enrolled in {course_from_mongo.get("name", "this course")}'}, status=status.HTTP_200_OK)
+
+                except InvalidId:
+                    logger.error(f"Invalid course_id format: {course_id}")
+                    return Response({'error': 'Invalid course_id format'}, status=status.HTTP_400_BAD_REQUEST)
+
+            except Exception as e:
+                logger.error(f"Error during enrollment: {str(e)}")
+                return Response({'error': f'Error during enrollment: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        else:
+            logger.error(f"Error executing PayPal payment: {payment.error}")
+            return Response({'error': payment.error}, status=status.HTTP_400_BAD_REQUEST)
+
+class CancelPaymentView(APIView):
+    def get(self, request, course_id):
+        logger.info(f"Payment cancelled by the user for course {course_id}")
+        return Response({'message': 'Payment cancelled by the user'}, status=status.HTTP_200_OK)

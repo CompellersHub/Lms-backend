@@ -1,6 +1,7 @@
 from django.db import models
 from django.utils import timezone
 from user.models import TeacherProfile  # Ensure these are correctly imported
+from django.conf import settings
 
 class Category(models.Model):
     id = models.AutoField(primary_key=True, editable=False)
@@ -360,3 +361,13 @@ class LiveClass(models.Model):
         }
 
 
+class CourseEnrollment(models.Model):
+    user_id = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='enrollments')
+    course_id = models.ForeignKey(Course, on_delete=models.CASCADE, related_name='enrollments')
+    enrollment_date = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('user_id', 'course_id') # Ensure a user can't enroll in the same course twice
+
+    def __str__(self):
+        return f"{self.user_id.email} enrolled in {self.course_id.name}"

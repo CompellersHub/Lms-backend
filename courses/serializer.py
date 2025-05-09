@@ -351,7 +351,7 @@ logger = logging.getLogger(__name__)
 class AssignmentSerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)
     teacher = 'user.serializer.TeacherProfileSerializer'
-    course = CourseSerializer()
+    course = CourseSerializer(read_only=True)
     title = serializers.CharField(max_length=200)
     total_marks = serializers.IntegerField(default=100)
     description = serializers.CharField()
@@ -375,10 +375,8 @@ class AssignmentSerializer(serializers.Serializer):
         if teacher_data:
             from user.serializer import TeacherProfileSerializer
             if isinstance(teacher_data, dict):
-                # Case 1: Embedded Teacher Profile data
                 representation['teacher'] = TeacherProfileSerializer().to_representation(teacher_data)
             elif isinstance(teacher_data, str):
-                # Case 2: instructor field contains a string (potential ObjectId representation)
                 try:
                     teacher_profile_id = ObjectId(teacher_data)
                     db = get_mongo_db()
@@ -388,38 +386,42 @@ class AssignmentSerializer(serializers.Serializer):
                 except Exception as e:
                     print(f"Error fetching TeacherProfile with ID '{teacher_data}': {e}")
             elif isinstance(teacher_data, ObjectId):
-                # Case 3: instructor field contains an ObjectId
                 db = get_mongo_db()
                 teacher_profile = db.teacher_profiles.find_one({"_id": teacher_data})
                 if teacher_profile:
                     representation['teacher'] = TeacherProfileSerializer().to_representation(teacher_profile)
-        if 'course' in instance and isinstance(instance['course'], dict):
-            instance['course'] = CourseSerializer().to_representation(instance['course'])
-        return super().to_representation(instance)
+
+        course_oid_str = representation.get('course')
+        representation['course_details'] = None
+        if course_oid_str:
+            try:
+                course_oid = ObjectId(course_oid_str)
+                db = get_mongo_db()
+                course = db.courses.find_one({"_id": course_oid})
+                if course:
+                    representation['course_details'] = CourseSerializer().to_representation(course)
+            except Exception as e:
+                print(f"Error fetching Course with ID '{course_oid_str}': {e}")
+
+        return representation
 
     def create(self, validated_data):
         db = get_mongo_db()
+        validated_data['course'] = ObjectId(validated_data.get('course_id')) # Store Course ObjectId
         try:
-            logger.info(f"Validated data type: {type(validated_data)}")
-            logger.info(f"Validated data content: {validated_data}")
             result = db.make_assignments.insert_one(validated_data)
             return db.make_assignments.find_one({"_id": result.inserted_id})
         except Exception as e:
-            logger.error(f"Error creating assignment: {e}")
             raise serializers.ValidationError("Error creating assignment in the database.")
 
     def update(self, instance, validated_data):
         db = get_mongo_db()
         assignment_id = ObjectId(instance['id'])
+        validated_data['course'] = ObjectId(validated_data.get('course_id', instance.get('course_id'))) # Store Course ObjectId
         try:
-            logger.info(f"Instance type: {type(instance)}")
-            logger.info(f"Instance content: {instance}")
-            logger.info(f"Validated data type: {type(validated_data)}")
-            logger.info(f"Validated data content: {validated_data}")
             db.make_assignments.update_one({"_id": assignment_id}, {"$set": validated_data})
             return db.make_assignments.find_one({"_id": assignment_id})
         except Exception as e:
-            logger.error(f"Error updating assignment: {e}")
             raise serializers.ValidationError("Error updating assignment in the database.")
 
 class SubmissionSerializer(serializers.Serializer):

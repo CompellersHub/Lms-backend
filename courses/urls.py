@@ -16,7 +16,7 @@ urlpatterns = [
 
     path('assignments/', views.Assignment.as_view(), name='assignments'),
     path('assignments/<str:pk>/', views.AssignmentDetail.as_view(), name='assignment_detail'),
-    path('assignments/course/<str:pk>', views.AssignmentByCourse.as_view(), name='submission_list'),
+    path('courses/<str:course_id>/assignments/', views.AssignmentByCourse.as_view(), name='course-assignments'),
     path('submission/', views.AssignmentSubmission.as_view(), name='submission_detail'),
     path('submission/<str:pk>/', views.AssignmentSubmissionDetail.as_view(), name='submission_detail'),
     path('submission/user/<str:pk>/', views.AssignmentSubmissionByUser.as_view(), name='submission_by_user'),
@@ -30,6 +30,9 @@ urlpatterns = [
     path('videos/module/<str:pk>/', views.VideoByModule.as_view(), name='video_by_module'),
     
     path('start_live_class/<str:course_id>/', views.StartLiveClassView.as_view(), name='start_live_class'),
-    
 
+     path('courses/payment/initiate/<str:course_id>/', views.InitiatePaymentView.as_view(), name='initiate-payment'),
+    path('courses/payment/capture/<str:course_id>/', views.CapturePaymentView.as_view(), name='capture-payment'),
+    path('courses/payment/cancel/<str:course_id>/', views.CancelPaymentView.as_view(), name='cancel-payment'),
 ]
+

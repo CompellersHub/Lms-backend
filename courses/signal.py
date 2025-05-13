@@ -22,25 +22,25 @@ class Command(BaseCommand):
         client = MongoClient(MONGO_URI, ssl=True, ssl_cert_reqs='CERT_NONE')
         db = client[MONGO_DATABASE_NAME]
 
-def model_to_dict(instance):
-    data = {}
-    for field in instance._meta.fields:
-        data[field.name] = getattr(instance, field.name)
-    # Handle ForeignKey relationships for serialization
-    for field in instance._meta.related_objects:
-        if field.many_to_one:
-            related_instance = getattr(instance, field.name)
-            if related_instance:
-                data[field.name + '_id'] = related_instance.pk
-        elif field.one_to_many:
-            related_manager = getattr(instance, field.name)
-            data[field.name] = [rel.pk for rel in related_manager.all()]
-        elif field.many_to_many:
-            related_manager = getattr(instance, field.name)
-            data[field.name + '_ids'] = [rel.pk for rel in related_manager.all()]
+# def model_to_dict(instance):
+#     data = {}
+#     for field in instance._meta.fields:
+#         data[field.name] = getattr(instance, field.name)
+#     # Handle ForeignKey relationships for serialization
+#     for field in instance._meta.related_objects:
+#         if field.many_to_one:
+#             related_instance = getattr(instance, field.name)
+#             if related_instance:
+#                 data[field.name + '_id'] = related_instance.pk
+#         elif field.one_to_many:
+#             related_manager = getattr(instance, field.name)
+#             data[field.name] = [rel.pk for rel in related_manager.all()]
+#         elif field.many_to_many:
+#             related_manager = getattr(instance, field.name)
+#             data[field.name + '_ids'] = [rel.pk for rel in related_manager.all()]
 
-    data['django_id'] = instance.pk
-    return data
+#     data['django_id'] = instance.pk
+#     return data
 
 # Signal to handle saving and updating models
 @receiver(post_save, sender=Category)
@@ -57,25 +57,25 @@ def model_to_dict(instance):
 @receiver(post_save, sender=Make_Assignment)
 # @receiver(post_save, sender=CourseOrder)
 # @receiver(post_save, sender=CourseOrderItem)
-@receiver(post_save, sender=LiveClass)
-def sync_to_mongodb(sender, instance, **kwargs):
-    db = get_mongo_db()
-    collection_name = sender.__name__.lower() + 's'
-    data = model_to_dict(instance)
+# @receiver(post_save, sender=LiveClass)
+# def sync_to_mongodb(sender, instance, **kwargs):
+#     db = get_mongo_db()
+#     collection_name = sender.__name__.lower() + 's'
+#     data = model_to_dict(instance)
 
-    # For Make_Assignment, store course_id as ObjectId
-    if sender == Make_Assignment and 'course_id' in data:
-        data['course'] = ObjectId(data['course_id'])
-        del data['course_id'] # Remove the django_id version
+#     # For Make_Assignment, store course_id as ObjectId
+#     if sender == Make_Assignment and 'course_id' in data:
+#         data['course'] = ObjectId(data['course_id'])
+#         del data['course_id'] # Remove the django_id version
 
-    existing_document = db[collection_name].find_one({"django_id": instance.pk})
+#     existing_document = db[collection_name].find_one({"django_id": instance.pk})
 
-    if existing_document:
-        # Update the existing document
-        db[collection_name].update_one({"_id": existing_document['_id']}, {"$set": data})
-    else:
-        # Insert a new document with a new ObjectId
-        db[collection_name].insert_one(data)
+#     if existing_document:
+#         # Update the existing document
+#         db[collection_name].update_one({"_id": existing_document['_id']}, {"$set": data})
+#     else:
+#         # Insert a new document with a new ObjectId
+#         db[collection_name].insert_one(data)
 
 # Signal to handle deleting models
 @receiver(post_delete, sender=Category)

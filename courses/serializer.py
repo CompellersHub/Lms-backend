@@ -351,7 +351,7 @@ logger = logging.getLogger(__name__)
 class AssignmentSerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)
     teacher = 'user.serializer.TeacherProfileSerializer'
-    course = CourseSerializer(read_only=True)
+    course = serializers.CharField()
     title = serializers.CharField(max_length=200)
     total_marks = serializers.IntegerField(default=100)
     description = serializers.CharField()
@@ -391,17 +391,10 @@ class AssignmentSerializer(serializers.Serializer):
                 if teacher_profile:
                     representation['teacher'] = TeacherProfileSerializer().to_representation(teacher_profile)
 
-        course_oid_str = representation.get('course')
-        representation['course_details'] = None
-        if course_oid_str:
-            try:
-                course_oid = ObjectId(course_oid_str)
-                db = get_mongo_db()
-                course = db.courses.find_one({"_id": course_oid})
-                if course:
-                    representation['course_details'] = CourseSerializer().to_representation(course)
-            except Exception as e:
-                print(f"Error fetching Course with ID '{course_oid_str}': {e}")
+         # Handle Course (assuming course ObjectId is stored as string in MongoDB)
+        representation['course_id'] = representation.get('course')
+        if 'course' in representation:
+            del representation['course']
 
         return representation
 

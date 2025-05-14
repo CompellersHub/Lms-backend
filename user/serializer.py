@@ -26,8 +26,8 @@ class CustomUserSerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)
     username = serializers.CharField(max_length=150)
     email = serializers.EmailField()
-    password = serializers.CharField(write_only=True, validators=[validate_password])
-    courses = serializers.ListField(child=serializers.CharField(), required=False, allow_empty=True) # Expecting a list of Course ObjectIds as strings
+    password = serializers.CharField(write_only=True)
+    course = serializers.ListField(child=serializers.DictField(), required=False, allow_empty=True)
     first_name = serializers.CharField(max_length=150, allow_blank=True, required=False)
     last_name = serializers.CharField(max_length=150, allow_blank=True, required=False)
     role = serializers.CharField(max_length=20, default='STUDENT')
@@ -57,15 +57,29 @@ class CustomUserSerializer(serializers.Serializer):
         if '_id' in representation:
             del representation['_id']
 
+        if 'course' in representation:
+            # Convert ObjectId to string in each course dictionary
+            courses = representation['course']
+            for course in courses:
+                for key, value in course.items():
+                    if isinstance(value, ObjectId):
+                        course[key] = str(value)
+            representation['course_id'] = courses
+            del representation['course']
+
         return representation
 
     def create(self, validated_data):
         db = get_mongo_db()
         validated_data['password'] = make_password(validated_data.pop('password'))
         validated_data['created_at'] = timezone.now()
-        # If the input 'course' is a list of strings, store them as ObjectIds in MongoDB
-        course_ids = [ObjectId(oid) for oid in validated_data.pop('course', []) if oid]
-        validated_data['courses'] = course_ids # Use 'courses' to match your MongoDB field name
+        # Assuming 'course' is a list of dictionaries, convert ObjectId strings to ObjectId instances
+        courses = validated_data.pop('course', [])
+        for course in courses:
+            for key, value in course.items():
+                if key == 'id':  # Assuming 'id' is the key for ObjectId in the course dictionary
+                    course[key] = ObjectId(value)
+        validated_data['courses'] = courses
         result = db.customusers.insert_one(validated_data)
         return db.customusers.find_one({"_id": result.inserted_id})
 
@@ -76,8 +90,17 @@ class CustomUserSerializer(serializers.Serializer):
         for key, value in validated_data.items():
             if key == 'password':
                 update_fields['password'] = make_password(value)
-            elif key == 'course': # Handle 'course' as a list of string IDs for update
-                update_fields['courses'] = [ObjectId(oid) for oid in value if oid]
+            elif key == 'course':
+                courses = []
+                for course in value:
+                    course_dict = {}
+                    for k, v in course.items():
+                        if k == 'id':  # Assuming 'id' is the key for ObjectId in the course dictionary
+                            course_dict[k] = ObjectId(v)
+                        else:
+                            course_dict[k] = v
+                    courses.append(course_dict)
+                update_fields['courses'] = courses
             else:
                 update_fields[key] = value
         db.customusers.update_one({"_id": user_id}, {"$set": update_fields})

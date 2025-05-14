@@ -349,7 +349,7 @@ class LiveClassSerializer(serializers.Serializer):
 logger = logging.getLogger(__name__)
 
 class AssignmentSerializer(serializers.Serializer):
-    id = serializers.CharField(read_only=True)
+    id = serializers.CharField(read_only=True, source='_id.$oid')
     teacher = 'user.serializer.TeacherProfileSerializer'
     course = serializers.CharField()
     title = serializers.CharField(max_length=200)

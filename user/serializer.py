@@ -27,7 +27,7 @@ class CustomUserSerializer(serializers.Serializer):
     username = serializers.CharField(max_length=150)
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True, validators=[validate_password])
-    course = serializers.ListField(child=serializers.DictField(), required=False, allow_empty=True) # Expecting a list of embedded Course dictionaries
+    courses = serializers.ListField(child=serializers.CharField(), required=False, allow_empty=True) # Expecting a list of Course ObjectIds as strings
     first_name = serializers.CharField(max_length=150, allow_blank=True, required=False)
     last_name = serializers.CharField(max_length=150, allow_blank=True, required=False)
     role = serializers.CharField(max_length=20, default='STUDENT')
@@ -57,32 +57,30 @@ class CustomUserSerializer(serializers.Serializer):
         if '_id' in representation:
             del representation['_id']
 
-        representation['course'] = [] # Initialize as an empty list
-
-        courses_data = instance.get('course', [])
-        if courses_data:
-            from courses.serializer import CourseSerializer
-            for course_data in courses_data:
-                try:
-                    representation['course'].append(CourseSerializer().to_representation(course_data))
-                except Exception as e:
-                    logger.error(f"Error serializing embedded course data: {e}")
-
         return representation
 
     def create(self, validated_data):
         db = get_mongo_db()
-        validated_data['password'] = make_password(validated_data['password'])
-        validated_data['created_at'] = timezone.now()  # Use timezone.now()
+        validated_data['password'] = make_password(validated_data.pop('password'))
+        validated_data['created_at'] = timezone.now()
+        # If the input 'course' is a list of strings, store them as ObjectIds in MongoDB
+        course_ids = [ObjectId(oid) for oid in validated_data.pop('course', []) if oid]
+        validated_data['courses'] = course_ids # Use 'courses' to match your MongoDB field name
         result = db.customusers.insert_one(validated_data)
         return db.customusers.find_one({"_id": result.inserted_id})
 
     def update(self, instance, validated_data):
         db = get_mongo_db()
         user_id = ObjectId(instance['id'])
-        if 'password' in validated_data:
-            validated_data['password'] = make_password(validated_data['password'])
-        db.customusers.update_one({"_id": user_id}, {"$set": validated_data})
+        update_fields = {}
+        for key, value in validated_data.items():
+            if key == 'password':
+                update_fields['password'] = make_password(value)
+            elif key == 'course': # Handle 'course' as a list of string IDs for update
+                update_fields['courses'] = [ObjectId(oid) for oid in value if oid]
+            else:
+                update_fields[key] = value
+        db.customusers.update_one({"_id": user_id}, {"$set": update_fields})
         return db.customusers.find_one({"_id": user_id})
 
 class TeacherProfileSerializer(serializers.Serializer):

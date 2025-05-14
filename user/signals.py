@@ -23,7 +23,7 @@ def sync_customuser_to_mongodb(sender, instance, **kwargs):
             related_course_doc = courses_collection.find_one({'django_id': course.pk})
             if related_course_doc and '_id' in related_course_doc:
                 course_ids.append(related_course_doc['_id'])
-    data['courses'] = course_ids  # Store a list of MongoDB Course ObjectIds
+    data['course'] = course_ids  # Store a list of MongoDB Course ObjectIds
 
     existing_document = db[collection_name].find_one({"django_id": instance.pk})
     if existing_document:

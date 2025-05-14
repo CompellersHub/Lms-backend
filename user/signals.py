@@ -11,34 +11,50 @@ def model_to_dict(instance):
 
 # Signal to handle saving and updating models
 @receiver(post_save, sender=CustomUser)
-@receiver(post_save, sender=TeacherProfile)
-@receiver(post_save, sender=Submission)
-@receiver(post_save, sender=Notification)
-def sync_to_mongodb(sender, instance, **kwargs):
+def sync_customuser_to_mongodb(sender, instance, **kwargs):
     db = get_mongo_db()
     collection_name = sender.__name__.lower() + 's'
     data = model_to_dict(instance)
-    # Convert primary key to string
-    # data['_id'] = str(instance.pk)
-    # db[collection_name].update_one({"_id": data['_id']}, {"$set": data}, upsert=True)
+    data['django_id'] = instance.pk
+    course_ids = []
+    if hasattr(instance, 'course'):  # Check if the 'course' related manager exists
+        courses_collection = db['courses']
+        for course in instance.course.all():
+            related_course_doc = courses_collection.find_one({'django_id': course.pk})
+            if related_course_doc and '_id' in related_course_doc:
+                course_ids.append(related_course_doc['_id'])
+    data['courses'] = course_ids  # Store a list of MongoDB Course ObjectIds
 
     existing_document = db[collection_name].find_one({"django_id": instance.pk})
-
     if existing_document:
-        # Update the existing document
         db[collection_name].update_one({"_id": existing_document['_id']}, {"$set": data})
     else:
-        # Insert a new document with a new ObjectId
         db[collection_name].insert_one(data)
 
-# Signal to handle deleting models
 @receiver(post_delete, sender=CustomUser)
+def delete_customuser_from_mongodb(sender, instance, **kwargs):
+    db = get_mongo_db()
+    collection_name = sender.__name__.lower() + 's'
+    db[collection_name].delete_one({"django_id": instance.pk})
+
+@receiver(post_save, sender=TeacherProfile)
+@receiver(post_save, sender=Submission)
+@receiver(post_save, sender=Notification)
+def sync_other_models_to_mongodb(sender, instance, **kwargs):
+    db = get_mongo_db()
+    collection_name = sender.__name__.lower() + 's'
+    data = model_to_dict(instance)
+    data['django_id'] = instance.pk
+    existing_document = db[collection_name].find_one({"django_id": instance.pk})
+    if existing_document:
+        db[collection_name].update_one({"_id": existing_document['_id']}, {"$set": data})
+    else:
+        db[collection_name].insert_one(data)
+
 @receiver(post_delete, sender=TeacherProfile)
 @receiver(post_delete, sender=Submission)
 @receiver(post_delete, sender=Notification)
-
-def delete_from_mongodb(sender, instance, **kwargs):
+def delete_other_models_from_mongodb(sender, instance, **kwargs):
     db = get_mongo_db()
     collection_name = sender.__name__.lower() + 's'
-    # Convert primary key to string
-    db[collection_name].delete_one({"_id": str(instance.pk)})
+    db[collection_name].delete_one({"django_id": instance.pk})

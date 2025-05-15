@@ -24,8 +24,6 @@ from .serializer import (
     CategorySerializer,
     CourseSerializer,
     CourseLibrarySerializer,
-    CourseOrderSerializer,
-    CourseOrderItemSerializer,
     AssignmentSerializer,
     SubmissionSerializer,
     VideoSerializer,
@@ -283,73 +281,73 @@ class CoursesByCategory(APIView):
         except:
             return Response(status=status.HTTP_404_NOT_FOUND)
 
-class CourseOrderAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+# class CourseOrderAPIView(APIView):
+#     permission_classes = [IsAuthenticated]
 
-    def get(self, request):
-        db = get_mongo_db()
-        orders = list(db.course_orders.find({"user_id": str(request.user.id)}))
-        serializer = CourseOrderSerializer(orders, many=True)
-        return Response(serializer.data)
+#     def get(self, request):
+#         db = get_mongo_db()
+#         orders = list(db.course_orders.find({"user_id": str(request.user.id)}))
+#         serializer = CourseOrderSerializer(orders, many=True)
+#         return Response(serializer.data)
 
-    def post(self, request):
-        db = get_mongo_db()
-        course_ids = request.data.get('course_ids', [])
+#     def post(self, request):
+#         db = get_mongo_db()
+#         course_ids = request.data.get('course_ids', [])
 
-        if not course_ids:
-            return Response({"error": "No courses selected"}, status=status.HTTP_400_BAD_REQUEST)
+#         if not course_ids:
+#             return Response({"error": "No courses selected"}, status=status.HTTP_400_BAD_REQUEST)
 
-        total_price = 0
-        order_data = {
-            "user_id": str(request.user.id),
-            "total_price": 0,
-            "payment_status": "pending",
-            "created_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow(),
-            "order_items": []
-        }
-        order_result = db.course_orders.insert_one(order_data)
-        order_id = str(order_result.inserted_id)
+#         total_price = 0
+#         order_data = {
+#             "user_id": str(request.user.id),
+#             "total_price": 0,
+#             "payment_status": "pending",
+#             "created_at": datetime.utcnow(),
+#             "updated_at": datetime.utcnow(),
+#             "order_items": []
+#         }
+#         order_result = db.course_orders.insert_one(order_data)
+#         order_id = str(order_result.inserted_id)
 
-        order_item_data = []
-        for course_id in course_ids:
-            course = db.courses.find_one({"_id": ObjectId(course_id)})
-            if course:
-                total_price += course.get('price', 0)
-                item_data = {
-                    "order_id": order_id,
-                    "course_id": course_id,
-                    "price": course.get('price', 0)
-                }
-                order_item_data.append(item_data)
+#         order_item_data = []
+#         for course_id in course_ids:
+#             course = db.courses.find_one({"_id": ObjectId(course_id)})
+#             if course:
+#                 total_price += course.get('price', 0)
+#                 item_data = {
+#                     "order_id": order_id,
+#                     "course_id": course_id,
+#                     "price": course.get('price', 0)
+#                 }
+#                 order_item_data.append(item_data)
 
-        if order_item_data:
-            db.course_order_items.insert_many(order_item_data)
-            db.course_orders.update_one({"_id": ObjectId(order_id)}, {"$set": {"total_price": total_price}})
+#         if order_item_data:
+#             db.course_order_items.insert_many(order_item_data)
+#             db.course_orders.update_one({"_id": ObjectId(order_id)}, {"$set": {"total_price": total_price}})
 
-        order = db.course_orders.find_one({"_id": ObjectId(order_id)})
-        serializer = CourseOrderSerializer(order)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+#         order = db.course_orders.find_one({"_id": ObjectId(order_id)})
+#         serializer = CourseOrderSerializer(order)
+#         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
-class CourseOrderDetailAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+# class CourseOrderDetailAPIView(APIView):
+#     permission_classes = [IsAuthenticated]
 
-    def get(self, request, order_id):
-        db = get_mongo_db()
-        order = db.course_orders.find_one({"_id": ObjectId(order_id), "user_id": str(request.user.id)})
-        if order:
-            serializer = CourseOrderSerializer(order)
-            return Response(serializer.data)
-        return Response(status=status.HTTP_404_NOT_FOUND)
+#     def get(self, request, order_id):
+#         db = get_mongo_db()
+#         order = db.course_orders.find_one({"_id": ObjectId(order_id), "user_id": str(request.user.id)})
+#         if order:
+#             serializer = CourseOrderSerializer(order)
+#             return Response(serializer.data)
+#         return Response(status=status.HTTP_404_NOT_FOUND)
 
-class CourseOrderItemAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+# class CourseOrderItemAPIView(APIView):
+#     permission_classes = [IsAuthenticated]
 
-    def get(self, request, order_id):
-        db = get_mongo_db()
-        items = list(db.course_order_items.find({"order_id": order_id}))
-        serializer = CourseOrderItemSerializer(items, many=True)
-        return Response(serializer.data)
+#     def get(self, request, order_id):
+#         db = get_mongo_db()
+#         items = list(db.course_order_items.find({"order_id": order_id}))
+#         serializer = CourseOrderItemSerializer(items, many=True)
+#         return Response(serializer.data)
 
 class Assignment(APIView):
     def get(self, request):

@@ -314,36 +314,35 @@ class CourseLibrarySerializer(serializers.Serializer):
 
 class LiveClassSerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)
-    title = serializers.CharField(max_length=200)
-    course = CourseSerializer()
-    teacher = 'user.serializer.TeacherProfileSerializer'
-    description = serializers.CharField()
-    date = serializers.DateTimeField()
-    duration = serializers.IntegerField()
-    link = serializers.URLField()
-
-    def to_representation(self, instance):
-        if '_id' in instance:
-            instance['id'] = str(instance['_id'])
-            del instance['_id']
-        if 'course' in instance and isinstance(instance['course'], dict):
-            instance['course'] = CourseSerializer().to_representation(instance['course'])
-        if 'teacher' in instance and isinstance(instance['teacher'], dict):
-            from user.serializer import TeacherProfileSerializer # Local import
-            instance['teacher'] = TeacherProfileSerializer().to_representation(instance['teacher'])
-        return super().to_representation(instance)
+    course_id = serializers.CharField()
+    teacher_id = serializers.CharField()
+    start_time = serializers.DateTimeField()
+    end_time = serializers.DateTimeField()
+    created_at = serializers.DateTimeField(read_only=True)
 
     def create(self, validated_data):
-        db = get_mongo_db()
-        result = db.live_classes.insert_one(validated_data)
-        return db.live_classes.find_one({"_id": result.inserted_id})
+        # Insert the live class into the LiveClass collection
+        db = get_mongo_db()  # Assume this function gets your MongoDB database
+        live_class = {
+            'course_id': ObjectId(validated_data['course_id']),
+            'teacher_id': ObjectId(validated_data['teacher_id']),
+            'start_time': validated_data['start_time'],
+            'end_time': validated_data['end_time'],
+            'created_at': datetime.now()
+        }
+        result = db.LiveClass.insert_one(live_class)
+        live_class['id'] = str(result.inserted_id)
+        return live_class
 
     def update(self, instance, validated_data):
+        # Update the live class in the LiveClass collection
         db = get_mongo_db()
-        live_class_id = ObjectId(instance['id'])
-        db.live_classes.update_one({"_id": live_class_id}, {"$set": validated_data})
-        return db.live_classes.find_one({"_id": live_class_id})
-
+        instance['course_id'] = ObjectId(validated_data.get('course_id', instance['course_id']))
+        instance['teacher_id'] = ObjectId(validated_data.get('teacher_id', instance['teacher_id']))
+        instance['start_time'] = validated_data.get('start_time', instance['start_time'])
+        instance['end_time'] = validated_data.get('end_time', instance['end_time'])
+        db.LiveClass.update_one({'_id': ObjectId(instance['id'])}, {'$set': instance})
+        return instance
 
 
 logger = logging.getLogger(__name__)
@@ -445,63 +444,63 @@ class SubmissionSerializer(serializers.Serializer):
         db.submissions.update_one({"_id": submission_id}, {"$set": validated_data})
         return db.submissions.find_one({"_id": submission_id})
 
-class CourseOrderItemSerializer(serializers.Serializer):
-    id = serializers.CharField(read_only=True)
-    order_id = serializers.CharField()
-    course_id = serializers.CharField()
-    price = serializers.FloatField()
-    course_name = serializers.SerializerMethodField()
+# class CourseOrderItemSerializer(serializers.Serializer):
+#     id = serializers.CharField(read_only=True)
+#     order_id = serializers.CharField()
+#     course_id = serializers.CharField()
+#     price = serializers.FloatField()
+#     course_name = serializers.SerializerMethodField()
 
-    def get_course_name(self, instance):
-        db = get_mongo_db()
-        course = db.courses.find_one({"_id": ObjectId(instance['course_id'])})
-        return course.get('name') if course else None
+#     def get_course_name(self, instance):
+#         db = get_mongo_db()
+#         course = db.courses.find_one({"_id": ObjectId(instance['course_id'])})
+#         return course.get('name') if course else None
 
-    def to_representation(self, instance):
-        representation = super().to_representation(instance)
-        if '_id' in instance:
-            representation['id'] = str(instance['_id'])
-        return representation
+#     def to_representation(self, instance):
+#         representation = super().to_representation(instance)
+#         if '_id' in instance:
+#             representation['id'] = str(instance['_id'])
+#         return representation
 
-    def create(self, validated_data):
-        db = get_mongo_db()
-        result = db.course_order_items.insert_one(validated_data)
-        return db.course_order_items.find_one({"_id": result.inserted_id})
+#     def create(self, validated_data):
+#         db = get_mongo_db()
+#         result = db.course_order_items.insert_one(validated_data)
+#         return db.course_order_items.find_one({"_id": result.inserted_id})
 
-    def update(self, instance, validated_data):
-        db = get_mongo_db()
-        item_id = ObjectId(instance['id'])
-        db.course_order_items.update_one({"_id": item_id}, {"$set": validated_data})
-        return db.course_order_items.find_one({"_id": item_id})
+#     def update(self, instance, validated_data):
+#         db = get_mongo_db()
+#         item_id = ObjectId(instance['id'])
+#         db.course_order_items.update_one({"_id": item_id}, {"$set": validated_data})
+#         return db.course_order_items.find_one({"_id": item_id})
 
-class CourseOrderSerializer(serializers.Serializer):
-    id = serializers.CharField(read_only=True)
-    user_id = serializers.CharField()
-    total_price = serializers.FloatField(read_only=True)
-    payment_status = serializers.CharField(default='pending')
-    created_at = serializers.DateTimeField(read_only=True)
-    updated_at = serializers.DateTimeField(read_only=True)
-    order_items = CourseOrderItemSerializer(many=True, read_only=True)
+# class CourseOrderSerializer(serializers.Serializer):
+#     id = serializers.CharField(read_only=True)
+#     user_id = serializers.CharField()
+#     total_price = serializers.FloatField(read_only=True)
+#     payment_status = serializers.CharField(default='pending')
+#     created_at = serializers.DateTimeField(read_only=True)
+#     updated_at = serializers.DateTimeField(read_only=True)
+#     order_items = CourseOrderItemSerializer(many=True, read_only=True)
 
-    def to_representation(self, instance):
-        representation = super().to_representation(instance)
-        if '_id' in instance:
-            representation['id'] = str(instance['_id'])
-        return representation
+#     def to_representation(self, instance):
+#         representation = super().to_representation(instance)
+#         if '_id' in instance:
+#             representation['id'] = str(instance['_id'])
+#         return representation
 
-    def create(self, validated_data):
-        db = get_mongo_db()
-        validated_data['created_at'] = datetime.datetime.utcnow()
-        validated_data['updated_at'] = datetime.datetime.utcnow()
-        result = db.course_orders.insert_one(validated_data)
-        return db.course_orders.find_one({"_id": result.inserted_id})
+#     def create(self, validated_data):
+#         db = get_mongo_db()
+#         validated_data['created_at'] = datetime.datetime.utcnow()
+#         validated_data['updated_at'] = datetime.datetime.utcnow()
+#         result = db.course_orders.insert_one(validated_data)
+#         return db.course_orders.find_one({"_id": result.inserted_id})
 
-    def update(self, instance, validated_data):
-        db = get_mongo_db()
-        validated_data['updated_at'] = datetime.datetime.utcnow()
-        order_id = ObjectId(instance['id'])
-        db.course_orders.update_one({"_id": order_id}, {"$set": validated_data})
-        return db.course_orders.find_one({"_id": order_id})
+#     def update(self, instance, validated_data):
+#         db = get_mongo_db()
+#         validated_data['updated_at'] = datetime.datetime.utcnow()
+#         order_id = ObjectId(instance['id'])
+#         db.course_orders.update_one({"_id": order_id}, {"$set": validated_data})
+#         return db.course_orders.find_one({"_id": order_id})
 
 
 class CourseProgressDetailsSerializer(serializers.Serializer):

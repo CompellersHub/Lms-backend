@@ -65,6 +65,7 @@ INSTALLED_APPS = [
     'dj_rest_auth',
     'django.contrib.sites',
     'drf_yasg',
+    'channels',
     # allauth
     'allauth',
     'allauth.account',

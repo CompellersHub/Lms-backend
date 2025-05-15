@@ -27,6 +27,8 @@ from django.conf import settings
 import os
 import logging
 import json
+from channels.layers import get_channel_layer
+from asgiref.sync import async_to_sync
 
 db = get_mongo_db()
 users_collection = db['users']
@@ -178,14 +180,31 @@ class GetCSRFToken(APIView):
         response['X-CSRFToken'] = csrf_token
         return response
 
-class StudentNotificationsView(APIView):
-    def get(self, request, student_id):
-        student = db.customusers.find_one({"_id": ObjectId(student_id)})
-        if not student:
-            return Response({"error": "Student not found"}, status=status.HTTP_404_NOT_FOUND)
-        notifications = db.notifications.find({"student_id": ObjectId(student_id)})
-        serializer = NotificationSerializer([notification for notification in notifications], many=True)
-        return Response(serializer.data)
+class SendNotification(APIView):
+    def post(self, request):
+        user_id = request.data.get('user_id')
+        message = request.data.get('message')
+
+        # Insert notification into MongoDB
+        notification = {
+            'user_id': ObjectId(user_id),
+            'message': message,
+            'is_read': False,
+            'created_at': datetime.now()
+        }
+        db.Notification.insert_one(notification)
+
+        # Send notification via WebSocket
+        channel_layer = get_channel_layer()
+        async_to_sync(channel_layer.group_send)(
+            f"user_{user_id}",
+            {
+                "type": "send_notification",
+                "message": message
+            }
+        )
+
+        return Response({"message": "Notification sent successfully"}, status=status.HTTP_200_OK)
     
 def social_callback(request):
     return HttpResponseRedirect("http://127.0.0.1:5503/course.html")

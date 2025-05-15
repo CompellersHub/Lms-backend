@@ -29,9 +29,9 @@ urlpatterns = [
     path('videos/<str:pk>/', views.VideoDetail.as_view(), name='video_detail'),
     path('videos/module/<str:pk>/', views.VideoByModule.as_view(), name='video_by_module'),
     
-    path('start_live_class/<str:course_id>/', views.StartLiveClassView.as_view(), name='start_live_class'),
+    path('CreateLiveClass/', views.CreateLiveClassView.as_view(), name='start_live_class'),
 
-     path('courses/payment/initiate/<str:course_id>/', views.InitiatePaymentView.as_view(), name='initiate-payment'),
+    path('courses/payment/initiate/<str:course_id>/', views.InitiatePaymentView.as_view(), name='initiate-payment'),
     path('courses/payment/capture/<str:course_id>/', views.CapturePaymentView.as_view(), name='capture-payment'),
     path('courses/payment/cancel/<str:course_id>/', views.CancelPaymentView.as_view(), name='cancel-payment'),
 ]

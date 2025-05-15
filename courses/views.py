@@ -10,6 +10,8 @@ from django.conf import settings
 from bson.objectid import ObjectId, InvalidId
 from datetime import datetime
 from bson.errors import InvalidId
+from channels.layers import get_channel_layer
+from asgiref.sync import async_to_sync
 import json
 import paypalrestsdk
 from courses.models import Course, CourseEnrollment
@@ -587,13 +589,49 @@ class VideoDetail(APIView):
             return Response({'message': 'Video deleted successfully'}, status=status.HTTP_204_NO_CONTENT)
         return Response(status=status.HTTP_404_NOT_FOUND)
     
-class StartLiveClassView(APIView):
+class CreateLiveClassView(APIView):
+    def post(self, request):
+        course_id = request.data.get('course_id')
+        teacher_id = request.data.get('teacher_id')
+        start_time = request.data.get('start_time')
+        end_time = request.data.get('end_time')
 
-    def get(self, request):
-        db = get_mongo_db()
-        live_classes = list(db.live_classes.find())
-        serializer = LiveClassSerializer(live_classes, many=True)
-        return Response(serializer.data)
+        if not all([course_id, teacher_id, start_time, end_time]):
+            return Response({"error": "Missing required fields"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            db = get_mongo_db()
+
+            # Insert the live class into the LiveClass collection
+            live_class = {
+                'course_id': ObjectId(course_id),
+                'teacher_id': ObjectId(teacher_id),
+                'start_time': start_time,
+                'end_time': end_time,
+                'created_at': datetime.now()
+            }
+            db.LiveClass.insert_one(live_class)
+
+            # Find all students enrolled in the course
+            enrollments = db.CourseEnrollment.find({'course_id': ObjectId(course_id)})
+            channel_layer = get_channel_layer()
+
+            for enrollment in enrollments:
+                notification_message = f"A new live class has been scheduled for your course. Start time: {start_time}"
+
+                # Send notification via WebSocket
+                async_to_sync(channel_layer.group_send)(
+                    f"user_{enrollment['student_id']}",
+                    {
+                        "type": "send_notification",
+                        "message": notification_message
+                    }
+                )
+
+            return Response({"message": "Live class created successfully"}, status=status.HTTP_201_CREATED)
+
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     
     

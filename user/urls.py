@@ -12,7 +12,6 @@ urlpatterns = [
     path("student/<str:pk>/", views.StudentDetail.as_view(), name='student_detail'),
     path("teacher/", views.Teacher.as_view(), name='teacher'),
     path('api/google-login/', views.GoogleLoginView.as_view(), name='google-login'),
-    path('student_notifications/<str:customuser_id>/', views.StudentNotificationsView.as_view(), name='student_notifications'),
     # path('users/<str:user_id>/courses/<str:course_id>/progress/', views.UserCourseProgressView.as_view(), name='user-course-progress'),
     path('users/<str:user_id>/courses/<str:course_id>/progress/details/', views.CourseProgressDetailView.as_view(), name='course-progress-details'),
     # ... other course URLs

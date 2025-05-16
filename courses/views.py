@@ -15,6 +15,9 @@ from asgiref.sync import async_to_sync
 import json
 import paypalrestsdk
 from courses.models import Course, CourseEnrollment
+import io
+from fpdf import FPDF
+from pymongo import MongoClient
 
 from django.contrib.auth import get_user_model
 
@@ -30,6 +33,7 @@ from .serializer import (
     ModuleInCourseSerializer,
     # NotificationSerializer,
     LiveClassSerializer,
+    CompletionCertificateSerializer
 )
 from .models import LiveClass
 from .mongo_utils import get_mongo_db
@@ -365,11 +369,21 @@ class Assignment(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class AssignmentDetail(APIView):
-    def get(self, pk: str):
+    def get_object(self, pk: str):
         db = get_mongo_db()
-        assignments = db.make_assignments.find_one({"_id": ObjectId(pk)})
-        serializer = AssignmentSerializer(assignments, many=True)
-        return Response(serializer.data)
+        try:
+            assignments = db.make_assignments.find_one({"_id": ObjectId(pk)})
+            if assignments:
+                return assignments
+            else:
+                logging.error(f"No assignments found with id: {pk}")
+                return None
+        except PyMongoError as e:
+            logging.error(f"Database error: {e}")
+            return None
+        except Exception as e:
+            logging.error(f"An unexpected error occurred: {e}")
+            return None
 
     def get(self, request, pk: str):
         assignment = self.get_object(pk)
@@ -855,3 +869,68 @@ class CancelPaymentView(APIView):
     def get(self, request, course_id):
         logger.info(f"Payment cancelled by the user for course {course_id}")
         return Response({'message': 'Payment cancelled by the user'}, status=status.HTTP_200_OK)
+
+
+
+
+
+
+class GenerateCertificatePDF(APIView):
+    
+      def get(self, request):
+        user = request.user
+
+        if not user.is_authenticated:
+            return Response({"error": "Authentication required."}, status=status.HTTP_401_UNAUTHORIZED)
+
+        # Get course name and completion date from query parameters
+        course_name = request.query_params.get('course', 'Course Name Not Provided')
+        completion_date_str = request.query_params.get('completion_date', 'Date Not Provided')
+
+        # Fetch user data from MongoDB for the name
+        client = MongoClient(settings.MONGO_URI, tls=True, tlsAllowInvalidCertificates=True)
+        users_collection = db.customusers
+
+        mongo_user = users_collection.find_one({"email": user.email})
+        client.close()
+
+        participant_name = mongo_user.get('first_name', '') + ' ' + mongo_user.get('last_name', '') if mongo_user and (mongo_user.get('first_name') or mongo_user.get('last_name')) else (mongo_user.get('email', 'N/A') if mongo_user else user.username)
+
+
+        # PDF Generation
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("Arial", size=20)
+
+        template_path = "/media/certificate/CERTIFICATE OF COMPLETION .pdf"
+        pdf.set_auto_page_break(False)
+        pdf.add_page()
+        pdf.add_font("Calibri", style="", fname=settings.STATIC_ROOT + "/fonts/calibri.ttf", uni=True)
+        pdf.add_font("Calibri", style="B", fname=settings.STATIC_ROOT + "/fonts/calibrib.ttf", uni=True)
+        pdf.add_font("Calibri", style="I", fname=settings.STATIC_ROOT + "/fonts/calibrii.ttf", uni=True)
+        pdf.add_font("Calibri", style="BI", fname=settings.STATIC_ROOT + "/fonts/calibriz.ttf", uni=True)
+        pdf.set_font("Calibri", style="", size=20)
+        pdf.set_xy(0, 0)
+        pdf.image(template_path, x=0, y=0, w=pdf.w, h=pdf.h)
+
+        # --- Positioning based on your template ---
+        pdf.set_xy(60, 100)  # Adjust based on "THIS IS TO CERTIFY THAT"
+        pdf.cell(0, 10, participant_name, align="C")
+
+        pdf.set_xy(60, 125)  # Adjust based on "has successfully completed the"
+        pdf.set_font("Calibri", style="I", size=20)
+        pdf.cell(0, 10, course_name, align="C")
+
+        pdf.set_xy(60, 150)  # Adjust based on "on this day"
+        pdf.set_font("Calibri", style="", size=20)
+        pdf.cell(0, 10, completion_date_str, align="C")
+
+        # --- End Positioning ---
+
+        buffer = io.BytesIO()
+        pdf.output(buffer)
+        buffer.seek(0)
+
+        response = Response(buffer.getvalue(), content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="Completion Certificate - {participant_name}.pdf"'
+        return response

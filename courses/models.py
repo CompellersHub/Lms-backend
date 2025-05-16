@@ -2,6 +2,7 @@ from django.db import models
 from django.utils import timezone
 from user.models import TeacherProfile  # Ensure these are correctly imported
 from django.conf import settings
+from django.utils.translation import gettext_lazy as _
 
 class Category(models.Model):
     id = models.AutoField(primary_key=True, editable=False)
@@ -373,3 +374,48 @@ class CourseEnrollment(models.Model):
 
     def __str__(self):
         return f"{self.user_id.email} enrolled in {self.course_id.name}"
+
+
+class CompletionCertificate(models.Model):
+    id = models.AutoField(primary_key=True) # Explicit primary key for Django
+    participant_name = models.CharField(
+        _('Participant Name'),
+        max_length=255,
+        help_text=_('The name of the person receiving the certificate.')
+    )
+    course_name = models.CharField(
+        _('Course Name'),
+        max_length=255,
+        help_text=_('The name of the completed course.')
+    )
+    completion_date = models.DateField(
+        _('Completion Date'),
+        help_text=_('The date the course was completed.')
+    )
+    signature = models.CharField( # Or you could store a file path
+        _('Signature'),
+        max_length=255,
+        blank=True,  # Allow for no signature stored
+        null=True,
+        help_text=_('The name or file path of the signature.')
+    )
+    # No need for auto-created id, MongoDB provides _id
+    # created_at = models.DateTimeField(auto_now_add=True)
+    # updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = _('Completion Certificate')
+        verbose_name_plural = _('Completion Certificates')
+        # No default ordering, MongoDB's order is used
+
+    def __str__(self):
+        return f"{self.participant_name} - {self.course_name} - {self.completion_date}"
+    
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "participant_name": self.participant_name,
+            "course_name": self.course_name,
+            "completion_date": self.completion_date.isoformat(),
+            "signature": self.signature,
+        }

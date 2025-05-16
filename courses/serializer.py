@@ -516,3 +516,21 @@ class CourseProgressResponseSerializer(serializers.Serializer):
     course_name = serializers.CharField()
     progress_percentage = serializers.IntegerField()
     details = serializers.DictField(child=CourseProgressDetailsSerializer())
+
+class CompletionCertificateSerializer(serializers.Serializer):
+    id = serializers.CharField(read_only=True)
+    user_id = serializers.CharField()
+    course_id = serializers.CharField()
+    certificate_url = serializers.URLField()
+    issued_at = serializers.DateTimeField(read_only=True)
+
+    def to_representation(self, instance):
+        if '_id' in instance:
+            instance['id'] = str(instance['_id'])
+            del instance['_id']
+        return super().to_representation(instance)
+
+    def create(self, validated_data):
+        db = get_mongo_db()
+        result = db.completion_certificates.insert_one(validated_data)
+        return db.completion_certificates.find_one({"_id": result.inserted_id})

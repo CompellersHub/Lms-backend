@@ -15,7 +15,7 @@ class MongoConnection:
             MONGO_URI = os.getenv('MONGO_URI')
             MONGO_DATABASE_NAME = os.getenv('DATABASE_NAME')
             if MONGO_URI and MONGO_DATABASE_NAME:
-                cls.client = MongoClient(MONGO_URI, ssl=True, ssl_cert_reqs='CERT_NONE')
+                cls.client = MongoClient(MONGO_URI, tls=True, tlsAllowInvalidCertificates=True)
                 cls.db = cls.client[MONGO_DATABASE_NAME]
             else:
                 raise Exception("MONGO_URI or DATABASE_NAME environment variables not set.")
@@ -23,7 +23,7 @@ class MongoConnection:
 
 def get_mongo_id(model_name, obj):
     db = MongoConnection.get_db()
-    if db:
+    if db is not None :
         collection_name = model_name.lower() + 's'
         doc = db[collection_name].find_one({'django_id': obj.pk})
         return str(doc['_id']) if doc and '_id' in doc else 'N/A'
@@ -85,8 +85,8 @@ class ModuleAdmin(ModelAdmin):
 
 @admin.register(CourseLibrary)
 class CourseLibraryAdmin(ModelAdmin):
-    list_display = ['title', 'course', 'mongo_id']
-    search_fields = ['title', 'course__name']
+    list_display = ['title', 'mongo_id']
+    search_fields = ['title']
     readonly_fields = ['mongo_id']
     def mongo_id(self, obj): return get_mongo_id('CourseLibrary', obj)
     mongo_id.short_description = 'MongoDB ID'

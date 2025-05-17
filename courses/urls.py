@@ -28,6 +28,8 @@ urlpatterns = [
     path('videos/', views.Video.as_view(), name='videos'),
     path('videos/<str:pk>/', views.VideoDetail.as_view(), name='video_detail'),
     path('videos/module/<str:pk>/', views.VideoByModule.as_view(), name='video_by_module'),
+    path('courselibrary/', views.CourseLibraryView.as_view(), name='courselibrary'),
+    path('courselibrary/<str:pk>/', views.CourseLibraryDetailView.as_view(), name='courselibrary_detail'),
     
     path('CreateLiveClass/', views.CreateLiveClassView.as_view(), name='start_live_class'),
 
@@ -35,9 +37,8 @@ urlpatterns = [
     path('courses/payment/capture/<str:course_id>/', views.CapturePaymentView.as_view(), name='capture-payment'),
     path('courses/payment/cancel/<str:course_id>/', views.CancelPaymentView.as_view(), name='cancel-payment'),
 
-    path('courses/GenerateCertificate/', views.GenerateCertificatePDF.as_view(), name='generate-certificate'),
-    path('courses/CourseLibrary/', views.CourseLibraryView.as_view(), name='course_library'),
-    path('courses/CourseLibrary/<str:pk>/', views.CourseLibraryDetailView.as_view(), name='course_library_detail'),
+    path('GenerateCertificate/', views.GenerateCertificatePDF.as_view(), name='generate-certificate'),
+    
     
 ]
 

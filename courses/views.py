@@ -201,10 +201,10 @@ class CourseDetail(APIView):
             return Response({'message': 'Course deleted successfully'}, status=status.HTTP_204_NO_CONTENT)
         return Response(status=status.HTTP_404_NOT_FOUND)
     
-class CourseLibrary(APIView):
+class CourseLibraryView(APIView):
     def get(self, request):
         db = get_mongo_db()
-        course_libraries = list(db.course_libraries.find())
+        course_libraries = list(db.courselibrarys.find())
         serializer = CourseLibrarySerializer(course_libraries, many=True)
         return Response(serializer.data)
 
@@ -215,11 +215,12 @@ class CourseLibrary(APIView):
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
-class CourseLibraryDetail(APIView):
+class CourseLibraryDetailView(APIView):
+
     def get_object(self, pk: str):
         db = get_mongo_db()
         try:
-            course_library = db.course_libraries.find_one({"_id": ObjectId(pk)})
+            course_library = db.courselibrarys.find_one({"_id": ObjectId(pk)})
             if course_library:
                 return course_library
             else:
@@ -233,6 +234,7 @@ class CourseLibraryDetail(APIView):
             return None
 
     def get(self, request, pk: str):
+        logging.debug(f"Attempting to retrieve course library with id: {pk}")
         course_library = self.get_object(pk)
         if course_library:
             serializer = CourseLibrarySerializer(course_library)
@@ -240,6 +242,7 @@ class CourseLibraryDetail(APIView):
         return Response(status=status.HTTP_404_NOT_FOUND)
 
     def put(self, request, pk: str):
+        logging.debug(f"Attempting to update course library with id: {pk}")
         course_library = self.get_object(pk)
         if course_library:
             serializer = CourseLibrarySerializer(instance=course_library, data=request.data)
@@ -250,10 +253,11 @@ class CourseLibraryDetail(APIView):
         return Response(status=status.HTTP_404_NOT_FOUND)
 
     def delete(self, request, pk: str):
+        logging.debug(f"Attempting to delete course library with id: {pk}")
         db = get_mongo_db()
         course_library = self.get_object(pk)
         if course_library:
-            db.course_libraries.delete_one({"_id": ObjectId(pk)})
+            db.courselibrarys.delete_one({"_id": ObjectId(pk)})
             return Response({'message': 'Course library deleted successfully'}, status=status.HTTP_204_NO_CONTENT)
         return Response(status=status.HTTP_404_NOT_FOUND)
 

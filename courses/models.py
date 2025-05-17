@@ -163,47 +163,7 @@ class TargetAudience(models.Model):
             "audience4": self.audience4,
         }
     
-class CourseLibraryVideo(models.Model):
-    id = models.AutoField(primary_key=True, editable=False)
-    title = models.CharField(max_length=200)
-    video_file = models.FileField(upload_to='course_library/', blank=True, null=True)
-    video_id = models.CharField(max_length=50 , blank=True, null=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
-    def __str__(self):
-        return self.title
-
-    def to_dict(self):
-        return {
-            "id": self.id,
-            "title": self.title,
-            "video_file": self.video_file.url if self.video_file else None,
-            "video_id": self.video_id,
-            "created_at": self.created_at.isoformat(),
-            "updated_at": self.updated_at.isoformat(),
-        }
-
-class CourseLibrary(models.Model):
-    id = models.AutoField(primary_key=True, editable=False)
-    title = models.CharField(max_length=200)
-    courselibraryvideo = models.ManyToManyField('CourseLibraryVideo', blank=True, null=True)
-    file = models.FileField(upload_to='course_library/')
-    url = models.URLField(blank=True, null=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    def __str__(self):
-        return self.title
-
-    def to_dict(self):
-        return {
-            "id": self.id,
-            "title": self.title,
-            "courselibraryvideo": [video.to_dict() for video in self.courselibraryvideo.all()] if self.courselibraryvideo else None,
-            "created_at": self.created_at.isoformat(),
-            "updated_at": self.updated_at.isoformat(),
-        } 
     
 
 
@@ -227,7 +187,6 @@ class Course(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     price = models.FloatField(default=0)
     instructor = models.ForeignKey('user.TeacherProfile', on_delete=models.CASCADE, related_name='instructor_courses', null=True)
-    course_library = models.ForeignKey('CourseLibrary', on_delete=models.CASCADE, blank=True, null=True)
     curriculum = models.ForeignKey('Curriculum', blank=True, null=True, on_delete=models.CASCADE)
     required_materials = models.ForeignKey('RequiredMaterial', on_delete=models.CASCADE, blank=True, null=True)
     learning_outcomes = models.ForeignKey('LearningOutcome', on_delete=models.CASCADE, blank=True, null=True)
@@ -256,13 +215,58 @@ class Course(models.Model):
             "price": self.price,
             "learning_outcomes": self.learning_outcomes.to_dict() if self.learning_outcomes else None,
             "target_audience": self.target_audience.to_dict() if self.target_audience else None,
-            "course_library": self.course_library.to_dict() if self.course_library else None,
             "curriculum": [module.to_dict() for module in self.curriculum.module.all()] if self.curriculum else None,
             "instructor": self.instructor.to_dict() if self.instructor else None,
             "required_materials": self.required_materials.to_dict() if self.required_materials else None,
             "estimated_time": self.estimated_time,
             "level": self.level,
         }
+
+class CourseLibraryVideo(models.Model):
+    id = models.AutoField(primary_key=True, editable=False)
+    title = models.CharField(max_length=200)
+    video_file = models.FileField(upload_to='course_library/', blank=True, null=True)
+    video_id = models.CharField(max_length=50 , blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return self.title
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "title": self.title,
+            "video_file": self.video_file.url if self.video_file else None,
+            "video_id": self.video_id,
+            "created_at": self.created_at.isoformat(),
+            "updated_at": self.updated_at.isoformat(),
+        }
+
+class CourseLibrary(models.Model):
+    id = models.AutoField(primary_key=True, editable=False)
+    title = models.CharField(max_length=200)
+    courselibraryvideo = models.ManyToManyField('CourseLibraryVideo', blank=True, null=True)
+    course = models.ForeignKey('Course', on_delete=models.CASCADE, blank=True, null=True)
+    file = models.FileField(upload_to='course_library/')
+    url = models.URLField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return self.title
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "title": self.title,
+            "courselibraryvideo": [video.to_dict() for video in self.courselibraryvideo.all()] if self.courselibraryvideo else None,
+            "course": self.course.to_dict() if self.course else None,
+            "file": self.file.url if self.file else None,
+            "url": self.url,
+            "created_at": self.created_at.isoformat(),
+            "updated_at": self.updated_at.isoformat(),
+        } 
 
 
 class Make_Assignment(models.Model):

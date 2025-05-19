@@ -262,7 +262,7 @@ class CourseSerializer(serializers.Serializer):
 class CourseLibraryVideoSerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)
     title = serializers.CharField(max_length=200)
-    video_file = serializers.FileField(allow_null=True, required=False)
+    video_file = serializers.CharField(allow_null=True, required=False)
     video_id = serializers.CharField(allow_null=True, required=False)
     created_at = serializers.DateTimeField(read_only=True)
 
@@ -270,7 +270,7 @@ class CourseLibraryVideoSerializer(serializers.Serializer):
         if '_id' in instance:
             instance['id'] = str(instance['_id'])
             del instance['_id']
-        
+        return instance
 
     def create(self, validated_data):
         db = get_mongo_db()
@@ -282,11 +282,11 @@ class CourseLibraryVideoSerializer(serializers.Serializer):
         video_id = ObjectId(instance['id'])
         db.course_library_videos.update_one({"_id": video_id}, {"$set": validated_data})
         return db.course_library_videos.find_one({"_id": video_id})
-        
+
 class CourseLibrarySerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)
     title = serializers.CharField(max_length=200)
-    file = serializers.FileField(allow_null=True, required=False)
+    file = serializers.CharField(allow_null=True, required=False)
     url = serializers.URLField(allow_null=True, required=False)
     course = serializers.CharField()
     video = CourseLibraryVideoSerializer(many=True, required=False)
@@ -303,14 +303,15 @@ class CourseLibrarySerializer(serializers.Serializer):
             del representation['_id']
 
         if 'video' in instance and isinstance(instance['video'], list):
-            instance['video'] = [CourseLibraryVideoSerializer().to_representation(item) for item in instance['video']]
+            representation['video'] = [CourseLibraryVideoSerializer().to_representation(item) for item in instance['video']]
+        elif 'video' in instance and isinstance(instance['video'], dict):
+            representation['video'] = CourseLibraryVideoSerializer().to_representation(instance['video'])
 
         representation['course_id'] = representation.get('course')
         if 'course' in representation:
             del representation['course']
 
         return representation
-    
 
     def create(self, validated_data):
         db = get_mongo_db()

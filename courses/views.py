@@ -5,7 +5,7 @@ from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth.decorators import login_required
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from django.conf import settings
 from bson.objectid import ObjectId, InvalidId
 from datetime import datetime
@@ -16,9 +16,11 @@ import json
 import paypalrestsdk
 from courses.models import Course, CourseEnrollment
 import io
+from PyPDF2 import PdfReader, PdfWriter
 from fpdf import FPDF
 from pymongo import MongoClient
-
+from rest_framework.authentication import SessionAuthentication
+from rest_framework.decorators import authentication_classes, permission_classes
 from django.contrib.auth import get_user_model
 
 
@@ -878,10 +880,10 @@ class CancelPaymentView(APIView):
 
 
 
-
+@authentication_classes([SessionAuthentication])
 class GenerateCertificatePDF(APIView):
-    
-      def get(self, request):
+
+    def get(self, request):
         user = request.user
 
         if not user.is_authenticated:
@@ -891,50 +893,65 @@ class GenerateCertificatePDF(APIView):
         course_name = request.query_params.get('course', 'Course Name Not Provided')
         completion_date_str = request.query_params.get('completion_date', 'Date Not Provided')
 
-        # Fetch user data from MongoDB for the name
-        client = MongoClient(settings.MONGO_URI, tls=True, tlsAllowInvalidCertificates=True)
-        users_collection = db.customusers
+        try:
+            # Fetch user data from MongoDB for the name
+            client = MongoClient(settings.MONGO_URI, tls=True, tlsAllowInvalidCertificates=True)
+            db = get_mongo_db()
+            users_collection = db.customusers
+            mongo_user = users_collection.find_one({"email": user.email})
+            client.close()
 
-        mongo_user = users_collection.find_one({"email": user.email})
-        client.close()
+            participant_name = mongo_user.get('first_name', '') + ' ' + mongo_user.get('last_name', '') if mongo_user and (mongo_user.get('first_name') or mongo_user.get('last_name')) else (mongo_user.get('email', 'N/A') if mongo_user else user.username)
 
-        participant_name = mongo_user.get('first_name', '') + ' ' + mongo_user.get('last_name', '') if mongo_user and (mongo_user.get('first_name') or mongo_user.get('last_name')) else (mongo_user.get('email', 'N/A') if mongo_user else user.username)
+            # Load the PDF template
+            template_path = "/home/olomoshuaomozafen/Lms-backend/staticfiles/certificate/COC.pdf"  # Update this path
+            with open(template_path, "rb") as template_file:
+                pdf_reader = PdfReader(template_file)
+                pdf_writer = PdfWriter()
 
+                # Use the first page of the template
+                page = pdf_reader.pages[0]
+                pdf_writer.add_page(page)
 
-        # PDF Generation
-        pdf = FPDF()
-        pdf.add_page()
-        pdf.set_font("Arial", size=20)
+                # Create a temporary file to overlay text
+                overlay = io.BytesIO()
+                pdf = FPDF()
+                pdf.add_page()
+                pdf.add_font("Calibri", style="", fname=settings.STATIC_ROOT + "/fonts/calibri.ttf", uni=True)
+                pdf.add_font("Calibri", style="B", fname=settings.STATIC_ROOT + "/fonts/calibri.ttf", uni=True)
+                pdf.add_font("Calibri", style="I", fname=settings.STATIC_ROOT + "/fonts/calibri.ttf", uni=True)
+                pdf.add_font("Calibri", style="BI", fname=settings.STATIC_ROOT + "/fonts/calibri.ttf", uni=True)
 
-        template_path = "/media/certificate/CERTIFICATE OF COMPLETION .pdf"
-        pdf.set_auto_page_break(False)
-        pdf.add_page()
-        pdf.add_font("Calibri", style="", fname=settings.STATIC_ROOT + "/fonts/calibri.ttf", uni=True)
-        pdf.add_font("Calibri", style="B", fname=settings.STATIC_ROOT + "/fonts/calibrib.ttf", uni=True)
-        pdf.add_font("Calibri", style="I", fname=settings.STATIC_ROOT + "/fonts/calibrii.ttf", uni=True)
-        pdf.add_font("Calibri", style="BI", fname=settings.STATIC_ROOT + "/fonts/calibriz.ttf", uni=True)
-        pdf.set_font("Calibri", style="", size=20)
-        pdf.set_xy(0, 0)
-        pdf.image(template_path, x=0, y=0, w=pdf.w, h=pdf.h)
+                # Set font and positions for text overlay
+                pdf.set_font("Calibri", size=24, style='B')
+                pdf.set_xy(60, 100)  # Adjust these coordinates based on your template
+                pdf.cell(0, 10, participant_name, align='C')
 
-        # --- Positioning based on your template ---
-        pdf.set_xy(60, 100)  # Adjust based on "THIS IS TO CERTIFY THAT"
-        pdf.cell(0, 10, participant_name, align="C")
+                pdf.set_font("Calibri", size=20, style='I')
+                pdf.set_xy(60, 125)  # Adjust these coordinates based on your template
+                pdf.cell(0, 10, course_name, align='C')
 
-        pdf.set_xy(60, 125)  # Adjust based on "has successfully completed the"
-        pdf.set_font("Calibri", style="I", size=20)
-        pdf.cell(0, 10, course_name, align="C")
+                pdf.set_font("Calibri", size=20)
+                pdf.set_xy(60, 150)  # Adjust these coordinates based on your template
+                pdf.cell(0, 10, completion_date_str, align='C')
 
-        pdf.set_xy(60, 150)  # Adjust based on "on this day"
-        pdf.set_font("Calibri", style="", size=20)
-        pdf.cell(0, 10, completion_date_str, align="C")
+                # Output the overlay to a buffer
+                pdf.output(overlay)
+                overlay.seek(0)
 
-        # --- End Positioning ---
+                # Merge the overlay with the template
+                overlay_pdf = PdfReader(overlay)
+                page.merge_page(overlay_pdf.pages[0])
 
-        buffer = io.BytesIO()
-        pdf.output(buffer)
-        buffer.seek(0)
+                # Write the final PDF to a buffer
+                output_buffer = io.BytesIO()
+                pdf_writer.write(output_buffer)
 
-        response = Response(buffer.getvalue(), content_type='application/pdf')
-        response['Content-Disposition'] = f'inline; filename="Completion Certificate - {participant_name}.pdf"'
-        return response
+                # Create a response with the PDF data
+                response = HttpResponse(output_buffer.getvalue(), content_type='application/pdf')
+                response['Content-Disposition'] = f'attachment; filename="Completion Certificate - {participant_name}.pdf"'
+                return response
+
+        except Exception as e:
+            logger.error(f"Error generating certificate: {str(e)}")
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

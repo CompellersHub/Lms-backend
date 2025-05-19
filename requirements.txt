@@ -44,6 +44,7 @@ pycparser==2.22
 PyJWT==2.9.0
 pymongo==4.13.0
 pyOpenSSL==25.0.0
+PyPDF2==3.0.1
 python-dotenv==1.0.1
 python3-openid==3.2.0
 pytz==2024.2

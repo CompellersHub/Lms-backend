@@ -33,9 +33,9 @@ urlpatterns = [
     
     path('CreateLiveClass/', views.CreateLiveClassView.as_view(), name='start_live_class'),
 
-    path('courses/payment/initiate/<str:course_id>/', views.InitiatePaymentView.as_view(), name='initiate-payment'),
-    path('courses/payment/capture/<str:course_id>/', views.CapturePaymentView.as_view(), name='capture-payment'),
-    path('courses/payment/cancel/<str:course_id>/', views.CancelPaymentView.as_view(), name='cancel-payment'),
+    path('payment/initiate/<str:course_id>/', views.InitiatePaymentView.as_view(), name='initiate-payment'),
+    path('payment/capture/<str:course_id>/', views.CapturePaymentView.as_view(), name='capture-payment'),
+    path('payment/cancel/<str:course_id>/', views.CancelPaymentView.as_view(), name='cancel-payment'),
 
     path('GenerateCertificate/', views.GenerateCertificatePDF.as_view(), name='generate-certificate'),
     

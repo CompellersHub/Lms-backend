@@ -99,12 +99,90 @@ class Signup(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request, format=None):
+        # We'll use the serializer for validation, but manually save to MongoDB
         serializer = CustomUserSerializer(data=request.data)
-        if serializer.is_valid():
-            user = serializer.save()
-            user_data = serializer.data  # Ensure ObjectId is converted to string
-            return Response({"user": user_data}, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        if serializer.is_valid(raise_exception=True): # Raise exception to get 400 with errors
+
+            email = serializer.validated_data['email']
+            username = serializer.validated_data['username']
+            password = serializer.validated_data['password']
+            first_name = serializer.validated_data.get('first_name', '')
+            last_name = serializer.validated_data.get('last_name', '')
+            role = serializer.validated_data.get('role', 'STUDENT')
+            phone_number = serializer.validated_data.get('phone_number', '')
+            profile_pic = serializer.validated_data.get('profile_pic', '')
+            # Course is a ListField in serializer, handle it as list of dicts in Mongo
+            courses_data = serializer.validated_data.get('course', [])
+
+            db = get_mongo_db()
+            users_collection = db.customusers
+
+            # Check for existing user (serializer.validate_username/email already handles this)
+            # You can remove these checks if your serializer's validate methods are sufficient
+            # if users_collection.find_one({"username": username}):
+            #     return Response({"error": "A user with this username already exists."}, status=status.HTTP_400_BAD_REQUEST)
+            # if users_collection.find_one({"email": email}):
+            #     return Response({"error": "A user with this email already exists."}, status=status.HTTP_400_BAD_REQUEST)
+
+
+            hashed_password = make_password(password) # Hash password using Django's hasher
+
+            # Convert course dictionaries (if any) to store ObjectId if they contain 'id'
+            processed_courses = []
+            for c in courses_data:
+                if 'id' in c and ObjectId.is_valid(c['id']):
+                    c['id'] = ObjectId(c['id'])
+                processed_courses.append(c)
+
+            user_data_for_mongo = {
+                "email": email,
+                "username": username,
+                "password": hashed_password,
+                "first_name": first_name,
+                "last_name": last_name,
+                "role": role,
+                "phone_number": phone_number,
+                "profile_pic": profile_pic, # Store path/URL
+                "course": processed_courses, # Store list of course dicts with ObjectIds
+                "is_active": True,
+                "is_staff": False,
+                "is_superuser": False,
+                "date_joined": timezone.now(),
+                "last_login": None, # Will be set on first login
+            }
+
+            result = users_collection.insert_one(user_data_for_mongo)
+            mongo_id = str(result.inserted_id)
+
+            # Create a Django CustomUser instance for immediate login
+            user = CustomUser(
+                id=mongo_id, # Set the MongoDB _id as the Django PK (CharField)
+                email=email,
+                username=username,
+                first_name=first_name,
+                last_name=last_name,
+                role=role,
+                phone_number=phone_number,
+                profile_pic=profile_pic,
+                is_active=True,
+                is_staff=False,
+                is_superuser=False,
+                date_joined=user_data_for_mongo['date_joined'],
+                last_login=None, # Will be set by Django on successful login
+            )
+            # Crucial: Assign the backend to the user instance
+            user.backend = 'user.backends.MongoAuthBackend'
+
+            # Log the user in after successful registration
+            login(request, user)
+
+            # Return relevant user data by re-serializing the created MongoDB document
+            # The serializer's to_representation will handle _id -> id mapping
+            created_user_mongo_doc = users_collection.find_one({"_id": result.inserted_id})
+            response_serializer = CustomUserSerializer(created_user_mongo_doc)
+            return Response({"user": response_serializer.data, "message": "User registered and logged in successfully"}, status=status.HTTP_201_CREATED)
+        # If serializer is_valid() returned False, errors are already handled by raise_exception=True
+        # return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 logger = logging.getLogger(__name__)
 

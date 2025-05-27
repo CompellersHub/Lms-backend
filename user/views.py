@@ -18,6 +18,7 @@ from courses.mongo_utils import get_mongo_db
 from bson import ObjectId
 from django.contrib.auth import logout
 from google.oauth2 import id_token
+from django.contrib.auth import authenticate, login
 from google.auth.transport import requests
 from allauth.socialaccount.providers.google.views import GoogleOAuth2Adapter
 from allauth.socialaccount.providers.oauth2.client import OAuth2Error
@@ -29,6 +30,10 @@ import logging
 import json
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
+from django.utils import timezone
+from .models import CustomUser
+from django.contrib.auth.hashers import make_password
+from django.views.decorators.csrf import csrf_exempt
 
 db = get_mongo_db()
 users_collection = db['users']
@@ -87,6 +92,9 @@ class GoogleLoginView(APIView):
             logger.error(f"Unexpected error: {e}")
             return Response({'error': 'An unexpected error occurred'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+import logging
+logger = logging.getLogger(__name__)
+
 class Signup(APIView):
     permission_classes = [AllowAny]
 
@@ -98,6 +106,11 @@ class Signup(APIView):
             return Response({"user": user_data}, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+logger = logging.getLogger(__name__)
+
+
+
+@method_decorator(csrf_exempt, name='dispatch')
 class Login(APIView):
     permission_classes = [AllowAny]
 
@@ -110,16 +123,38 @@ class Login(APIView):
         if not password:
             return Response({"error": "Password is required"}, status=status.HTTP_400_BAD_REQUEST)
 
-        db = get_mongo_db()
-        user = db.customusers.find_one({"email": email})
+        # Use Django's authenticate function
+        # This will call your custom authentication backend (if configured)
+        # to verify credentials against your MongoDB user collection.
+        user = authenticate(request, username=email, password=password)
+        # Note: authenticate typically expects 'username', so your backend should map email to username if needed.
+        # If your backend directly authenticates by email, that's fine.
 
-        if user and check_password(password, user['password']):
+        if user is not None:
+            # User is found and password is correct, now establish the session
+            login(request, user)
+
+            # --- DEBUGGING LINES START ---
+            logger.info(f"User {user.email} successfully authenticated and logged in.")
+            print(f"DEBUG: Login - User authenticated: {request.user.is_authenticated}")
+            print(f"DEBUG: Login - Session key: {request.session.session_key}")
+            print(f"DEBUG: Login - User ID: {request.user.id}")
+            # --- DEBUGGING LINES END ---
+
+            session_key = request.session.session_key
+
+            # Assuming CustomUserSerializer takes a Django User object
             serializer = CustomUserSerializer(user)
             user_data = serializer.data
-            # user_data['id'] = int(user_data['id'])  # Ensure ObjectId is converted to string
-            return Response({"user": user_data, "message": "User logged in successfully"}, status=status.HTTP_200_OK)
+            return Response({"user": user_data, 
+                             "message": "User logged in successfully",
+                             "session_key": session_key}, status=status.HTTP_200_OK)
+        else:
+            # Authentication failed (user not found or password incorrect)
+            logger.warning(f"Failed login attempt for email: {email}")
+            return Response({"error": "Invalid credentials, please try again"}, status=status.HTTP_400_BAD_REQUEST)
 
-        return Response({"error": "Invalid credentials, please try again"}, status=status.HTTP_400_BAD_REQUEST)
+
 
 class Logout(APIView):
     authentication_classes = [SessionAuthentication]

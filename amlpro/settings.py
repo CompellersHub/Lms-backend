@@ -16,6 +16,11 @@ load_dotenv()
 MONGO_URI = os.getenv('MONGO_URI')
 MONGO_DATABASE_NAME = os.getenv('DATABASE_NAME')
 
+# For your signals.py
+FRONTEND_RESET_PASSWORD_URL = 'https://titanscareers/api/password_reset/' # Replace with your actual frontend URL
+FRONTEND_DOMAIN = 'titanscareers.com' # Your frontend domain
+SITE_NAME = 'Titans Careers' # Your site name
+
 
 # uri = "MONGO_URI"
 # client = MongoClient(uri, ssl=True, ssl_cert_reqs='CERT_NONE')
@@ -60,6 +65,7 @@ INSTALLED_APPS = [
     'blog',
     'rest_framework',
     'rest_framework.authtoken',
+    'django_rest_passwordreset',
     'payment',
     'student_dashboard',
     'dj_rest_auth',
@@ -134,7 +140,7 @@ ROOT_URLCONF = 'amlpro.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [os.path.join(BASE_DIR, 'templates')],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -150,6 +156,7 @@ TEMPLATES = [
 ]
 
 AUTHENTICATION_BACKENDS = [
+    'user.backends.MongoAuthBackend',
     # Needed to login by username in Django admin, regardless of `allauth`
     'django.contrib.auth.backends.ModelBackend',
 
@@ -187,6 +194,14 @@ SOCIALACCOUNT_FORMS = {
     'disconnect': 'allauth.socialaccount.forms.DisconnectForm',
     'signup': 'allauth.socialaccount.forms.SignupForm',
 }
+
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.gmail.com' # Or your email host (e.g., SendGrid, Mailgun)
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = os.getenv('EMAIL_ADDRESS') # Your email address
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_PASSWORD') # Your email password or app password
+DEFAULT_FROM_EMAIL = 'compellersdigitals@gmail.com' # From address for emails
 
 AUTH_USER_MODEL = 'user.CustomUser'
 

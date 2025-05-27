@@ -1,0 +1,14 @@
+Hi {{ username }},
+
+You're receiving this email because you requested a password reset for your account with {{ site_name }}.
+
+Please click on the following link to reset your password:
+
+{{ reset_password_url }}
+
+This password reset link is only valid for a limited time (e.g., 1 hour). If you do not reset your password within this time, you will need to request a new link.
+
+If you didn't request a password reset, please ignore this email. Your password will remain unchanged.
+
+Thanks,
+The {{ site_name }} Team

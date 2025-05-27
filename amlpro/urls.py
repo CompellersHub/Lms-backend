@@ -30,6 +30,7 @@ urlpatterns = [
     re_path(r"redoc/$", schema_view.with_ui("redoc", cache_timeout=0), name="schema-redoc"),
     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('api/password_reset/', include('django_rest_passwordreset.urls', namespace='password_reset')),
     path('admin/', admin.site.urls),
     path('accounts/', include('allauth.urls')),
     path('api/auth/', include('dj_rest_auth.urls')),

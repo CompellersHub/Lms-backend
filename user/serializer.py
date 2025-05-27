@@ -8,6 +8,7 @@ from django.contrib.auth.hashers import make_password
 import re
 from django.utils import timezone
 import logging
+from django.db import models # Add this line
 
 logger = logging.getLogger(__name__)
 
@@ -47,64 +48,118 @@ class CustomUserSerializer(serializers.Serializer):
         return value
 
     def to_representation(self, instance):
-        representation = super().to_representation(instance)
+        # Determine if the instance is a Django model object or a raw MongoDB dict
+        # The error occurs when `instance` is a Django `CustomUser` object after `login(request, user)`
+        if isinstance(instance, models.Model): # Check if it's a Django model instance
+            representation = {
+                "id": str(instance.id),
+                "username": instance.username,
+                "email": instance.email,
+                "first_name": instance.first_name,
+                "last_name": instance.last_name,
+                "role": instance.role,
+                "phone_number": instance.phone_number,
+                "profile_pic": instance.profile_pic.url if instance.profile_pic else None,
+                "date_joined": instance.date_joined.isoformat(),
+                # Process the ManyToManyField 'course' here
+                "course": [course.to_dict() for course in instance.course.all()], # <--- CRITICAL CHANGE HERE
+            }
+            # Remove password field if it exists, as it's write_only
+            if 'password' in representation:
+                del representation['password']
 
-        if hasattr(instance, '_id'):
-            representation['id'] = str(instance._id)
-        elif '_id' in instance:
-            representation['id'] = str(instance['_id'])
+        else: # Assume it's a MongoDB dictionary
+            representation = super().to_representation(instance)
 
-        if '_id' in representation:
-            del representation['_id']
+            if '_id' in instance:
+                representation['id'] = str(instance['_id'])
+            # Ensure 'id' is present and not '_id'
+            elif hasattr(instance, '_id'): # If it's a BSON document like object
+                representation['id'] = str(instance._id)
 
-        if 'course' in representation:
-            # Convert ObjectId to string in each course dictionary
-            courses = representation['course']
-            for course in courses:
-                for key, value in course.items():
-                    if isinstance(value, ObjectId):
-                        course[key] = str(value)
-            representation['course_id'] = courses
-            del representation['course']
+            if '_id' in representation:
+                del representation['_id']
+
+            # Handle the 'course' field for MongoDB documents
+            if 'course' in representation and isinstance(representation['course'], list):
+                course_data = []
+                for course_item in representation['course']:
+                    # Assuming course_item is already a dict from MongoDB
+                    # Make sure 'id' is a string if it was ObjectId in Mongo
+                    course_dict = {
+                        'id': str(course_item['_id']) if '_id' in course_item else None, # Convert ObjectId to string
+                        'name': course_item.get('name'),
+                        'course_image': course_item.get('course_image'),
+                        'preview_id': course_item.get('preview_id'),
+                        'preview_description': course_item.get('preview_description'),
+                        'description': course_item.get('description'),
+                        'category': course_item.get('category'),
+                        'price': course_item.get('price'),
+                        'target_audience': course_item.get('target_audience'),
+                        'learning_outcomes': course_item.get('learning_outcomes'),
+                        'instructor': course_item.get('instructor'),
+                        'required_materials': course_item.get('required_materials'),
+                        'estimated_time': course_item.get('estimated_time'),
+                        'level': course_item.get('level'),
+                    }
+                    course_data.append(course_dict)
+                representation['course'] = course_data
+            else:
+                representation['course'] = [] # Ensure course is an empty list if not found or not a list
 
         return representation
 
     def create(self, validated_data):
         db = get_mongo_db()
         validated_data['password'] = make_password(validated_data.pop('password'))
-        validated_data['created_at'] = timezone.now()
-        # Assuming 'course' is a list of dictionaries, convert ObjectId strings to ObjectId instances
-        courses = validated_data.pop('course', [])
-        for course in courses:
-            for key, value in course.items():
-                if key == 'id':  # Assuming 'id' is the key for ObjectId in the course dictionary
-                    course[key] = ObjectId(value)
-        validated_data['courses'] = courses
+        validated_data['date_joined'] = timezone.now() # Use date_joined to match model
+        
+        courses_data = validated_data.pop('course', []) # Use courses_data to avoid conflict with model field
+        processed_courses_for_mongo = []
+        for course_item in courses_data:
+            # Assuming 'id' in incoming course data is the MongoDB _id string for existing courses
+            if 'id' in course_item and ObjectId.is_valid(course_item['id']):
+                course_item['_id'] = ObjectId(course_item.pop('id')) # Convert 'id' to '_id' ObjectId for Mongo
+            processed_courses_for_mongo.append(course_item)
+        
+        validated_data['course'] = processed_courses_for_mongo # Store as 'course' in MongoDB
+        
         result = db.customusers.insert_one(validated_data)
+        # When creating, return the MongoDB document for serialization
         return db.customusers.find_one({"_id": result.inserted_id})
+
 
     def update(self, instance, validated_data):
         db = get_mongo_db()
-        user_id = ObjectId(instance['id'])
+        
+        # Determine if `instance` is a Django model or a MongoDB dict
+        if isinstance(instance, models.Model):
+            user_id = ObjectId(instance.id) # Get _id from Django model's id
+        else:
+            user_id = ObjectId(instance['id']) # Get _id from MongoDB dict's 'id' field
+
         update_fields = {}
         for key, value in validated_data.items():
             if key == 'password':
                 update_fields['password'] = make_password(value)
             elif key == 'course':
-                courses = []
-                for course in value:
+                courses_for_mongo = []
+                for course_item in value:
                     course_dict = {}
-                    for k, v in course.items():
-                        if k == 'id':  # Assuming 'id' is the key for ObjectId in the course dictionary
-                            course_dict[k] = ObjectId(v)
+                    for k, v in course_item.items():
+                        if k == 'id' and ObjectId.is_valid(v):
+                            course_dict['_id'] = ObjectId(v) # Convert 'id' to '_id' ObjectId for Mongo
                         else:
                             course_dict[k] = v
-                    courses.append(course_dict)
-                update_fields['courses'] = courses
+                    courses_for_mongo.append(course_dict)
+                update_fields['course'] = courses_for_mongo # Store as 'course' in MongoDB
             else:
                 update_fields[key] = value
+        
         db.customusers.update_one({"_id": user_id}, {"$set": update_fields})
         return db.customusers.find_one({"_id": user_id})
+
+    
 
 class TeacherProfileSerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)

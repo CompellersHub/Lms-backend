@@ -95,13 +95,13 @@ class GoogleLoginView(APIView):
 import logging
 logger = logging.getLogger(__name__)
 
+
 class Signup(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request, format=None):
-        # We'll use the serializer for validation, but manually save to MongoDB
         serializer = CustomUserSerializer(data=request.data)
-        if serializer.is_valid(raise_exception=True): # Raise exception to get 400 with errors
+        if serializer.is_valid(raise_exception=True):
 
             email = serializer.validated_data['email']
             username = serializer.validated_data['username']
@@ -111,23 +111,13 @@ class Signup(APIView):
             role = serializer.validated_data.get('role', 'STUDENT')
             phone_number = serializer.validated_data.get('phone_number', '')
             profile_pic = serializer.validated_data.get('profile_pic', '')
-            # Course is a ListField in serializer, handle it as list of dicts in Mongo
             courses_data = serializer.validated_data.get('course', [])
 
             db = get_mongo_db()
             users_collection = db.customusers
 
-            # Check for existing user (serializer.validate_username/email already handles this)
-            # You can remove these checks if your serializer's validate methods are sufficient
-            # if users_collection.find_one({"username": username}):
-            #     return Response({"error": "A user with this username already exists."}, status=status.HTTP_400_BAD_REQUEST)
-            # if users_collection.find_one({"email": email}):
-            #     return Response({"error": "A user with this email already exists."}, status=status.HTTP_400_BAD_REQUEST)
+            hashed_password = make_password(password)
 
-
-            hashed_password = make_password(password) # Hash password using Django's hasher
-
-            # Convert course dictionaries (if any) to store ObjectId if they contain 'id'
             processed_courses = []
             for c in courses_data:
                 if 'id' in c and ObjectId.is_valid(c['id']):
@@ -142,53 +132,27 @@ class Signup(APIView):
                 "last_name": last_name,
                 "role": role,
                 "phone_number": phone_number,
-                "profile_pic": profile_pic, # Store path/URL
-                "course": processed_courses, # Store list of course dicts with ObjectIds
+                "profile_pic": profile_pic,
+                "course": processed_courses,
                 "is_active": True,
                 "is_staff": False,
                 "is_superuser": False,
                 "date_joined": timezone.now(),
-                "last_login": None, # Will be set on first login
+                "last_login": None,
             }
 
             result = users_collection.insert_one(user_data_for_mongo)
             mongo_id = str(result.inserted_id)
 
-            # Create a Django CustomUser instance for immediate login
-            user = CustomUser(
-                id=mongo_id, # Set the MongoDB _id as the Django PK (CharField)
-                email=email,
-                username=username,
-                first_name=first_name,
-                last_name=last_name,
-                role=role,
-                phone_number=phone_number,
-                profile_pic=profile_pic,
-                is_active=True,
-                is_staff=False,
-                is_superuser=False,
-                date_joined=user_data_for_mongo['date_joined'],
-                last_login=None, # Will be set by Django on successful login
-            )
-            # Crucial: Assign the backend to the user instance
-            user.backend = 'user.backends.MongoAuthBackend'
-
-            # Log the user in after successful registration
-            login(request, user)
-
-            # Return relevant user data by re-serializing the created MongoDB document
-            # The serializer's to_representation will handle _id -> id mapping
+            # Return relevant user data
             created_user_mongo_doc = users_collection.find_one({"_id": result.inserted_id})
             response_serializer = CustomUserSerializer(created_user_mongo_doc)
-            return Response({"user": response_serializer.data, "message": "User registered and logged in successfully"}, status=status.HTTP_201_CREATED)
-        # If serializer is_valid() returned False, errors are already handled by raise_exception=True
-        # return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"user": response_serializer.data, "message": "User registered successfully"}, status=status.HTTP_201_CREATED)
 
 logger = logging.getLogger(__name__)
 
 
 
-@method_decorator(csrf_exempt, name='dispatch')
 class Login(APIView):
     permission_classes = [AllowAny]
 
@@ -201,35 +165,44 @@ class Login(APIView):
         if not password:
             return Response({"error": "Password is required"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Use Django's authenticate function
-        # This will call your custom authentication backend (if configured)
-        # to verify credentials against your MongoDB user collection.
-        user = authenticate(request, username=email, password=password)
-        # Note: authenticate typically expects 'username', so your backend should map email to username if needed.
-        # If your backend directly authenticates by email, that's fine.
+        # Retrieve the user from MongoDB
+        db = get_mongo_db()
+        user_data = db.customusers.find_one({"email": email})
 
-        if user is not None:
-            # User is found and password is correct, now establish the session
-            login(request, user)
+        if user_data:
+            # Check if the provided password matches the hashed password from MongoDB
+            if check_password(password, user_data['password']):
+                # Create a Django User object from MongoDB data
+                user = CustomUser(
+                    id=str(user_data['_id']), # Store MongoDB _id as Django user's PK
+                    username=user_data.get('username', user_data['email']), # Use email as username if no dedicated username field
+                    email=user_data['email'],
+                    is_active=True # Assume active
+                )
+                user.is_staff = user_data.get('is_staff', False)
+                user.is_superuser = user_data.get('is_superuser', False)
+                # You might need to set a backend attribute
+                user.backend = 'user.backends.MongoAuthBackend' # Important for sessions
 
-            # --- DEBUGGING LINES START ---
-            logger.info(f"User {user.email} successfully authenticated and logged in.")
-            print(f"DEBUG: Login - User authenticated: {request.user.is_authenticated}")
-            print(f"DEBUG: Login - Session key: {request.session.session_key}")
-            print(f"DEBUG: Login - User ID: {request.user.id}")
-            # --- DEBUGGING LINES END ---
+                # Manually set the user in the session
+                request.session['user_id'] = str(user_data['_id'])
+                request.session.modified = True
 
-            session_key = request.session.session_key
+                # Assuming CustomUserSerializer takes a Django User object
+                serializer = CustomUserSerializer(user)
+                user_data = serializer.data
 
-            # Assuming CustomUserSerializer takes a Django User object
-            serializer = CustomUserSerializer(user)
-            user_data = serializer.data
-            return Response({"user": user_data, 
-                             "message": "User logged in successfully",
-                             "session_key": session_key}, status=status.HTTP_200_OK)
+                # Include the session key in the response
+                return Response({
+                    "user": user_data,
+                    "message": "User logged in successfully",
+                    "session_key": request.session.session_key
+                }, status=status.HTTP_200_OK)
+            else:
+                # Password does not match
+                return Response({"error": "Invalid credentials, please try again"}, status=status.HTTP_400_BAD_REQUEST)
         else:
-            # Authentication failed (user not found or password incorrect)
-            logger.warning(f"Failed login attempt for email: {email}")
+            # User not found
             return Response({"error": "Invalid credentials, please try again"}, status=status.HTTP_400_BAD_REQUEST)
 
 

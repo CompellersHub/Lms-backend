@@ -1,4 +1,4 @@
-from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin, Group, Permission
+from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin, Group, Permission, AbstractUser
 from django.db import models
 from django.utils import timezone
 
@@ -92,9 +92,21 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
         authenticated in templates.
         """
         return True
+    
+class CustomUserManager(BaseUserManager):
+    def create_user(self, email, password=None, **extra_fields):
+        if not email:
+            raise ValueError('The Email field must be set')
+        email = self.normalize_email(email)
+        user = self.model(email=email, **extra_fields)
+        user.set_password(password)
+        user.save(using=self._db)
+        return user
 
-class TeacherProfile(models.Model):
-    user = models.OneToOneField(CustomUser, on_delete=models.CASCADE)
+class TeacherProfile(AbstractUser):
+    username = models.CharField(max_length=150, unique=True, default='')
+    email = models.EmailField(unique=True, default='')
+    password = models.CharField(max_length=128, default='')
     role = models.CharField(max_length=20, default='TEACHER')
     bio = models.TextField(blank=True, null=True)
     profile_picture = models.ImageField(upload_to='teacher_pics/', blank=True, null=True)
@@ -105,9 +117,9 @@ class TeacherProfile(models.Model):
 
     def to_dict(self):
         return {
-            "user_id": str(self.user.id),
-            "first_name": str(self.user.first_name),
-            "last_name": str(self.user.last_name),
+            "user_id": self.id,
+            "first_name":self.first_name,
+            "last_name": self.last_name,
             "role": self.role,
             "bio": self.bio,
             "profile_picture": self.profile_picture.url if self.profile_picture else None,
@@ -116,9 +128,11 @@ class TeacherProfile(models.Model):
             "course_taken": self.course_taken,
             "created_at": self.created_at.isoformat(),
         }
+    
+    objects = CustomUserManager()
 
     def __str__(self):
-        return self.user.username
+        return self.username
 
 class Submission(models.Model):
     student = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='student_submissions')

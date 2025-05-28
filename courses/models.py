@@ -186,7 +186,7 @@ class Course(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     price = models.FloatField(default=0)
-    instructor = models.ForeignKey('user.TeacherProfile', on_delete=models.CASCADE, related_name='instructor_courses', null=True)
+    instructor = models.ForeignKey('user.TeacherProfile', on_delete=models.CASCADE, null=True, blank=True)
     curriculum = models.ForeignKey('Curriculum', blank=True, null=True, on_delete=models.CASCADE)
     required_materials = models.ForeignKey('RequiredMaterial', on_delete=models.CASCADE, blank=True, null=True)
     learning_outcomes = models.ForeignKey('LearningOutcome', on_delete=models.CASCADE, blank=True, null=True)

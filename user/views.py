@@ -36,7 +36,7 @@ from django.contrib.auth.hashers import make_password
 from django.views.decorators.csrf import csrf_exempt
 
 db = get_mongo_db()
-users_collection = db['users']
+users_collection = db['customusers']
 
 logger = logging.getLogger(__name__)
 

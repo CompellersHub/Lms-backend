@@ -87,6 +87,7 @@ INSTALLED_APPS = [
 ]
 
 SOCIALACCOUNT_LOGIN_ON_GET = True
+SOCIALACCOUNT_STORE_TOKENS = True
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
@@ -102,17 +103,17 @@ MIDDLEWARE = [
     "allauth.account.middleware.AccountMiddleware",
 ]
 
-# CORS_ALLOWED_ORIGINS = [
-#     "https://titanscareers.com",
-#     "https://lms-react-frontend-sand.vercel.app",
-#     "http://127.0.0.1:5502",
-#     "http://localhost:3000",
-#     "http://127.0.0.1:9000",
-#     "http://localhost:5173",
+CORS_ALLOWED_ORIGINS = [
+    "https://titanscareers.com",
+    "https://lms-react-frontend-sand.vercel.app",
+    "http://127.0.0.1:5502",
+    "http://localhost:3000",
+    "http://127.0.0.1:9000",
+    "http://localhost:5173",
     
-# ]
+]
 
-CORS_ALLOW_ALL_ORIGINS = True
+
 
 
 

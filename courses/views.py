@@ -945,7 +945,7 @@ class GenerateCertificatePDF(APIView):
             participant_name = mongo_user.get('first_name', '') + ' ' + mongo_user.get('last_name', '') if mongo_user and (mongo_user.get('first_name') or mongo_user.get('last_name')) else (mongo_user.get('email', 'N/A') if mongo_user else user.username)
 
             # Load the PDF template
-            template_path = "/home/olomoshuaomozafen/Lms-backend/staticfiles/certificate/COC.pdf"  # Update this path
+            template_path = "staticfiles/certificate/COC.pdf"  # Update this path
             with open(template_path, "rb") as template_file:
                 pdf_reader = PdfReader(template_file)
                 pdf_writer = PdfWriter()

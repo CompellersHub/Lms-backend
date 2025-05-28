@@ -202,7 +202,7 @@ EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 EMAIL_HOST_USER = os.getenv('EMAIL_ADDRESS') # Your email address
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_PASSWORD') # Your email password or app password
-DEFAULT_FROM_EMAIL = 'compellersdigitals@gmail.com' # From address for emails
+DEFAULT_FROM_EMAIL = 'olomoshuaomozafen@gmail.com' # From address for emails
 
 AUTH_USER_MODEL = 'user.CustomUser'
 

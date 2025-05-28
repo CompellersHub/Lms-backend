@@ -60,7 +60,7 @@ class GoogleLoginView(APIView):
                 raise ValueError('Wrong issuer.')
 
             # Extract user info from the token
-            user_info = {
+            extracted_user_info = { # Renamed to avoid confusion with 'user' variable later
                 'google_id': idinfo['sub'],
                 'email': idinfo['email'],
                 'name': idinfo['name'],
@@ -71,19 +71,48 @@ class GoogleLoginView(APIView):
             # Check if the user already exists in the database
             user = users_collection.find_one({'google_id': idinfo['sub']})
             if not user:
-                logger.info(f"Creating new user: {user_info['email']}")
-                # Create a new user if not exists
-                users_collection.insert_one(user_info)
-                user = user_info
+                logger.info(f"Creating new user: {extracted_user_info['email']}")
+                # Ensure _id is handled correctly when inserting new user_info
+                # MongoDB automatically adds _id on insert.
+                # If you need to store it in a specific field, do it here.
+                inserted_result = users_collection.insert_one(extracted_user_info)
+                # Fetch the newly inserted user to get the _id if needed, or use the dict if _id is not critical
+                user = users_collection.find_one({'_id': inserted_result.inserted_id})
+                if not user: # Fallback in case find_one fails immediately
+                    user = extracted_user_info
+                    user['_id'] = inserted_result.inserted_id # Add the _id manually if not re-fetched
             else:
-                logger.info(f"User already exists: {user_info['email']}")
+                logger.info(f"User already exists: {extracted_user_info['email']}")
+                # Optional: Update last_login or other fields for existing user
+                users_collection.update_one(
+                    {'google_id': idinfo['sub']},
+                    {'$set': {'last_login': datetime.utcnow()}}
+                )
+                # Make sure the 'user' variable holds the most up-to-date information
+                # This ensures the response contains the updated info if needed
+                user = users_collection.find_one({'google_id': idinfo['sub']})
+
 
             # Create a session for the user
+            # Ensure _id is converted to string for session if it's an ObjectId
             request.session['user_id'] = str(user['_id'])
             request.session.modified = True
 
-            logger.info(f"Successfully logged in user: {user_info['email']}")
-            return Response({'message': 'Login successful'}, status=status.HTTP_200_OK)
+            logger.info(f"Successfully logged in user: {user['email']}")
+
+            # **CRITICAL CHANGE HERE: Include user data in the response**
+            response_data = {
+                'message': 'Login successful',
+                'user': {
+                    'id': str(user['_id']), # Convert ObjectId to string for JSON serialization
+                    'google_id': user.get('google_id'),
+                    'email': user.get('email'),
+                    'name': user.get('name'),
+                    'picture': user.get('picture'),
+                    # Add any other user fields you want to send to the frontend
+                }
+            }
+            return Response(response_data, status=status.HTTP_200_OK)
 
         except ValueError as e:
             logger.error(f"Error verifying Google token: {e}")

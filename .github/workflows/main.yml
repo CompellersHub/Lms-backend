@@ -2,8 +2,8 @@ name: Deployment
 run-name: "Deployment started by @${{github.actor}}"
 on:
   workflow_dispatch:
-  #push:
-  #  branches: [main]
+  push:
+    branches: [backup-main]
 
 jobs:      
   deploy:

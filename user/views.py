@@ -43,87 +43,45 @@ logger = logging.getLogger(__name__)
 logger = logging.getLogger(__name__)
 
 class GoogleLoginView(APIView):
-    permission_classes = [AllowAny]
+   permission_classes = [AllowAny] # Allow unauthenticated users to use this
 
-    def post(self, request):
-        logger.info("Received Google login request")
-        token = request.data.get('token')
+   def post(self, request):
+        id_token_str = request.data.get('id_token')
 
-        if not token:
-            logger.error("Token is missing from the request")
-            return Response({'error': 'Token is required'}, status=status.HTTP_400_BAD_REQUEST)
+        if not id_token_str:
+            return Response({"error": "Google ID token is required."}, status=status.HTTP_400_BAD_REQUEST)
 
-        try:
-            # Verify the Google ID token
-            idinfo = id_token.verify_oauth2_token(token, requests.Request(), os.getenv('CLIENT_ID'))
-            if idinfo['iss'] not in ['accounts.google.com', 'https://accounts.google.com']:
-                raise ValueError('Wrong issuer.')
+        # Authenticate with your custom GoogleAuthBackend
+        # The backend will handle finding/creating/linking the user
+        user = authenticate(request, id_token_str=id_token_str)
 
-            # Extract user info from the token
-            extracted_user_info = { # Renamed to avoid confusion with 'user' variable later
-                'google_id': idinfo['sub'],
-                'email': idinfo['email'],
-                'name': idinfo['name'],
-                'picture': idinfo.get('picture', ''),
-                'last_login': datetime.utcnow(),
-            }
+        if user is not None:
+            # If authentication is successful, log the user into Django's session
+            login(request, user)
 
-            # Check if the user already exists in the database
-            user = users_collection.find_one({'google_id': idinfo['sub']})
-            if not user:
-                logger.info(f"Creating new user: {extracted_user_info['email']}")
-                # Ensure _id is handled correctly when inserting new user_info
-                # MongoDB automatically adds _id on insert.
-                # If you need to store it in a specific field, do it here.
-                inserted_result = users_collection.insert_one(extracted_user_info)
-                # Fetch the newly inserted user to get the _id if needed, or use the dict if _id is not critical
-                user = users_collection.find_one({'_id': inserted_result.inserted_id})
-                if not user: # Fallback in case find_one fails immediately
-                    user = extracted_user_info
-                    user['_id'] = inserted_result.inserted_id # Add the _id manually if not re-fetched
-            else:
-                logger.info(f"User already exists: {extracted_user_info['email']}")
-                # Optional: Update last_login or other fields for existing user
-                users_collection.update_one(
-                    {'google_id': idinfo['sub']},
-                    {'$set': {'last_login': datetime.utcnow()}}
-                )
-                # Make sure the 'user' variable holds the most up-to-date information
-                # This ensures the response contains the updated info if needed
-                user = users_collection.find_one({'google_id': idinfo['sub']})
+            # Manually update last_login in MongoDB (as we disconnected Django's signal)
+            db = get_mongo_db()
+            db.customusers.update_one(
+                {"_id": ObjectId(user.id)},
+                {"$set": {"last_login": datetime.utcnow()}}
+            )
+            logger.info(f"User {user.email} successfully logged in/linked via Google.")
 
+            # Return session key and user data
+            session_key = request.session.session_key
+            from .serializer import CustomUserSerializer # Assuming this serializer exists
+            user_detail_serializer = CustomUserSerializer(user)
 
-            # Create a session for the user
-            # Ensure _id is converted to string for session if it's an ObjectId
-            request.session['user_id'] = str(user['_id'])
-            request.session.modified = True
-
-            logger.info(f"Successfully logged in user: {user['email']}")
-
-            # **CRITICAL CHANGE HERE: Include user data in the response**
-            response_data = {
-                'message': 'Login successful',
-                'user': {
-                    'id': str(user['_id']), # Convert ObjectId to string for JSON serialization
-                    'google_id': user.get('google_id'),
-                    'email': user.get('email'),
-                    'name': user.get('name'),
-                    'picture': user.get('picture'),
-                    # Add any other user fields you want to send to the frontend
-                }
-            }
-            return Response(response_data, status=status.HTTP_200_OK)
-
-        except ValueError as e:
-            logger.error(f"Error verifying Google token: {e}")
-            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        except Exception as e:
-            logger.error(f"Unexpected error: {e}")
-            return Response({'error': 'An unexpected error occurred'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-import logging
-logger = logging.getLogger(__name__)
-
+            return Response({
+                "user": user_detail_serializer.data,
+                "message": "Google login successful",
+                "session_key": session_key
+            }, status=status.HTTP_200_OK)
+        else:
+            # Authentication failed (e.g., invalid token, or backend returned None)
+            logger.warning("Google login failed for provided token.")
+            return Response({"error": "Google login failed. Invalid token or internal error."},
+                            status=status.HTTP_401_UNAUTHORIZED)
 
 class Signup(APIView):
     permission_classes = [AllowAny]

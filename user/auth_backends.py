@@ -11,14 +11,14 @@ from google.auth.transport import requests as google_requests
 
 from courses.mongo_utils import get_mongo_db
 from .models import CustomUser
-
+import os
 logger = logging.getLogger(__name__)
 
 class GoogleAuthBackend(BaseBackend):
     def authenticate(self, request, id_token_str=None, **kwargs):
         print(f"\n--- GoogleAuthBackend.authenticate called ---")
         print(f"Received id_token_str (first 20 chars): {id_token_str[:20] if id_token_str else 'None'}")
-        print(f"GOOGLE_CLIENT_ID from settings: {settings.GOOGLE_CLIENT_ID}")
+        print(f"GOOGLE_CLIENT_ID from settings: {os.getenv('CLIENT_ID')}")
 
         if not id_token_str:
             print("Error: id_token_str is None or empty.")
@@ -71,7 +71,7 @@ class GoogleAuthBackend(BaseBackend):
                     google_profile_pic=user_data.get('google_profile_pic'),
                     password=user_data.get('password', '')
                 )
-                user.backend = 'user.backends.GoogleAuthBackend'
+                user.backend = 'user.auth_backends.GoogleAuthBackend'
                 print(f"--- GoogleAuthBackend.authenticate finished (found by google_id) ---")
                 return user
             else:
@@ -116,7 +116,7 @@ class GoogleAuthBackend(BaseBackend):
                         google_profile_pic=user_data.get('google_profile_pic'),
                         password=user_data.get('password', '')
                     )
-                    user.backend = 'user.backends.GoogleAuthBackend'
+                    user.backend = 'user.auth_backends.GoogleAuthBackend'
                     print(f"--- GoogleAuthBackend.authenticate finished (found by email, linked) ---")
                     return user
                 else:
@@ -163,7 +163,7 @@ class GoogleAuthBackend(BaseBackend):
                         google_profile_pic=new_user_data_for_mongo['google_profile_pic'],
                         password=new_user_data_for_mongo['password']
                     )
-                    user.backend = 'user.backends.GoogleAuthBackend'
+                    user.backend = 'user.auth_backends.GoogleAuthBackend'
                     print(f"--- GoogleAuthBackend.authenticate finished (new user created) ---")
                     return user
 
@@ -201,7 +201,7 @@ class GoogleAuthBackend(BaseBackend):
                     google_profile_pic=user_data.get('google_profile_pic'),
                     password=user_data.get('password', '')
                 )
-                user.backend = 'user.backends.GoogleAuthBackend'
+                user.backend = 'user.auth_backends.GoogleAuthBackend'
                 return user
         except Exception as e:
             print(f"ERROR: Error retrieving user with ID {user_id} from MongoDB in GoogleAuthBackend.get_user: {e}")

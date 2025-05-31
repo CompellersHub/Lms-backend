@@ -629,7 +629,7 @@ class CreateLiveClassView(APIView):
                 'end_time': end_time,
                 'created_at': datetime.now()
             }
-            db.LiveClass.insert_one(live_class)
+            db.liveclasss.insert_one(live_class)
 
             # Find all students enrolled in the course
             enrollments = db.CourseEnrollment.find({'course_id': ObjectId(course_id)})
@@ -651,6 +651,12 @@ class CreateLiveClassView(APIView):
 
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def get(self, request):
+        db = get_mongo_db()
+        assignments = list(db.liveclasss.find())
+        serializer = LiveClassSerializer(assignments, many=True)
+        return Response(serializer.data)
     
     
     

@@ -62,7 +62,16 @@ def sync_to_mongodb(sender, instance, **kwargs):
         if 'course_id' in data:
             del data['course_id']
 
-    if sender ==CourseLibrary and hasattr(instance, 'course') and instance.course and hasattr(instance.course, 'pk'):
+    if sender == CourseLibrary and hasattr(instance, 'course') and instance.course and hasattr(instance.course, 'pk'):
+        # Query MongoDB to get the _id of the related Course document
+        courses_collection = db['courses']
+        related_course_doc = courses_collection.find_one({'django_id': instance.course.pk})
+        if related_course_doc and '_id' in related_course_doc:
+            data['course'] = related_course_doc['_id']
+        if 'course_id' in data:
+            del data['course_id']
+
+    if sender == LiveClass and hasattr(instance, 'course') and instance.course and hasattr(instance.course, 'pk'):
         # Query MongoDB to get the _id of the related Course document
         courses_collection = db['courses']
         related_course_doc = courses_collection.find_one({'django_id': instance.course.pk})

@@ -330,11 +330,51 @@ class CourseLibrarySerializer(serializers.Serializer):
 
 class LiveClassSerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)
-    course_id = serializers.CharField()
-    teacher_id = serializers.CharField()
+    course = serializers.CharField()
+    teacher = 'user.serializer.TeacherProfileSerializer'
     start_time = serializers.DateTimeField()
     end_time = serializers.DateTimeField()
     created_at = serializers.DateTimeField(read_only=True)
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+
+        if hasattr(instance, '_id'):
+            representation['id'] = str(instance._id)
+        elif '_id' in instance:
+            representation['id'] = str(instance['_id'])
+
+        if '_id' in representation:
+            del representation['_id']
+
+        teacher_data = instance.get('teacher')
+        representation['teacher'] = None  # Initialize as None
+
+        if teacher_data:
+            from user.serializer import TeacherProfileSerializer
+            if isinstance(teacher_data, dict):
+                representation['teacher'] = TeacherProfileSerializer().to_representation(teacher_data)
+            elif isinstance(teacher_data, str):
+                try:
+                    teacher_profile_id = ObjectId(teacher_data)
+                    db = get_mongo_db()
+                    teacher_profile = db.teacher_profiles.find_one({"_id": teacher_profile_id})
+                    if teacher_profile:
+                        representation['teacher'] = TeacherProfileSerializer().to_representation(teacher_profile)
+                except Exception as e:
+                    print(f"Error fetching TeacherProfile with ID '{teacher_data}': {e}")
+            elif isinstance(teacher_data, ObjectId):
+                db = get_mongo_db()
+                teacher_profile = db.teacher_profiles.find_one({"_id": teacher_data})
+                if teacher_profile:
+                    representation['teacher'] = TeacherProfileSerializer().to_representation(teacher_profile)
+
+         # Handle Course (assuming course ObjectId is stored as string in MongoDB)
+        representation['course_id'] = representation.get('course')
+        if 'course' in representation:
+            del representation['course']
+
+        return representation
 
     def create(self, validated_data):
         # Insert the live class into the LiveClass collection
@@ -346,7 +386,7 @@ class LiveClassSerializer(serializers.Serializer):
             'end_time': validated_data['end_time'],
             'created_at': datetime.now()
         }
-        result = db.LiveClass.insert_one(live_class)
+        result = db.liveclasss.insert_one(live_class)
         live_class['id'] = str(result.inserted_id)
         return live_class
 
@@ -357,7 +397,7 @@ class LiveClassSerializer(serializers.Serializer):
         instance['teacher_id'] = ObjectId(validated_data.get('teacher_id', instance['teacher_id']))
         instance['start_time'] = validated_data.get('start_time', instance['start_time'])
         instance['end_time'] = validated_data.get('end_time', instance['end_time'])
-        db.LiveClass.update_one({'_id': ObjectId(instance['id'])}, {'$set': instance})
+        db.liveclasss.update_one({'_id': ObjectId(instance['id'])}, {'$set': instance})
         return instance
 
 

@@ -88,10 +88,10 @@ INSTALLED_APPS = [
 
 # AWS S3 Settings
 # Get these from your AWS IAM user credentials or instance profile
-AWS_ACCESS_KEY_ID = os.getenv('AKIA3LJ4RV54VBU3THAR')
-AWS_SECRET_ACCESS_KEY = os.getenv('/h9y+MyKXbhbcrkD8JISBpTulOvktpOAwSWGr+QO')
-AWS_STORAGE_BUCKET_NAME = os.getenv('titanscareers') # The S3 bucket name you created
-AWS_S3_REGION_NAME = os.getenv('eu-north-1') # e.g., 'us-east-1'
+AWS_ACCESS_KEY_ID = os.getenv('S3_ACCESS_KEY_ID')
+AWS_SECRET_ACCESS_KEY = os.getenv('S3_SECRET_ACCESS_KEY')
+AWS_STORAGE_BUCKET_NAME = os.getenv('S3_BUCKET') # The S3 bucket name you created
+AWS_S3_REGION_NAME = os.getenv('S3_REGION') # e.g., 'us-east-1'
 AWS_S3_FILE_OVERWRITE = False # Prevents overwriting files with the same name
 
 # Optional: If you want to use a custom domain for S3 (e.g., if you map a CNAME to S3 direct)

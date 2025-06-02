@@ -285,7 +285,55 @@ class StudentDetail(APIView):
         if serializer.is_valid():
             updated_student = serializer.save()
             return Response({"student": updated_student}, status=status.HTTP_200_OK)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)      
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)  
+
+class StudentFilterByCourse(APIView):
+    permission_classes = [IsAuthenticated]
+
+    # The 'course_id' parameter is now passed directly from the URL
+    def get(self, request, course_id, format=None):
+        query = {"role": "STUDENT"} # Always filter for students
+
+        if not course_id:
+            # This check is less likely to be hit with a path parameter
+            # unless the URL pattern itself is malformed or optional,
+            # but it's good for robustness.
+            return Response(
+                {"error": "Course ID must be provided in the URL path."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if not ObjectId.is_valid(course_id):
+            return Response(
+                {"error": "Invalid 'course_id' format. Must be a valid MongoDB ObjectId string."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Construct the query using the course_id from the URL path
+        query["course._id"] = ObjectId(course_id)
+        logger.info(f"Filtering students by course_id: {course_id}")
+        
+        db = get_mongo_db()
+        
+        try:
+            students_cursor = db.customusers.find(query)
+            students_list = list(students_cursor)
+
+            if not students_list:
+                return Response(
+                    {"message": f"No students found in course with ID '{course_id}'."},
+                    status=status.HTTP_200_OK
+                )
+
+            serializer = CustomUserSerializer(students_list, many=True)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            logger.error(f"Error filtering students by course: {e}", exc_info=True)
+            return Response(
+                {"error": "An internal server error occurred while filtering students."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 class GetCSRFToken(APIView):
     @method_decorator(ensure_csrf_cookie)

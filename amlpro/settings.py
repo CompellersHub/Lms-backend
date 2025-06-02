@@ -82,9 +82,37 @@ INSTALLED_APPS = [
 
 
     'corsheaders',
-
-    
+    # Aws storage
+    'storages',
 ]
+
+# AWS S3 Settings
+# Get these from your AWS IAM user credentials or instance profile
+AWS_ACCESS_KEY_ID = os.getenv('AKIA3LJ4RV54VBU3THAR')
+AWS_SECRET_ACCESS_KEY = os.getenv('/h9y+MyKXbhbcrkD8JISBpTulOvktpOAwSWGr+QO')
+AWS_STORAGE_BUCKET_NAME = os.getenv('titanscareers') # The S3 bucket name you created
+AWS_S3_REGION_NAME = os.getenv('eu-north-1') # e.g., 'us-east-1'
+AWS_S3_FILE_OVERWRITE = False # Prevents overwriting files with the same name
+
+# Optional: If you want to use a custom domain for S3 (e.g., if you map a CNAME to S3 direct)
+# AWS_S3_CUSTOM_DOMAIN = f'{AWS_STORAGE_BUCKET_NAME}.s3.{AWS_S3_REGION_NAME}.amazonaws.com'
+
+# For media files (user uploads)
+DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
+MEDIA_URL = f'https://{AWS_STORAGE_BUCKET_NAME}.s3.{AWS_S3_REGION_NAME}.amazonaws.com/media/' # Direct S3 URL for media uploads
+
+# For CloudFront Integration (highly recommended for video)
+# Use your CloudFront Distribution Domain Name here
+# AWS_S3_CUSTOM_DOMAIN = 'yourcloudfrontdomain.cloudfront.net' # e.g., d1234abcd.cloudfront.net
+# MEDIA_URL = f'https://{AWS_S3_CUSTOM_DOMAIN}/media/' # CloudFront URL for media uploads
+# AWS_CLOUDFRONT_DOMAIN = 'yourcloudfrontdomain.cloudfront.net' # Store this separately for clarity if needed
+
+# If you need private content with signed URLs (see below)
+# AWS_QUERYSTRING_AUTH = False # Set to False if you use CloudFront for public content
+# If using signed URLs with CloudFront:
+# AWS_CLOUDFRONT_KEY_ID = 'YOUR_CLOUDFRONT_PUBLIC_KEY_ID'
+# AWS_CLOUDFRONT_PRIVATE_KEY_PATH = '/path/to/your/cloudfront_private_key.pem' # Store securely!
+# Important Security Note: Never hardcode your AWS access keys directly in settings.py in production. Use environment variables (e.g., os.environ.get('AWS_ACCESS_KEY_ID')) or better yet, IAM roles for EC2 instances if your Django app is hosted on AWS.
 
 SOCIALACCOUNT_LOGIN_ON_GET = True
 SOCIALACCOUNT_STORE_TOKENS = True

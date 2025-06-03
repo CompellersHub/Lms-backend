@@ -93,6 +93,7 @@ AWS_SECRET_ACCESS_KEY = os.getenv('S3_SECRET_ACCESS_KEY')
 AWS_STORAGE_BUCKET_NAME = os.getenv('S3_BUCKET') # The S3 bucket name you created
 AWS_S3_REGION_NAME = os.getenv('S3_REGION') # e.g., 'us-east-1'
 AWS_S3_FILE_OVERWRITE = False # Prevents overwriting files with the same name
+AWS_DEFAULT_ACL = 'public-read' # This is the key setting
 
 # Optional: If you want to use a custom domain for S3 (e.g., if you map a CNAME to S3 direct)
 # AWS_S3_CUSTOM_DOMAIN = f'{AWS_STORAGE_BUCKET_NAME}.s3.{AWS_S3_REGION_NAME}.amazonaws.com'
@@ -322,8 +323,8 @@ STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
 
 
-# MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
-# MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+MEDIA_URL = '/media/'
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field

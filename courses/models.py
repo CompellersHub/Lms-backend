@@ -22,7 +22,7 @@ class Video(models.Model):
     title = models.CharField(max_length=255)
     video_id = models.CharField(null=True, blank=True, max_length=60)
     description = models.TextField(blank=True, null=True)
-    video_file = models.FileField(upload_to='video_files/', blank=True, null=True)
+    video_file = models.FileField(upload_to='videos/', blank=True, null=True)
     duration = models.CharField(max_length=50, blank=True, null=True, help_text="Duration of the video (e.g., '15 minutes', '30:45')")
     order = models.IntegerField(default=0, help_text="Order of this video within the module")
     created_at = models.DateTimeField(auto_now_add=True)

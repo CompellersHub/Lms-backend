@@ -84,6 +84,9 @@ INSTALLED_APPS = [
     'corsheaders',
     # Aws storage
     'storages',
+
+    # brevo anymail
+    'anymail',
 ]
 
 # AWS S3 Settings
@@ -93,7 +96,7 @@ AWS_SECRET_ACCESS_KEY = os.getenv('S3_SECRET_ACCESS_KEY')
 AWS_STORAGE_BUCKET_NAME = os.getenv('S3_BUCKET') # The S3 bucket name you created
 AWS_S3_REGION_NAME = os.getenv('S3_REGION') # e.g., 'us-east-1'
 AWS_S3_FILE_OVERWRITE = False # Prevents overwriting files with the same name
-AWS_DEFAULT_ACL = 'public-read' # This is the key setting
+AWS_DEFAULT_ACL = 'public-read' # This is for Aclllll access
 
 # Optional: If you want to use a custom domain for S3 (e.g., if you map a CNAME to S3 direct)
 # AWS_S3_CUSTOM_DOMAIN = f'{AWS_STORAGE_BUCKET_NAME}.s3.{AWS_S3_REGION_NAME}.amazonaws.com'
@@ -225,13 +228,31 @@ SOCIALACCOUNT_FORMS = {
     'signup': 'allauth.socialaccount.forms.SignupForm',
 }
 
+# Email reset settings
+
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = 'smtp.gmail.com' # Or your email host (e.g., SendGrid, Mailgun)
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
-EMAIL_HOST_USER = os.getenv('EMAIL_ADDRESS') # Your email address
-EMAIL_HOST_PASSWORD = os.getenv('EMAIL_PASSWORD') # Your email password or app password
-DEFAULT_FROM_EMAIL = 'olomoshuaomozafen@gmail.com' # From address for emails
+EMAIL_HOST_USER = 'calebolomoshua@gmail.com' # Your email address
+EMAIL_HOST_PASSWORD = 'Alphamajor1' # Your email password or app password
+DEFAULT_FROM_EMAIL = 'calebolomoshua@gmail.com' # From address for emails
+SERVER_EMAIL = 'calebolomoshua@gmail.com'
+
+
+# brevo email
+
+# settings.py
+
+ANYMAIL_BACKEND = "anymail.backends.brevo.EmailBackend"
+
+ANYMAIL = {
+    "BREVO_API_KEY": "YOUR_BREVO_V3_API_KEY", # Replace with your actual API key
+    # "IGNORE_RECIPIENT_STATUS": True, # Optional: To ignore recipient status errors
+}
+
+DEFAULT_FROM_EMAIL = "your_verified_email@yourdomain.com" # Required for Django's mail functions
+SERVER_EMAIL = DEFAULT_FROM_EMAIL # Default from-email for Django errors
 
 AUTH_USER_MODEL = 'user.CustomUser'
 
@@ -323,8 +344,8 @@ STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
 
 
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
-MEDIA_URL = '/media/'
+# MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+# MEDIA_URL = '/media/'
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field

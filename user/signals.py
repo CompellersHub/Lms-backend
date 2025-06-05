@@ -10,6 +10,8 @@ from django.urls import reverse
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django_rest_passwordreset.signals import reset_password_token_created 
+from django.contrib.auth.signals import user_logged_in
+from anymail.message import AnymailMessage 
 
 def model_to_dict(instance):
     return instance.to_dict()
@@ -128,3 +130,88 @@ def password_reset_token_created(sender, instance, reset_password_token, *args, 
     )
     msg.attach_alternative(email_plaintext_message, "text/html")
     msg.send()
+
+
+# your_app_name/signals.py
+
+
+# If you're using Celery, import your task here
+# from .tasks import send_welcome_email_task # Example Celery task
+
+@receiver(user_logged_in)
+def send_welcome_email_on_login(sender, request, user, **kwargs):
+    """
+    Signal receiver to send a welcome email when a user logs in.
+    """
+    if user.email: # Ensure the user has an email address
+        print(f"User {user.username} logged in. Attempting to send welcome email to {user.email}")
+
+        # IMPORTANT: Do NOT send emails synchronously in a signal handler in production.
+        # This will block the login request and make it slow.
+        # Use an asynchronous task queue like Celery.
+
+        # Option 1: Synchronous (NOT RECOMMENDED for production)
+        # try:
+        #     AnymailMessage(
+        #         to=[user.email],
+        #         from_email=settings.DEFAULT_FROM_EMAIL,
+        #         subject="Welcome Back! (or Just Welcome!)",
+        #         html_content=f"<h1>Hello {user.username}!</h1><p>Thanks for logging in.</p>"
+        #     ).send()
+        #     print(f"Synchronous welcome email sent to {user.email}")
+        # except Exception as e:
+        #     print(f"Error sending synchronous welcome email to {user.email}: {e}")
+
+        # Option 2: Asynchronous (RECOMMENDED for production using Celery)
+        # Make sure you have Celery configured and 'send_welcome_email_task' defined in your_app_name/tasks.py
+        # You would typically pass the user ID or email to the task.
+        # send_welcome_email_task.delay(user.id) # Pass user ID if task fetches user details
+        # Or:
+        # send_welcome_email_task.delay(user.email, user.username) # Pass email and username directly
+        print(f"Asynchronous welcome email task triggered for {user.email}")
+
+        # Example of the actual email sending logic that would go into a Celery task:
+        try:
+            # You would put this logic inside your Celery task function
+            email_subject = "Welcome to Our Platform!"
+            email_html_content = f"""
+            <h1>Hello {user.username},</h1>
+            <p>Welcome to our platform! We're thrilled to have you here.</p>
+            <p>If you have any questions, feel free to contact our support team.</p>
+            <p>Best regards,<br>Your Team</p>
+            """
+            # Using a Brevo template is highly recommended for transactional emails
+            # brevo_template_id = 12345 # Replace with your actual Brevo template ID
+            # if brevo_template_id:
+            #     message = AnymailMessage(
+            #         to=[user.email],
+            #         from_email=settings.DEFAULT_FROM_EMAIL,
+            #         template_id=brevo_template_id,
+            #         merge_global_data={
+            #             "user_name": user.get_full_name() or user.username,
+            #             "platform_name": "My DRF App",
+            #         }
+            #     )
+            # else:
+            message = AnymailMessage(
+                to=[user.email],
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                subject=email_subject,
+                html_content=email_html_content,
+            )
+            message.send()
+            print(f"Welcome email successfully sent to {user.email}")
+        except Exception as e:
+            print(f"Failed to send welcome email to {user.email}: {e}")
+
+
+# your_app_name/signals.py (updated)
+# ...
+from .tasks import send_welcome_email_task # Import your Celery task
+
+@receiver(user_logged_in)
+def trigger_welcome_email_on_login(sender, request, user, **kwargs):
+    if user.email:
+        # Trigger the Celery task
+        send_welcome_email_task.delay(user.id) # Pass user.id, task will fetch user object
+        print(f"Welcome email task for {user.email} queued.")

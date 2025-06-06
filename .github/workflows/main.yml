@@ -19,6 +19,7 @@ jobs:
             cd /app/backend
             git stash
             git pull origin backup-main
+            .venv/bin/pip install -r requirements.txt
             .venv/bin/python3 manage.py collectstatic --noinput
             # Note add `%dev ALL=NOPASSWD: /bin/systemctl` restart nginx to the /etc/sudoers.d/dev_priv file
             sudo systemctl restart amlpro

@@ -335,6 +335,7 @@ class LiveClassSerializer(serializers.Serializer):
     start_time = serializers.DateTimeField()
     end_time = serializers.DateTimeField()
     created_at = serializers.DateTimeField(read_only=True)
+    link = serializers.URLField()
 
     def to_representation(self, instance):
         representation = super().to_representation(instance)

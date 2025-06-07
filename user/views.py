@@ -180,8 +180,6 @@ class Signup(APIView):
 
 logger = logging.getLogger(__name__)
 
-
-
 class Login(APIView):
     permission_classes = [AllowAny]
 
@@ -196,39 +194,72 @@ class Login(APIView):
 
         # Retrieve the user from MongoDB
         db = get_mongo_db()
-        user_data = db.customusers.find_one({"email": email})
+        users_collection = db.customusers
+        user_document = users_collection.find_one({"email": email})
 
-        if user_data:
+        if user_document:
             # Check if the provided password matches the hashed password from MongoDB
-            if check_password(password, user_data['password']):
-                # Create a Django User object from MongoDB data
-                user = CustomUser(
-                    id=str(user_data['_id']), # Store MongoDB _id as Django user's PK
-                    username=user_data.get('username', user_data['email']), # Use email as username if no dedicated username field
-                    email=user_data['email'],
-                    is_active=True # Assume active
+            if 'password' in user_document and check_password(password, user_document['password']):
+                # Update last_login in MongoDB
+                users_collection.update_one(
+                    {"_id": user_document['_id']},
+                    {"$set": {"last_login": datetime.utcnow()}}
                 )
-                user.is_staff = user_data.get('is_staff', False)
-                user.is_superuser = user_data.get('is_superuser', False)
-                # You might need to set a backend attribute
-                user.backend = 'user.backends.MongoAuthBackend' # Important for sessions
+                # Fetch the updated document to ensure 'last_login' is current in the response
+                # This is important if you want the response to reflect the just-updated last_login
+                user_document = users_collection.find_one({"_id": user_document['_id']})
 
-                # Manually set the user in the session
-                request.session['user_id'] = str(user_data['_id'])
+
+                # Create a Django User object from MongoDB data
+                # We need this to ensure the session and Django's auth system work correctly.
+                # Populate it with necessary fields from the MongoDB document.
+                user = CustomUser(
+                    id=str(user_document['_id']), # Store MongoDB _id as Django user's PK
+                    username=user_document.get('username', user_document['email']), # Use email as username if no dedicated username field
+                    email=user_document['email'],
+                    first_name=user_document.get('first_name', ''),
+                    last_name=user_document.get('last_name', ''),
+                    # Add other fields as needed from user_document to the Django CustomUser instance
+                    # For example:
+                    # phone_number=user_document.get('phone_number', ''),
+                    # profile_picture=user_document.get('profile_picture', ''),
+                    # role=user_document.get('role', 'STUDENT'),
+                    is_active=user_document.get('is_active', True), # Get from mongo or default to True
+                    is_staff=user_document.get('is_staff', False),
+                    is_superuser=user_document.get('is_superuser', False),
+                    date_joined=user_document.get('date_joined', timezone.now()),
+                    last_login=user_document.get('last_login', None)
+                )
+
+                # --- CRUCIAL FIX: Retain user.backend ---
+                # Important for sessions with custom authentication backends.
+                # Make sure 'user.backends.MongoAuthBackend' matches your settings.AUTHENTICATION_BACKENDS entry.
+                user.backend = 'user.backends.MongoAuthBackend'
+
+
+                # Manually log in the user to create a session
+                # If you are using Django's built-in session handling for authentication,
+                # you might want to consider `auth.login(request, user)` here instead of manual session assignment.
+                # However, your original code used `request.session['user_id']`, so I'll stick to that
+                # while ensuring `user.backend` is set for proper session management.
+                request.session['user_id'] = str(user_document['_id'])
                 request.session.modified = True
 
-                # Assuming CustomUserSerializer takes a Django User object
-                serializer = CustomUserSerializer(user)
-                user_data = serializer.data
 
-                # Include the session key in the response
+                # Use CustomUserSerializer to serialize the full MongoDB document for the response.
+                # Even though we created a Django `CustomUser` instance, for the *response data*,
+                # we want the rich MongoDB document structure.
+                serializer = CustomUserSerializer(user_document)
+
+
+                # Include the session key in the response as requested
                 return Response({
-                    "user": user_data,
+                    "user": serializer.data,
                     "message": "User logged in successfully",
-                    "session_key": request.session.session_key
+                    "session_key": request.session.session_key # Retained as requested
                 }, status=status.HTTP_200_OK)
             else:
-                # Password does not match
+                # Password does not match or password field missing
                 return Response({"error": "Invalid credentials, please try again"}, status=status.HTTP_400_BAD_REQUEST)
         else:
             # User not found

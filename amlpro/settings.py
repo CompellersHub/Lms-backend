@@ -96,14 +96,15 @@ AWS_SECRET_ACCESS_KEY = os.getenv('S3_SECRET_ACCESS_KEY')
 AWS_STORAGE_BUCKET_NAME = os.getenv('S3_BUCKET') # The S3 bucket name you created
 AWS_S3_REGION_NAME = os.getenv('S3_REGION') # e.g., 'us-east-1'
 AWS_S3_FILE_OVERWRITE = False # Prevents overwriting files with the same name
-AWS_DEFAULT_ACL = 'public-read' # This is for Aclllll access
+
 
 # Optional: If you want to use a custom domain for S3 (e.g., if you map a CNAME to S3 direct)
 # AWS_S3_CUSTOM_DOMAIN = f'{AWS_STORAGE_BUCKET_NAME}.s3.{AWS_S3_REGION_NAME}.amazonaws.com'
 
 # For media files (user uploads)
 DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
-MEDIA_URL = f'https://{AWS_STORAGE_BUCKET_NAME}.s3.{AWS_S3_REGION_NAME}.amazonaws.com/media/' # Direct S3 URL for media uploads
+MEDIA_URL = f'https://{AWS_STORAGE_BUCKET_NAME}.s3.{AWS_S3_REGION_NAME}.amazonaws.com/' # Direct S3 URL for media uploads
+MEDIA_ROOT = ''
 
 # For CloudFront Integration (highly recommended for video)
 # Use your CloudFront Distribution Domain Name here
@@ -368,3 +369,8 @@ JAZZMIN_SETTINGS = {
      "use_google_fonts_cdn": True,
       "show_ui_builder": True,
 }
+
+
+
+# https://titanscareers.s3.eu-north-1.amazonaws.com/course_images/choong-deng-xiang--WXQm_NTK0U-unsplash.jpg
+# https://titanscareers.s3.eu-north-1.amazonaws.com/course_images/choong-deng-xiang--WXQm_NTK0U-unsplash_q17xrgU.jpg

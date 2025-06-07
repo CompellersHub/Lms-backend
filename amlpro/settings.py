@@ -234,20 +234,20 @@ EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = 'smtp.gmail.com' # Or your email host (e.g., SendGrid, Mailgun)
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
-EMAIL_HOST_USER = 'calebolomoshua@gmail.com' # Your email address
-EMAIL_HOST_PASSWORD = 'Alphamajor1' # Your email password or app password
-DEFAULT_FROM_EMAIL = 'calebolomoshua@gmail.com' # From address for emails
-SERVER_EMAIL = 'calebolomoshua@gmail.com'
+EMAIL_HOST_USER = 'EMAIL_ADDRESS' # Your email address
+EMAIL_HOST_PASSWORD = 'EMAIL_PASSWORD ' # Your email password or app password
+# DEFAULT_FROM_EMAIL = 'calebolomoshua@gmail.com' # From address for emails
+SERVER_EMAIL = 'EMAIL_ADDRESS'
 
 
-# brevo email
+# brevo email 
 
 # settings.py
 
 ANYMAIL_BACKEND = "anymail.backends.brevo.EmailBackend"
 
 ANYMAIL = {
-    "BREVO_API_KEY": "YOUR_BREVO_V3_API_KEY", # Replace with your actual API key
+    "BREVO_API_KEY": os.getenv('Brevo_API'), # Replace with your actual API key
     # "IGNORE_RECIPIENT_STATUS": True, # Optional: To ignore recipient status errors
 }
 

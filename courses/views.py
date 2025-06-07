@@ -927,28 +927,78 @@ class CancelPaymentView(APIView):
 
 
 
-@authentication_classes([SessionAuthentication])
 class GenerateCertificatePDF(APIView):
+    # Option 1: Explicitly set authentication_classes to an empty list
+    # This means NO authentication schemes will be run for this view.
+    authentication_classes = [] 
+    
+    # Option 2: Set permission_classes to AllowAny
+    # This means ANY user (authenticated or unauthenticated/anonymous) can access this view.
+    # AllowAny is usually sufficient if you just want to make it public.
+    permission_classes = [AllowAny] 
 
     def get(self, request):
-        user = request.user
+        # Since authentication is removed or permission is AllowAny,
+        # request.user will be an AnonymousUser if no session cookie is present.
+        # You should remove or adapt this check:
+        # if not request.user.is_authenticated:
+        #     return Response({"error": "Authentication required."}, status=status.HTTP_401_UNAUTHORIZED)
+        # If you remove the authentication, this check would always be false and return 401.
 
-        if not user.is_authenticated:
-            return Response({"error": "Authentication required."}, status=status.HTTP_401_UNAUTHORIZED)
+        # If you still need a name, but don't want to enforce authentication:
+        # You could get a name from query params or assume an anonymous name
+        participant_name = request.query_params.get('username', 'Participant Name') # Get name from query param
+        if not participant_name: # Fallback if 'name' not provided
+             participant_name = "Anonymous Participant"
 
-        # Get course name and completion date from query parameters
-        course_name = request.query_params.get('course', 'Course Name Not Provided')
-        completion_date_str = request.query_params.get('completion_date', 'Date Not Provided')
-
-        try:
+        # If you *sometimes* want to use the authenticated user's name if available,
+        # but don't require authentication, you can check:
+        if request.user.is_authenticated:
+            user = request.user
             # Fetch user data from MongoDB for the name
             client = MongoClient(settings.MONGO_URI, tls=True, tlsAllowInvalidCertificates=True)
             db = get_mongo_db()
             users_collection = db.customusers
             mongo_user = users_collection.find_one({"email": user.email})
             client.close()
-
             participant_name = mongo_user.get('first_name', '') + ' ' + mongo_user.get('last_name', '') if mongo_user and (mongo_user.get('first_name') or mongo_user.get('last_name')) else (mongo_user.get('email', 'N/A') if mongo_user else user.username)
+        else:
+            participant_name = request.query_params.get('name', 'Completed student') # Fallback if not authenticated
+
+
+        # Get course name and completion date from query parameters
+        course_name = request.query_params.get('course', 'Course Name Not Provided')
+        completion_date_str = request.query_params.get('completion_date', 'Date Not Provided')
+
+        try:
+            # --- IMPORTANT ---
+            # If you remove authentication, you CANNOT rely on request.user for the name.
+            # You must get the participant_name from somewhere else, e.g., query parameters.
+            # The current MongoDB user fetching logic relies on request.user.email.
+            # If you still need a name from MongoDB for an *unauthenticated* request,
+            # you would need to pass an identifier (like email or user ID) in the URL/body.
+
+            # Example: If you pass user_id in query params for unauthenticated certificate
+            # user_id_from_param = request.query_params.get('user_id')
+            # if user_id_from_param:
+            #     try:
+            #         client = MongoClient(settings.MONGO_URI, tls=True, tlsAllowInvalidCertificates=True)
+            #         db = get_mongo_db()
+            #         users_collection = db.customusers
+            #         mongo_user = users_collection.find_one({"_id": ObjectId(user_id_from_param)})
+            #         client.close()
+            #         if mongo_user:
+            #             participant_name = mongo_user.get('username')
+            #             if not participant_name.strip(): # Fallback if first/last name empty
+            #                  participant_name = mongo_user.get('email', 'N/A')
+            #         else:
+            #             logger.warning(f"User with ID {user_id_from_param} not found in MongoDB for certificate.")
+            #             participant_name = "Unknown Participant" # Default if ID not found
+            #     except Exception as e:
+            #         logger.error(f"Error fetching MongoDB user for certificate with ID {user_id_from_param}: {e}")
+            #         participant_name = "Error Fetching Name" # Default if MongoDB fetch fails
+            # else:
+            #     participant_name = request.query_params.get('name', 'Participant Name') # Default if no user_id
 
             # Load the PDF template
             template_path = "staticfiles/certificate/COC.pdf"  # Update this path

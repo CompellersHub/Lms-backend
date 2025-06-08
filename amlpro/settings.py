@@ -231,14 +231,15 @@ SOCIALACCOUNT_FORMS = {
 
 # Email reset settings
 
+# Brevo (Sendinblue) SMTP Settings
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = 'smtp.gmail.com' # Or your email host (e.g., SendGrid, Mailgun)
-EMAIL_PORT = 587
-EMAIL_USE_TLS = True
-EMAIL_HOST_USER = 'EMAIL_ADDRESS' # Your email address
-EMAIL_HOST_PASSWORD = 'EMAIL_PASSWORD ' # Your email password or app password
-# DEFAULT_FROM_EMAIL = 'calebolomoshua@gmail.com' # From address for emails
-SERVER_EMAIL = 'EMAIL_ADDRESS'
+EMAIL_HOST = 'smtp-relay.brevo.com' # Brevo's SMTP host
+EMAIL_PORT = 587                    # Brevo's SMTP port (587 for TLS, 465 for SSL)
+EMAIL_USE_TLS = True                # Use TLS for encryption
+EMAIL_HOST_USER = os.getenv('BREVO_SMTP_LOGIN') # Your Brevo SMTP login (often your Brevo email)
+EMAIL_HOST_PASSWORD = os.getenv('BREVO_SMTP_KEY') # Your Brevo SMTP key (the auto-generated password)
+DEFAULT_FROM_EMAIL = 'olomoshuaomozafen@gmail.com' # The email address you want emails to appear from
+
 
 
 # brevo email 
@@ -252,7 +253,7 @@ ANYMAIL = {
     # "IGNORE_RECIPIENT_STATUS": True, # Optional: To ignore recipient status errors
 }
 
-DEFAULT_FROM_EMAIL = "your_verified_email@yourdomain.com" # Required for Django's mail functions
+DEFAULT_FROM_EMAIL = 'olomoshuaomozafen@gmail.com' # Required for Django's mail functions
 SERVER_EMAIL = DEFAULT_FROM_EMAIL # Default from-email for Django errors
 
 AUTH_USER_MODEL = 'user.CustomUser'
@@ -344,9 +345,6 @@ STATIC_URL = '/static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
 
-
-# MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
-# MEDIA_URL = '/media/'
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field

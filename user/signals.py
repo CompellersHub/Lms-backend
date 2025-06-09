@@ -74,57 +74,119 @@ def delete_other_models_from_mongodb(sender, instance, **kwargs):
 
 
 
+User = get_user_model()
+logger = logging.getLogger(__name__)
+
 @receiver(reset_password_token_created)
 def password_reset_token_created(sender, instance, reset_password_token, *args, **kwargs):
     """
     Handles password reset tokens
     When a token is created, an e-mail needs to be sent to the user
     """
-    # Get the Django User instance from the token
     django_user = reset_password_token.user
+    user_email = django_user.email  # Fallback: Django user's email
+    user_username = django_user.username # Fallback: Django user's username
 
-    # Fetch the corresponding MongoDB user to get the actual email
-    # Assuming django_user.pk stores the _id from MongoDB
-    client = None
-    try:
-        client = MongoClient(settings.MONGO_URI, tls=True, tlsAllowInvalidCertificates=True)
-        db = client.get_database() # Get the database instance
-        users_collection = db.customusers # Your custom user collection name
-        mongo_user = users_collection.find_one({"_id": django_user.pk})
+    # --- DEBUGGING BEGINS ---
+    logger.info(f"Django User PK: {django_user.pk} (Type: {type(django_user.pk)})")
+    # You might want to log the email that django_user currently has as a fallback
+    logger.info(f"Django User Email (fallback): {django_user.email}")
+    # --- DEBUGGING ENDS ---
 
-        if mongo_user:
-            user_email = mongo_user.get('email', django_user.email) # Prefer MongoDB email, fallback to Django user email
-            user_username = mongo_user.get('username', django_user.username) # Prefer MongoDB username, fallback to Django user username
-        else:
-            # Fallback if MongoDB user not found (e.g., if it's a standard Django user)
-            user_email = django_user.email
-            user_username = django_user.username
-    except Exception as e:
-        print(f"Error fetching MongoDB user for password reset email: {e}")
-        # Log the error more verbosely if needed
-        # logging.error(f"Error fetching MongoDB user for password reset email: {e}", exc_info=True)
-        user_email = django_user.email # Critical fallback
-        user_username = django_user.username
-    finally:
-        if client: # Only close if client was successfully assigned
-            client.close()
+    # --- Fetch MongoDB User ---
+    db = get_mongo_db()
+    if db is not None:
+        try:
+            users_collection = db.customusers # Your custom user collection name
 
-    # Build the reset password URL for the frontend
-    # This is where your frontend will handle the token for password reset
+            # --- Critical part: How do you map django_user.pk to MongoDB's _id? ---
+
+            mongo_query_value = None # Initialize to None
+
+            # Case 1: If django_user.pk is already a bson.ObjectId
+            # (This happens if your custom Django User model uses an ObjectId field directly)
+            if isinstance(django_user.pk, ObjectId):
+                mongo_query_value = django_user.pk
+                logger.info("Querying MongoDB with ObjectId directly from django_user.pk")
+
+            # Case 2: If django_user.pk is a string that represents an ObjectId
+            # (Common if you store MongoDB _id as a string in Django's PK)
+            elif isinstance(django_user.pk, str) and len(django_user.pk) == 24: # ObjectId hex strings are 24 chars
+                try:
+                    mongo_query_value = ObjectId(django_user.pk)
+                    logger.info("Querying MongoDB by converting string django_user.pk to ObjectId")
+                except Exception: # Handle cases where string is not a valid ObjectId
+                    logger.warning(f"django_user.pk '{django_user.pk}' is a string but not a valid ObjectId hex string.")
+
+            # Case 3: If django_user.pk is an integer and your MongoDB _id is also an integer
+            # (This means you explicitly set _id to an integer when creating users in Mongo)
+            elif isinstance(django_user.pk, int):
+                mongo_query_value = django_user.pk
+                logger.info("Querying MongoDB with integer django_user.pk")
+            
+            # Case 4: If django_user.pk is an integer, but your MongoDB _id is a string of that integer
+            # (Less common, but possible if _id was stringified int)
+            # elif isinstance(django_user.pk, int):
+            #     mongo_query_value = str(django_user.pk)
+            #     logger.info("Querying MongoDB by converting integer django_user.pk to string")
+
+            # Case 5: If you use a *separate field* in MongoDB to link to Django's PK
+            # (e.g., you have a field named 'django_id' in MongoDB that stores django_user.pk)
+            # This is often the most robust way if _id is ObjectId and Django PK is int.
+            # You would need to ensure this 'django_id' field exists in your MongoDB documents.
+            # mongo_query = {"django_id": django_user.pk}
+            # mongo_user = users_collection.find_one(mongo_query)
+            # logger.info(f"Querying MongoDB with separate field 'django_id'={django_user.pk}")
+
+
+            mongo_user = None
+            if mongo_query_value is not None:
+                mongo_user = users_collection.find_one({"_id": mongo_query_value})
+            else:
+                logger.warning("Could not determine appropriate query value for MongoDB based on django_user.pk type.")
+            
+            # --- DEBUGGING BEGINS ---
+            if mongo_user:
+                logger.info(f"MongoDB User found: {mongo_user.get('username')} (ID: {mongo_user.get('_id')})")
+            else:
+                logger.warning(f"MongoDB user not found using query value '{mongo_query_value}' (Type: {type(mongo_query_value)}).")
+                # Add more detailed logging here if needed:
+                # logger.warning(f"Attempted query: {{'_id': {mongo_query_value}}}")
+                # You could also try to find by email as a last resort for debugging:
+                # found_by_email = users_collection.find_one({"email": django_user.email})
+                # if found_by_email:
+                #     logger.info(f"User found by email in MongoDB: {found_by_email.get('username')}")
+                # else:
+                #     logger.warning("User not found by email in MongoDB either.")
+            # --- DEBUGGING ENDS ---
+
+
+            if mongo_user:
+                user_email = mongo_user.get('email', django_user.email)
+                user_username = mongo_user.get('username', django_user.username)
+            else:
+                logger.warning("Falling back to Django user email as MongoDB user not found.")
+
+        except Exception as e:
+            logger.error(f"Error fetching MongoDB user for password reset email: {e}", exc_info=True)
+            # user_email and user_username retain their django_user fallbacks
+
+    else:
+        logger.warning("MongoDB client not available. Using Django user email for password reset.")
+
+    # --- Rest of your signal handler (unchanged) ---
     frontend_base_url = getattr(settings, 'FRONTEND_RESET_PASSWORD_URL', 'http://localhost:5173/reset-password/')
-    # Ensure the frontend URL has a trailing slash if it expects one, or adjust here
-    # The package gives you the token itself (.key)
     reset_password_url = f"{frontend_base_url}?token={reset_password_token.key}"
 
     context = {
         'username': user_username,
         'email': user_email,
         'reset_password_url': reset_password_url,
-        'site_name': getattr(settings, 'SITE_NAME', 'Your LMS'), # Define SITE_NAME in settings.py
-        'domain': getattr(settings, 'FRONTEND_DOMAIN', 'localhost:3000'), # Define FRONTEND_DOMAIN in settings.py
+        'site_name': getattr(settings, 'SITE_NAME', 'Your LMS'),
+        'domain': getattr(settings, 'FRONTEND_DOMAIN', 'localhost:3000'),
     }
 
-    # email_html_message = render_to_string('email/user_reset_password.html', context)
+    # email_html_message = render_to_string('email/user_reset.html', context)
     email_plaintext_message = render_to_string('email/user_reset.txt', context)
 
     msg = EmailMultiAlternatives(
@@ -134,7 +196,11 @@ def password_reset_token_created(sender, instance, reset_password_token, *args, 
         to=[user_email]
     )
     msg.attach_alternative(email_plaintext_message, "text/html")
-    msg.send()
+    try:
+        msg.send()
+    except Exception as e:
+        logger.error(f"Failed to send password reset email to {user_email}: {e}", exc_info=True)
+
 
 
 User = get_user_model()

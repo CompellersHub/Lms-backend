@@ -59,60 +59,72 @@ class GoogleLoginView(APIView):
             if idinfo['iss'] not in ['accounts.google.com', 'https://accounts.google.com']:
                 raise ValueError('Wrong issuer.')
 
-            # Extract user info from the token
-            extracted_user_info = { # Renamed to avoid confusion with 'user' variable later
+            extracted_user_info = {
                 'google_id': idinfo['sub'],
                 'email': idinfo['email'],
-                'name': idinfo['name'],
-                'picture': idinfo.get('picture', ''),
+                'first_name': idinfo.get('given_name', ''),
+                'last_name': idinfo.get('family_name', ''),
+                'name': idinfo.get('name', ''),
+                'profile_picture': idinfo.get('picture', ''),
                 'last_login': datetime.utcnow(),
+                'role': 'STUDENT', # Default role for new users
+                'username': idinfo.get('email', '').split('@')[0],
+                'phone_number': '',
+                'course': [],
+                'is_active': True,
+                'is_staff': False,
+                'is_superuser': False,
+                'date_joined': datetime.utcnow(),
             }
 
-            # Check if the user already exists in the database
-            user = users_collection.find_one({'google_id': idinfo['sub']})
-            if not user:
+            db = get_mongo_db()
+            users_collection = db['customusers']
+
+            user_document = users_collection.find_one({'google_id': idinfo['sub']})
+
+            if not user_document:
                 logger.info(f"Creating new user: {extracted_user_info['email']}")
-                # Ensure _id is handled correctly when inserting new user_info
-                # MongoDB automatically adds _id on insert.
-                # If you need to store it in a specific field, do it here.
+                if '_id' in extracted_user_info:
+                    del extracted_user_info['_id']
+
                 inserted_result = users_collection.insert_one(extracted_user_info)
-                # Fetch the newly inserted user to get the _id if needed, or use the dict if _id is not critical
-                user = users_collection.find_one({'_id': inserted_result.inserted_id})
-                if not user: # Fallback in case find_one fails immediately
-                    user = extracted_user_info
-                    user['_id'] = inserted_result.inserted_id # Add the _id manually if not re-fetched
+                user_document = users_collection.find_one({'_id': inserted_result.inserted_id})
             else:
                 logger.info(f"User already exists: {extracted_user_info['email']}")
-                # Optional: Update last_login or other fields for existing user
                 users_collection.update_one(
                     {'google_id': idinfo['sub']},
-                    {'$set': {'last_login': datetime.utcnow()}}
+                    {'$set': {
+                        'last_login': datetime.utcnow(),
+                        'email': extracted_user_info['email'],
+                        'first_name': extracted_user_info['first_name'],
+                        'last_name': extracted_user_info['last_name'],
+                        'name': extracted_user_info['name'],
+                        'profile_picture': extracted_user_info['profile_picture'],
+                    }}
                 )
-                # Make sure the 'user' variable holds the most up-to-date information
-                # This ensures the response contains the updated info if needed
-                user = users_collection.find_one({'google_id': idinfo['sub']})
+                user_document = users_collection.find_one({'google_id': idinfo['sub']})
 
 
-            # Create a session for the user
-            # Ensure _id is converted to string for session if it's an ObjectId
-            request.session['user_id'] = str(user['_id'])
+            # --- Session Handling (with added logging) ---
+            logger.debug(f"Before session assignment. Session ID: {request.session.session_key}, Session data: {request.session.items()}")
+
+            request.session['user_id'] = str(user_document['_id'])
             request.session.modified = True
 
-            logger.info(f"Successfully logged in user: {user['email']}")
+            logger.info(f"Session 'user_id' set to: {request.session['user_id']}")
+            logger.info(f"Session marked as modified. New Session ID (if generated/updated): {request.session.session_key}")
+            logger.debug(f"After session assignment. Full Session data: {request.session.items()}")
+            # --- End Session Handling ---
 
-            # **CRITICAL CHANGE HERE: Include user data in the response**
-            response_data = {
+            logger.info(f"Successfully logged in user: {user_document['email']}")
+
+            serializer = CustomUserSerializer(user_document)
+
+            return Response({
                 'message': 'Login successful',
-                'user': {
-                    'id': str(user['_id']), # Convert ObjectId to string for JSON serialization
-                    'google_id': user.get('google_id'),
-                    'email': user.get('email'),
-                    'name': user.get('name'),
-                    'picture': user.get('picture'),
-                    # Add any other user fields you want to send to the frontend
-                }
-            }
-            return Response(response_data, status=status.HTTP_200_OK)
+                'user': serializer.data,
+                'session_key': request.session.session_key # Include session key in response
+            }, status=status.HTTP_200_OK)
 
         except ValueError as e:
             logger.error(f"Error verifying Google token: {e}")
@@ -120,6 +132,7 @@ class GoogleLoginView(APIView):
         except Exception as e:
             logger.error(f"Unexpected error: {e}")
             return Response({'error': 'An unexpected error occurred'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 import logging
 logger = logging.getLogger(__name__)

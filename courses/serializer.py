@@ -31,10 +31,9 @@ class CategorySerializer(serializers.Serializer):
 class VideoSerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)
     title = serializers.CharField(max_length=200)
-    video = serializers.URLField(allow_null=True, required=False)
     duration = serializers.CharField()
     description = serializers.CharField()
-    file = serializers.FileField(allow_null=True, required=False)
+    video_file = serializers.FileField(allow_null=True, required=False)
 
     def to_representation(self, instance):
         if '_id' in instance:

@@ -40,6 +40,7 @@ class Video(models.Model):
             "id": self.id,
             "title": self.title,
             "video_id": self.video_id,
+            "video_file": self.video_file.url if self.video_file else None,
             "description": self.description,
             "duration": self.duration,
             "order": self.order,

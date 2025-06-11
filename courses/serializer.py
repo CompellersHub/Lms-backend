@@ -167,7 +167,7 @@ class TargetAudienceSerializer(serializers.Serializer):
         db.target_audience.update_one({"_id": audience_id}, {"$set": validated_data})
         return db.target_audience.find_one({"_id": audience_id})
 
-
+ 
 
 class CourseSerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)

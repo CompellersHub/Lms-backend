@@ -9,6 +9,9 @@ import re
 from django.utils import timezone
 import logging
 from django.db import models # Add this line
+from django.contrib.auth import authenticate
+from django.utils.translation import gettext_lazy as _
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -158,6 +161,73 @@ class CustomUserSerializer(serializers.Serializer):
         
         db.customusers.update_one({"_id": user_id}, {"$set": update_fields})
         return db.customusers.find_one({"_id": user_id})
+    
+
+class TeacherLoginSerializer(serializers.Serializer):
+    email = serializers.EmailField(write_only=True)
+    password = serializers.CharField(
+        label=_("Password"),
+        style={'input_type': 'password'},
+        trim_whitespace=False,
+        write_only=True
+    )
+
+    token = serializers.CharField(read_only=True)
+    refresh = serializers.CharField(read_only=True) # If you return refresh token
+
+    def validate(self, attrs):
+        email = attrs.get('email')
+        password = attrs.get('password')
+
+        if email and password:
+            # Use Django's authenticate function, which will call your MongoAuthBackend
+            user = authenticate(request=self.context.get('request'), email=email, password=password)
+
+            if not user:
+                msg = _('Unable to log in with provided credentials.')
+                raise serializers.ValidationError(msg, code='authorization')
+        else:
+            msg = _('Must include "email" and "password".')
+            raise serializers.ValidationError(msg, code='authorization')
+
+        attrs['user'] = user
+        return attrs
+
+import logging
+logger = logging.getLogger(__name__)
+
+db = get_mongo_db()
+get_teacher_profile_collection = db['teacherprofiles']
+
+class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
+    """
+    Simplified TokenObtainPairSerializer that focuses on authentication
+    and token generation. The custom logic moves to the view.
+    """
+    username_field = 'email'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if 'username' in self.fields:
+            del self.fields['username']
+
+    # The validate method will now just call super().validate
+    # The self.user will be populated, and its _mongo_doc should be present
+    # due to the backend. The rest of the custom logic moves to the view.
+    # We still keep this method to benefit from Simple JWT's internal authentication flow.
+    def validate(self, attrs):
+        data = super().validate(attrs) # This performs authentication and populates self.user
+        
+        # At this point, self.user should be an instance of CustomUser
+        # and should have the _mongo_doc attribute attached by MongoAuthBackend.
+        # We can add a quick debug check here if needed, but the main checks
+        # will now occur in the view.
+
+        # logger.debug(f"DEBUG (Serializer Validate): User: {self.user.email}, _mongo_doc present: {hasattr(self.user, '_mongo_doc')}")
+        
+        return data
+
+        
 
     
 
@@ -166,6 +236,7 @@ class TeacherProfileSerializer(serializers.Serializer):
     user_id = serializers.CharField()
     first_name = serializers.CharField(max_length=150, allow_blank=True, required=False)
     last_name = serializers.CharField(max_length=150, allow_blank=True, required=False)
+    password = serializers.CharField(write_only=True)
     role = serializers.CharField(max_length=20, default='TEACHER')
     bio = serializers.CharField(allow_blank=True, required=False)
     profile_picture = serializers.CharField(allow_blank=True, required=False)
@@ -183,14 +254,14 @@ class TeacherProfileSerializer(serializers.Serializer):
     def create(self, validated_data):
         db = get_mongo_db()
         validated_data['created_at'] = timezone.now()  # Use timezone.now()
-        result = db.teacher_profiles.insert_one(validated_data)
-        return db.teacher_profiles.find_one({"_id": result.inserted_id})
+        result = db.teacherprofiles.insert_one(validated_data)
+        return db.teacherprofiles.find_one({"_id": result.inserted_id})
 
     def update(self, instance, validated_data):
         db = get_mongo_db()
         profile_id = ObjectId(instance['id'])
-        db.teacher_profiles.update_one({"_id": profile_id}, {"$set": validated_data})
-        return db.teacher_profiles.find_one({"_id": profile_id})
+        db.teacherprofiles.update_one({"_id": profile_id}, {"$set": validated_data})
+        return db.teacherprofiles.find_one({"_id": profile_id})
 
 class NotificationSerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)

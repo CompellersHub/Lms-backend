@@ -37,6 +37,10 @@ from django.contrib.auth.hashers import make_password
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework_simplejwt.views import TokenRefreshView
 from .serializer import CustomTokenObtainPairSerializer # Import your custom serializer
+from rest_framework_simplejwt.tokens import RefreshToken
+
+
+
 
 db = get_mongo_db()
 users_collection = db['customusers']
@@ -196,7 +200,7 @@ class Signup(APIView):
 
 logger = logging.getLogger(__name__)
 
-class Login(APIView):
+class Login(APIView): # This view will now handle student login with JWT
     permission_classes = [AllowAny]
 
     def post(self, request):
@@ -208,77 +212,53 @@ class Login(APIView):
         if not password:
             return Response({"error": "Password is required"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Retrieve the user from MongoDB
-        db = get_mongo_db()
-        users_collection = db.customusers
-        user_document = users_collection.find_one({"email": email})
+        # Authenticate the user using your MongoAuthBackend
+        # This will return a CustomUser instance if successful
+        user = authenticate(request=request, email=email, password=password)
 
-        if user_document:
-            # Check if the provided password matches the hashed password from MongoDB
-            if 'password' in user_document and check_password(password, user_document['password']):
-                # Update last_login in MongoDB
-                users_collection.update_one(
-                    {"_id": user_document['_id']},
+        if user is not None:
+            if user.is_active:
+                # IMPORTANT: Role check for students
+                # Ensure this login endpoint is specifically for students
+                # Or, if it's a general login, ensure the user has the 'STUDENT' role.
+                # Assuming 'customusers' collection is for students/general users with a role field.
+                db = get_mongo_db()
+                custom_user_doc = db.customusers.find_one({"_id": user._mongo_doc['_id']}) # Get the full doc again if needed
+
+                if not custom_user_doc or custom_user_doc.get('role') != 'STUDENT':
+                    return Response(
+                        {"detail": _('Only students can log in via this endpoint or incorrect role.')},
+                        status=status.HTTP_403_FORBIDDEN # Or 401 if you prefer
+                    )
+
+                # Generate JWT tokens manually
+                refresh = RefreshToken.for_user(user) # user must be an AbstractBaseUser instance
+                access_token = str(refresh.access_token)
+                refresh_token = str(refresh)
+
+                # Update last_login in MongoDB (if not handled by backend)
+                # Your backend might already update this, but doing it here ensures it.
+                db.customusers.update_one(
+                    {"_id": user._mongo_doc['_id']},
                     {"$set": {"last_login": datetime.utcnow()}}
                 )
-                # Fetch the updated document to ensure 'last_login' is current in the response
-                # This is important if you want the response to reflect the just-updated last_login
-                user_document = users_collection.find_one({"_id": user_document['_id']})
-
-
-                # Create a Django User object from MongoDB data
-                # We need this to ensure the session and Django's auth system work correctly.
-                # Populate it with necessary fields from the MongoDB document.
-                user = CustomUser(
-                    id=str(user_document['_id']), # Store MongoDB _id as Django user's PK
-                    username=user_document.get('username', user_document['email']), # Use email as username if no dedicated username field
-                    email=user_document['email'],
-                    first_name=user_document.get('first_name', ''),
-                    last_name=user_document.get('last_name', ''),
-                    # Add other fields as needed from user_document to the Django CustomUser instance
-                    # For example:
-                    # phone_number=user_document.get('phone_number', ''),
-                    # profile_picture=user_document.get('profile_picture', ''),
-                    # role=user_document.get('role', 'STUDENT'),
-                    is_active=user_document.get('is_active', True), # Get from mongo or default to True
-                    is_staff=user_document.get('is_staff', False),
-                    is_superuser=user_document.get('is_superuser', False),
-                    date_joined=user_document.get('date_joined', timezone.now()),
-                    last_login=user_document.get('last_login', None)
-                )
-
-                # --- CRUCIAL FIX: Retain user.backend ---
-                # Important for sessions with custom authentication backends.
-                # Make sure 'user.backends.MongoAuthBackend' matches your settings.AUTHENTICATION_BACKENDS entry.
-                user.backend = 'user.backends.MongoAuthBackend'
-
-
-                # Manually log in the user to create a session
-                # If you are using Django's built-in session handling for authentication,
-                # you might want to consider `auth.login(request, user)` here instead of manual session assignment.
-                # However, your original code used `request.session['user_id']`, so I'll stick to that
-                # while ensuring `user.backend` is set for proper session management.
-                request.session['user_id'] = str(user_document['_id'])
-                request.session.modified = True
-
+                
+                # Re-fetch the updated document for the response, including updated last_login
+                updated_user_document = db.customusers.find_one({"_id": user._mongo_doc['_id']})
 
                 # Use CustomUserSerializer to serialize the full MongoDB document for the response.
-                # Even though we created a Django `CustomUser` instance, for the *response data*,
-                # we want the rich MongoDB document structure.
-                serializer = CustomUserSerializer(user_document)
+                serializer = CustomUserSerializer(updated_user_document)
 
-
-                # Include the session key in the response as requested
                 return Response({
-                    "user": serializer.data,
-                    "message": "User logged in successfully",
-                    "session_key": request.session.session_key # Retained as requested
+                    "access": access_token,
+                    "refresh": refresh_token,
+                    "user_info": serializer.data, # Renamed 'user' to 'user_info' for consistency with TeacherLoginView
+                    "message": "Student logged in successfully"
                 }, status=status.HTTP_200_OK)
             else:
-                # Password does not match or password field missing
-                return Response({"error": "Invalid credentials, please try again"}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({"error": "User account is inactive."}, status=status.HTTP_401_UNAUTHORIZED)
         else:
-            # User not found
+            # Authentication failed (either user not found or password incorrect)
             return Response({"error": "Invalid credentials, please try again"}, status=status.HTTP_400_BAD_REQUEST)
 
 

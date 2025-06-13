@@ -776,151 +776,218 @@ class CourseProgressDetailView(APIView):
 
 logger = logging.getLogger(__name__)
 
-@authentication_classes([SessionAuthentication])
-@permission_classes([IsAuthenticated]) # Ensure only authenticated users can access
-class InitiatePaymentView(APIView):
+# --- Configure PayPal SDK Globally (Recommended) ---
+# This should ideally be done once when your Django app starts,
+# e.g., in a custom AppConfig's ready() method or directly here
+# if you're sure it's imported only once at startup.
+try:
+    paypalrestsdk.configure({
+        "mode": settings.PAYPAL_MODE,
+        "client_id": settings.PAYPAL_CLIENT_ID,
+        "client_secret": settings.PAYPAL_CLIENT_SECRET
+    })
+    logger.info("PayPal SDK configured successfully.")
+except Exception as e:
+    logger.error(f"Failed to configure PayPal SDK: {e}")
+    # Consider raising an exception or handling this initial failure gracefully.
+
+# --- Now the Views ---
+
+@permission_classes([IsAuthenticated])
+class InitiatePayPalPaymentView(APIView): # Renamed for clarity vs Stripe
     def post(self, request, course_id):
-        # 1. Get Logged-in User
-        user = request.user
-        if not user.is_authenticated:
-            # This check is technically redundant due to @permission_classes([IsAuthenticated])
-            # but can be useful for debugging or explicit clarity.
-            return Response({"error": "Authentication required."}, status=status.HTTP_401_UNAUTHORIZED)
+        # The user is already authenticated due to @permission_classes
+        user = request.user 
 
-        client = None # Initialize client for finally block
+        db = get_mongo_db() # Use the shared MongoDB connection
+        if db is None:
+            logger.error("MongoDB connection not available for InitiatePayPalPaymentView.")
+            return Response(
+                {"error": "Database connection error. Please try again later."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
         try:
-            # 2. Connect to MongoDB and fetch user details
-            client = MongoClient(settings.MONGO_URI, tls=True, tlsAllowInvalidCertificates=True)
-            db = client.get_database() # Assuming get_database() returns the correct DB name
-
-            # Fetch user details from your customusers collection
-            # Assuming django_user.email is the key in your MongoDB customusers collection
-            mongo_user = db.customusers.find_one({"email": user.email})
-
+            # Fetch user details from your customusers collection (using request.user's email/ID)
+            # Assuming request.user.email is reliable from your JWT/MongoAuthBackend setup
+            mongo_user = db.customusers.find_one({"_id": ObjectId(user.id)}) # Use _id for fetching
+            
             if not mongo_user:
-                logger.error(f"MongoDB user not found for email: {user.email}")
+                logger.error(f"MongoDB user not found for ID: {user.id}")
                 return Response({"error": "User profile not found."}, status=status.HTTP_404_NOT_FOUND)
 
-            # Extract user's name or email for PayPal, if needed
-            payer_email = mongo_user.get('email', user.email) # Prefer MongoDB email, fallback to Django user email
-            # You might use mongo_user.get('first_name') and mongo_user.get('last_name') for buyer info
+            # Retrieve Course Details
+            course_oid = ObjectId(course_id)
+            course_from_mongo = db.courses.find_one({'_id': course_oid}, {'name': 1, 'price': 1})
+            if not course_from_mongo:
+                logger.error(f"Course not found in MongoDB: {course_id}")
+                return Response({'error': 'Course not found'}, status=status.HTTP_404_NOT_FOUND)
+            
+            course_name = course_from_mongo.get('name')
+            course_price = course_from_mongo.get('price')
 
-            # 3. Retrieve Course Details
-            try:
-                course_oid = ObjectId(course_id)
-                course_from_mongo = db.courses.find_one({'_id': course_oid}, {'name': 1, 'price': 1})
-                if not course_from_mongo:
-                    logger.error(f"Course not found in MongoDB: {course_id}")
-                    return Response({'error': 'Course not found in MongoDB'}, status=status.HTTP_404_NOT_FOUND)
-                course_name = course_from_mongo.get('name')
-                course_price = course_from_mongo.get('price')
+            if course_price is None:
+                logger.error(f"Course price not found in MongoDB: {course_id}")
+                return Response({'error': 'Course price not found'}, status=status.HTTP_400_BAD_REQUEST)
 
-                if course_price is None:
-                    logger.error(f"Course price not found in MongoDB: {course_id}")
-                    return Response({'error': 'Course price not found in MongoDB'}, status=status.HTTP_400_BAD_REQUEST)
+            # Ensure price is a string for PayPal SDK
+            total_price = str(course_price)
 
-                # 4. Configure PayPal SDK
-                paypalrestsdk.configure({
-                    "mode": settings.PAYPAL_MODE,
-                    "client_id": settings.PAYPAL_CLIENT_ID,
-                    "client_secret": settings.PAYPAL_CLIENT_SECRET
-                })
-
-                # 5. Create PayPal Payment
-                payment = paypalrestsdk.Payment({
-                    "intent": "sale",
-                    "payer": {
-                        "payment_method": "paypal",
-                        # You can add more payer info if available from mongo_user
-                        # "payer_info": {
-                        #     "email": payer_email,
-                        #     "first_name": mongo_user.get('first_name'),
-                        #     "last_name": mongo_user.get('last_name'),
-                        # }
-                    },
-                    "transactions": [{
-                        "amount": {
-                            "total": str(course_price),
-                            "currency": "GBP"  # Or your desired currency
-                        },
-                        "description": f"Payment for course: {course_name}",
-                        # Optional: pass custom data you need back
-                        "custom": f"{user.id}|{course_id}"
-                    }],
-                    "redirect_urls": {
-                        "return_url": request.build_absolute_uri(f'/courses/payment/capture/{course_id}/'),
-                        "cancel_url": request.build_absolute_uri(f'/courses/payment/cancel/{course_id}/')
+            # Create PayPal Payment
+            payment = paypalrestsdk.Payment({
+                "intent": "sale", # Consider "authorize" and then "capture" if you need manual review
+                "payer": {
+                    "payment_method": "paypal",
+                    "payer_info": { # Include payer_info for better tracking in PayPal
+                        "email": mongo_user.get('email', user.email),
+                        "first_name": mongo_user.get('first_name', ''),
+                        "last_name": mongo_user.get('last_name', ''),
                     }
-                })
+                },
+                "transactions": [{
+                    "amount": {
+                        "total": total_price,
+                        "currency": "GBP" # IMPORTANT: Make sure this matches your course price currency
+                    },
+                    "description": f"Payment for course: {course_name}",
+                    # Optional: pass custom data you need back to Capture/Webhook
+                    "custom": f"{user.id}|{course_id}"
+                }],
+                "redirect_urls": {
+                    # Ensure these URLs are correct and accessible by PayPal
+                    "return_url": request.build_absolute_uri(f'/payment/paypal-capture/{course_id}/'),
+                    "cancel_url": request.build_absolute_uri(f'/payment/paypal-cancel/{course_id}/')
+                }
+            })
 
-                if payment.create():
-                    for link in payment.links:
-                        if link.rel == "approval_url":
-                            approval_url = str(link.href)
-                            return Response({'approval_url': approval_url}, status=status.HTTP_200_OK)
-                else:
-                    logger.error(f"Error creating PayPal payment: {payment.error}")
-                    # Log the full PayPal error for debugging
-                    logger.error(f"PayPal error details: {payment.error}")
-                    return Response({'error': payment.error}, status=status.HTTP_400_BAD_REQUEST)
+            if payment.create():
+                for link in payment.links:
+                    if link.rel == "approval_url":
+                        approval_url = str(link.href)
+                        return Response({'approval_url': approval_url}, status=status.HTTP_200_OK)
+                # Fallback if no approval_url found (shouldn't happen with standard flow)
+                logger.error("PayPal approval URL not found after payment creation.")
+                return Response({'error': 'Failed to get PayPal approval URL.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            else:
+                logger.error(f"Error creating PayPal payment: {payment.error}")
+                return Response({'error': payment.error}, status=status.HTTP_400_BAD_REQUEST)
 
-            except InvalidId:
-                logger.error(f"Invalid course_id format: {course_id}")
-                return Response({'error': 'Invalid course_id format'}, status=status.HTTP_400_BAD_REQUEST)
-
+        except InvalidId:
+            logger.error(f"Invalid course_id format: {course_id}")
+            return Response({'error': 'Invalid course_id format'}, status=status.HTTP_400_BAD_REQUEST)
+        except PyMongoError as e:
+            logger.error(f"MongoDB operation error in InitiatePayPalPaymentView: {e}")
+            return Response({'error': 'Database error during payment initiation. Please try again later.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except paypalrestsdk.exceptions.ConnectionError as e:
+            logger.error(f"PayPal SDK connection error: {e}")
+            return Response({'error': 'Could not connect to PayPal. Please try again later.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except Exception as e:
-            logger.error(f"Unexpected error in payment initiation: {str(e)}", exc_info=True)
-            return Response({'error': 'An unexpected error occurred during payment initiation. Please try again later.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        finally:
-            if client:
-                client.close()
+            logger.error(f"Unexpected error in PayPal payment initiation: {str(e)}", exc_info=True)
+            return Response({'error': 'An unexpected error occurred. Please try again later.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-class CapturePaymentView(APIView):
+
+@permission_classes([IsAuthenticated])
+class CapturePayPalPaymentView(APIView): # Renamed for clarity
     def get(self, request, course_id):
         payment_id = request.GET.get('paymentId')
         payer_id = request.GET.get('PayerID')
 
         if not payment_id or not payer_id:
-            logger.error("Payment ID or Payer ID missing")
+            logger.error("Payment ID or Payer ID missing from PayPal redirect.")
             return Response({'error': 'Payment ID or Payer ID missing'}, status=status.HTTP_400_BAD_REQUEST)
 
-        paypalrestsdk.configure({
-            "mode": settings.PAYPAL_MODE,
-            "client_id": settings.PAYPAL_CLIENT_ID,
-            "client_secret": settings.PAYPAL_CLIENT_SECRET
-        })
+        db = get_mongo_db() # Use the shared MongoDB connection
+        if db is None:
+            logger.error("MongoDB connection not available for CapturePayPalPaymentView.")
+            return Response(
+                {"error": "Database connection error. Please try again later."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
-        payment = paypalrestsdk.Payment.find(payment_id)
+        try:
+            payment = paypalrestsdk.Payment.find(payment_id)
 
-        if payment.execute({"payer_id": payer_id}):
-            try:
-                user = request.user  # Assuming user is authenticated
+            if payment.execute({"payer_id": payer_id}):
+                # Payment successfully executed on PayPal's side
 
-                try:
-                    course_oid = ObjectId(course_id)
-                    course_from_mongo = db['courses'].find_one({'_id': course_oid})
-                    if not course_from_mongo:
-                        logger.error(f"Course not found in MongoDB: {course_id}")
-                        return Response({'error': 'Course not found in MongoDB'}, status=status.HTTP_404_NOT_FOUND)
+                user = request.user # Authenticated user
+                user_oid = ObjectId(user.id)
+                course_oid = ObjectId(course_id)
 
-                    CourseEnrollment.objects.create(user_id=user, course_id=course_id)
-                    logger.info(f"User {user.id} enrolled in course {course_id}")
-                    return Response({'message': f'Payment successful! You are now enrolled in {course_from_mongo.get("name", "this course")}'}, status=status.HTTP_200_OK)
+                # Fetch updated user and course details
+                user_doc = db.customusers.find_one({"_id": user_oid})
+                course_doc = db.courses.find_one({'_id': course_oid})
 
-                except InvalidId:
-                    logger.error(f"Invalid course_id format: {course_id}")
-                    return Response({'error': 'Invalid course_id format'}, status=status.HTTP_400_BAD_REQUEST)
+                if not user_doc:
+                    logger.error(f"User {user.id} not found in MongoDB during PayPal capture.")
+                    return Response({'error': 'User profile not found for enrollment.'}, status=status.HTTP_404_NOT_FOUND)
+                if not course_doc:
+                    logger.error(f"Course {course_id} not found in MongoDB during PayPal capture.")
+                    return Response({'error': 'Course not found for enrollment.'}, status=status.HTTP_404_NOT_FOUND)
 
-            except Exception as e:
-                logger.error(f"Error during enrollment: {str(e)}")
-                return Response({'error': f'Error during enrollment: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        else:
-            logger.error(f"Error executing PayPal payment: {payment.error}")
-            return Response({'error': payment.error}, status=status.HTTP_400_BAD_REQUEST)
+                # Check if user is already enrolled (Idempotency)
+                if any(c['_id'] == course_oid for c in user_doc.get('course', [])):
+                    logger.info(f"User {user.id} already enrolled in course {course_id}. Idempotent fulfillment for PayPal payment {payment_id}.")
+                    return Response(
+                        {'message': 'Payment successful, but course was already enrolled.'},
+                        status=status.HTTP_200_OK
+                    )
+                
+                # Enroll the user by pushing course details to their 'course' array
+                db.customusers.update_one(
+                    {"_id": user_oid},
+                    {"$push": {"course": {
+                        "_id": course_doc['_id'],
+                        "name": course_doc['name'],
+                        "price": course_doc['price'], # Store the price from the course
+                        "enrollment_date": datetime.datetime.utcnow(),
+                        # Add any other relevant course details you want to embed
+                    }}}
+                )
 
-class CancelPaymentView(APIView):
+                # Record the transaction
+                db.enrollments_transactions.insert_one({
+                    "user_id": user_oid,
+                    "course_id": course_oid,
+                    "payment_id": payment_id,
+                    "payer_id": payer_id,
+                    "transaction_id": payment.transactions[0].related_resources[0].sale.id if payment.transactions[0].related_resources else None, # Get PayPal Sale ID
+                    "amount_paid": float(payment.transactions[0].amount.total), # Use amount from PayPal response
+                    "currency": payment.transactions[0].amount.currency,
+                    "status": "succeeded",
+                    "payment_method": "paypal",
+                    "timestamp": datetime.datetime.utcnow(),
+                })
+
+                logger.info(f"PayPal payment {payment_id} successfully captured and user {user.id} enrolled in course {course_id}.")
+                return Response(
+                    {'message': f'Payment successful! You are now enrolled in {course_doc.get("name", "this course")}'},
+                    status=status.HTTP_200_OK
+                )
+
+            else:
+                logger.error(f"Error executing PayPal payment {payment_id}: {payment.error}")
+                return Response({'error': payment.error}, status=status.HTTP_400_BAD_REQUEST)
+
+        except InvalidId:
+            logger.error(f"Invalid course_id format: {course_id}")
+            return Response({'error': 'Invalid course_id format'}, status=status.HTTP_400_BAD_REQUEST)
+        except PyMongoError as e:
+            logger.error(f"MongoDB operation error in CapturePayPalPaymentView: {e}")
+            return Response({'error': 'Database error during payment capture. Please try again later.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except paypalrestsdk.exceptions.ConnectionError as e:
+            logger.error(f"PayPal SDK connection error: {e}")
+            return Response({'error': 'Could not connect to PayPal. Please try again later.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except Exception as e:
+            logger.error(f"Unexpected error in PayPal payment capture: {str(e)}", exc_info=True)
+            return Response({'error': f'An unexpected error occurred during payment capture: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@permission_classes([IsAuthenticated])
+class CancelPayPalPaymentView(APIView): # Renamed for clarity
     def get(self, request, course_id):
-        logger.info(f"Payment cancelled by the user for course {course_id}")
+        # You might want to log user ID here too for better tracking
+        logger.info(f"Payment cancelled by user {request.user.id} for course {course_id}.")
         return Response({'message': 'Payment cancelled by the user'}, status=status.HTTP_200_OK)
 
 

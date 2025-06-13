@@ -342,7 +342,7 @@ import paypalrestsdk
 
 PAYPAL_CLIENT_ID = os.getenv('PAYPAL_CLIENT_ID')
 PAYPAL_CLIENT_SECRET = os.getenv('PAYPAL_CLIENT_SECRET')
-PAYPAL_MODE = os.getenv('PAYPAL_MODE', 'sandbox')
+PAYPAL_MODE = os.getenv('PAYPAL_MODE', 'live')
 
 SITE_ID = 1
 

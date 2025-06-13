@@ -33,10 +33,6 @@ urlpatterns = [
     
     path('CreateLiveClass/', views.CreateLiveClassView.as_view(), name='start_live_class'),
 
-    path('paypal-initiate/<str:course_id>/', views.InitiatePayPalPaymentView.as_view(), name='paypal-initiate'),
-    path('paypal-capture/<str:course_id>/', views.CapturePayPalPaymentView.as_view(), name='paypal-capture'),
-    path('paypal-cancel/<str:course_id>/', views.CancelPayPalPaymentView.as_view(), name='paypal-cancel'),
-
     path('GenerateCertificate/', views.GenerateCertificatePDF.as_view(), name='generate-certificate'),
     
     

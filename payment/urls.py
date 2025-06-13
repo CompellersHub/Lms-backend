@@ -1,9 +1,11 @@
-# from django.urls import path
-# from .views import InitiatePaymentView, CapturePaymentView, CancelPaymentView
+# payment/urls.py
+from django.urls import path
+from .views import CreatePaymentIntentView, PaymentSuccessView
 
-# urlpatterns = [
-#     # ... other URLs ...
-#     path('courses/<int:course_id>/payment/initiate/', InitiatePaymentView.as_view(), name='initiate-payment'),
-#     path('courses/payment/capture/<int:course_id>/', CapturePaymentView.as_view(), name='capture-payment'),
-#     path('courses/payment/cancel/<int:course_id>/', CancelPaymentView.as_view(), name='cancel-payment'),
-# ]
+app_name = 'payment'
+
+urlpatterns = [
+    path('create-payment-intent/', CreatePaymentIntentView.as_view(), name='create-payment-intent'),
+    # This one doesn't take URL arguments, it expects data in the POST body
+    path('payment-success/', PaymentSuccessView.as_view(), name='payment-success-webhook-alternative'),
+]

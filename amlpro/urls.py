@@ -39,6 +39,7 @@ urlpatterns = [
     path('customuser/', include('user.urls')),
     path('courses/', include('courses.urls')),
     # path('paypal/', include('payment.urls')),
+    path('payment/', include('payment.urls')),
     path('student_profile/', include('student_dashboard.urls')),
 ]
 

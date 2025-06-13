@@ -45,6 +45,15 @@ ALLOWED_HOSTS =  [DOMAIN_NAME] if DOMAIN_NAME else ['*']
 
 #Application definition
 
+
+
+STRIPE_SECRET_KEY = os.getenv('STRIPE_SECRET_KEY')
+STRIPE_PUBLISHABLE_KEY = os.getenv('STRIPE_PUBLISHABLE_KEY')
+
+
+
+
+
 INSTALLED_APPS = [
     
     'jazzmin',

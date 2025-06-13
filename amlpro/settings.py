@@ -34,7 +34,8 @@ SITE_NAME = 'Titans Careers' # Your site name
 
 # SECURITY WARNING: keep the secret key used in production secret!
 #SECRET_KEY = 'django-insecure-f($n54+mp@2@3bx$smc=$2-rxd6jyzbbz4%=h-_34%^w37_*--'
-SECRET_KEY = os.getenv('SECRET_KEY') or 'django-insecure-f($n54+mp@2@3bx$smc=$2-rxd6jyzbbz4%=h-_34%^w37_*--'
+SECRET_KEY = os.getenv('SECRET_KEY') or ''
+print(f"--- DEBUG: Current SECRET_KEY in use: '{SECRET_KEY}' ---")
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
@@ -225,13 +226,13 @@ REST_FRAMEWORK = {
 # Configure Simple JWT
 # Configure Simple JWT
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=5), # Adjust as needed
+    'ACCESS_TOKEN_LIFETIME': timedelta(days=200), # Adjust as needed
     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),   # Adjust as needed
     'ROTATE_REFRESH_TOKENS': False,
     'BLACKLIST_AFTER_ROTATION': False,
     'UPDATE_LAST_LOGIN': False, # Keep track of last login
     'ALGORITHM': 'HS256',
-    'SIGNING_KEY': 'django-insecure-f($n54+mp@2@3bx$smc=$2-rxd6jyzbbz4%=h-_34%^w37_*--', # Use your project's SECRET_KEY
+    'SIGNING_KEY': SECRET_KEY, # Use your project's SECRET_KEY
     'VERIFYING_KEY': None,
     'AUDIENCE': None,
     'ISSUER': None,
@@ -250,7 +251,7 @@ SIMPLE_JWT = {
 
     'JTI_CLAIM': 'jti',
 
-    'SLIDING_TOKEN_LIFETIME': timedelta(minutes=5),
+    'SLIDING_TOKEN_LIFETIME': timedelta(minutes=60),
     'SLIDING_TOKEN_REFRESH_LIFETIME': timedelta(days=1),
 }
 
@@ -411,6 +412,50 @@ JAZZMIN_SETTINGS = {
      "use_google_fonts_cdn": True,
       "show_ui_builder": True,
 }
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'level': 'DEBUG', # This must be DEBUG to see debug messages
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple', # Or 'verbose' if you want more detail
+        },
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console'],
+            'level': 'INFO', # Keep Django's default log level to INFO
+            'propagate': False,
+        },
+        'user': { # This is your app's logger
+            'handlers': ['console'],
+            'level': 'DEBUG', # Set your app's logger to DEBUG
+            'propagate': False,
+        },
+        # If you have other custom app loggers, add them here
+        # e.g., 'courses': {
+        #     'handlers': ['console'],
+        #     'level': 'DEBUG',
+        #     'propagate': False,
+        # },
+        '': { # This is the root logger
+            'handlers': ['console'],
+            'level': 'WARNING', # Default for unconfigured loggers, can be DEBUG if needed
+        },
+    },
+} 
 
 
 

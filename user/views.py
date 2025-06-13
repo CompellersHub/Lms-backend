@@ -13,6 +13,7 @@ from rest_framework.authentication import SessionAuthentication
 from django.contrib.auth.hashers import check_password
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.middleware.csrf import get_token
+from rest_framework_simplejwt.authentication import JWTAuthentication
 from django.utils.decorators import method_decorator
 from django.http import JsonResponse, HttpResponseRedirect
 from courses.mongo_utils import get_mongo_db
@@ -658,3 +659,44 @@ class CourseProgressDetailView(APIView):
             }
         }
         return Response(response_data)
+    
+class GetCurrentUserProfile(APIView):
+    authentication_classes = [JWTAuthentication] # Use JWT for authentication
+    permission_classes = [IsAuthenticated]       # Only authenticated users can access this
+
+    def get(self, request, *args, **kwargs):
+        # request.user will be populated by JWTAuthentication if a valid token is provided
+        user = request.user
+
+        if not hasattr(user, '_mongo_doc') or not user._mongo_doc:
+            # This should ideally not happen if MongoAuthBackend is working correctly
+            # and _mongo_doc is always attached.
+            return Response(
+                {"error": "User data not fully available. Please try logging in again."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        mongo_doc = user._mongo_doc
+        serializer_data = {}
+
+        # Determine which serializer to use based on the user's role
+        # Assuming your CustomUser and TeacherProfile models have a 'role' attribute
+        user_role = mongo_doc.get('role')
+
+        if user_role == 'STUDENT':
+            serializer = CustomUserSerializer(mongo_doc)
+            serializer_data = serializer.data
+        elif user_role == 'TEACHER':
+            # For teachers, you might want to fetch additional teacher-specific profile data
+            # if TeacherProfileSerializer expects it beyond the base user doc.
+            # However, if user._mongo_doc *is* the teacherprofiles document, it's simpler.
+            serializer = TeacherProfileSerializer(mongo_doc)
+            serializer_data = serializer.data
+        else:
+            # Handle unexpected roles or users without a defined role
+            return Response(
+                {"error": "User role not recognized or profile incomplete."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        return Response(serializer_data, status=status.HTTP_200_OK)

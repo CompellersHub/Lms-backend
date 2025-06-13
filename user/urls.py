@@ -19,4 +19,5 @@ urlpatterns = [
     # path('users/<str:user_id>/courses/<str:course_id>/progress/', views.UserCourseProgressView.as_view(), name='user-course-progress'),
     path('users/<str:user_id>/courses/<str:course_id>/progress/details/', views.CourseProgressDetailView.as_view(), name='course-progress-details'),
     # ... other course URLs
+    path('profile/', views.GetCurrentUserProfile.as_view(), name='get_current_user_profile'),
 ]

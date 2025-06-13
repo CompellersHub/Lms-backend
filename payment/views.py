@@ -69,7 +69,7 @@ class CreatePaymentIntentView(APIView):
             # Create a PaymentIntent
             payment_intent = stripe.PaymentIntent.create(
                 amount=amount_in_cents,
-                currency='usd', # Or your desired currency
+                currency='GBP', # Or your desired currency
                 metadata={
                     'course_id': course_id,
                     'user_id': user_id,

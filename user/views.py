@@ -601,17 +601,47 @@ class UserCourseProgressView(APIView):
             logger.info(f"Created new course progress for user {user_id} in course {course_id}")
 
         # --- Prepare response for the client (same as before) ---
+        details_list = []
+
+        details_list.append({
+            "type": "videos",
+            "completed": completed_videos_count, # Keep all values here
+            "opened": opened_notes_count,
+            "submitted": assignments_submitted_count,
+            "viewed": pdfs_viewed_count,
+            "total": total_videos
+        })
+        details_list.append({
+            "type": "course_notes",
+            "completed": completed_videos_count, # Keep all values here
+            "opened": opened_notes_count,
+            "submitted": assignments_submitted_count,
+            "viewed": pdfs_viewed_count,
+            "total": total_notes
+        })
+        details_list.append({
+            "type": "assignments",
+            "completed": completed_videos_count, # Keep all values here
+            "opened": opened_notes_count,
+            "submitted": assignments_submitted_count,
+            "viewed": pdfs_viewed_count,
+            "total": total_assignments
+        })
+        details_list.append({
+            "type": "blog_pdfs",
+            "completed": completed_videos_count, # Keep all values here
+            "opened": opened_notes_count,
+            "submitted": assignments_submitted_count,
+            "viewed": pdfs_viewed_count,
+            "total": total_pdfs
+        })
+
         response_data = {
-            "user_id": str(user['_id']),
-            "course_id": str(course['_id']),
+            "user_id": str(user_oid),
+            "course_id": str(course_oid),
             "course_name": course.get('name'),
             "progress_percentage": progress_percentage,
-            "details": {
-                "videos": {"completed": completed_videos_count, "total": total_videos},
-                "course_notes": {"opened": opened_notes_count, "total": total_notes},
-                "assignments": {"submitted": assignments_submitted_count, "total": total_assignments},
-                "blog_pdfs": {"viewed": pdfs_viewed_count, "total": total_pdfs},
-            }
+            "details": details_list,
         }
 
         # Use CourseProgressResponseSerializer for the final API response format

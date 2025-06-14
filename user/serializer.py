@@ -289,21 +289,52 @@ class NotificationSerializer(serializers.Serializer):
         db.notifications.update_one({"_id": notification_id}, {"$set": validated_data})
         return db.notifications.find_one({"_id": notification_id})
 
-class VideoProgressDetailSerializer(serializers.Serializer):
-    completed = serializers.IntegerField(required=False) # Make optional to prevent errors if not present
-    total = serializers.IntegerField(required=False) # Make optional
+class ProgressItemSerializer(serializers.Serializer):
+    type = serializers.CharField()
+    # Use Field.empty to allow dynamic keys based on 'type'
+    completed = serializers.IntegerField(required=False, default=0) # for videos
+    opened = serializers.IntegerField(required=False, default=0)    # for notes
+    submitted = serializers.IntegerField(required=False, default=0) # for assignments
+    viewed = serializers.IntegerField(required=False, default=0)    # for PDFs
+    total = serializers.IntegerField(required=False, default=0)
 
-class CourseNoteProgressDetailSerializer(serializers.Serializer):
-    opened = serializers.IntegerField(required=False)
-    total = serializers.IntegerField(required=False)
+    def get_completed(self, obj):
+        # Only return 'completed' if the type is 'videos'
+        if obj.get('type') == 'videos':
+            return obj.get('completed', 0)
+        return None # Return None or don't return anything if not applicable
 
-class AssignmentProgressDetailSerializer(serializers.Serializer):
-    submitted = serializers.IntegerField(required=False)
-    total = serializers.IntegerField(required=False)
+    def get_opened(self, obj):
+        # Only return 'opened' if the type is 'course_notes'
+        if obj.get('type') == 'course_notes':
+            return obj.get('opened', 0)
+        return None
 
-class PdfProgressDetailSerializer(serializers.Serializer):
-    viewed = serializers.IntegerField(required=False)
-    total = serializers.IntegerField(required=False)
+    def get_submitted(self, obj):
+        # Only return 'submitted' if the type is 'assignments'
+        if obj.get('type') == 'assignments':
+            return obj.get('submitted', 0)
+        return None
+
+    def get_viewed(self, obj):
+        # Only return 'viewed' if the type is 'blog_pdfs'
+        if obj.get('type') == 'blog_pdfs':
+            return obj.get('viewed', 0)
+        return None
+
+    # This method ensures that fields with None values are excluded from the output
+    def to_representation(self, instance):
+        ret = super().to_representation(instance)
+        # Remove fields that returned None (i.e., not applicable for this type)
+        fields_to_remove = []
+        for field_name in ['completed', 'opened', 'submitted', 'viewed']:
+            if ret.get(field_name) is None:
+                fields_to_remove.append(field_name)
+        
+        for field_name in fields_to_remove:
+            ret.pop(field_name)
+        
+        return ret
 
 # --- MODIFIED: CourseProgressResponseSerializer ---
 class CourseProgressResponseSerializer(serializers.Serializer):
@@ -312,50 +343,74 @@ class CourseProgressResponseSerializer(serializers.Serializer):
     course_name = serializers.CharField()
     progress_percentage = serializers.IntegerField()
 
-    # ***************************************************************
-    # THIS IS THE CRUCIAL CHANGE:
-    # REMOVE THE LINE "details = serializers.DictField(...)" ENTIRELY.
-    # Instead, the fields below directly define what would have been
-    # the *contents* of the 'details' dictionary.
-    # ***************************************************************
+    # The 'details' field is now a ListField of ProgressItemSerializer
+    details = serializers.ListField(
+        child=ProgressItemSerializer()
+    )
 
-    # These fields correspond to the keys *inside* the 'details' dictionary
-    # that your `response_data` creates in views.py.
-    # They are now top-level fields in this serializer,
-    # and we will re-nest them in to_representation.
-    videos = serializers.SerializerMethodField()
-    course_notes = serializers.SerializerMethodField()
-    assignments = serializers.SerializerMethodField()
-    blog_pdfs = serializers.SerializerMethodField()
+    # We no longer need get_videos, get_course_notes, etc.,
+    # nor the complex to_representation logic for 'details'
+    # as ListField handles it.
+    # So, REMOVE all get_X methods and the to_representation method
+    # from CourseProgressResponseSerializer.
 
-    # Define the methods that will return the serialized data for each sub-field
-    def get_videos(self, obj):
-        videos_data = obj.get('details', {}).get('videos', {})
-        return VideoProgressDetailSerializer(videos_data).data # VideoProgressDetailSerializer expects 'completed'
+# --- CourseProgressSerializer (for storing data in MongoDB) ---
+# You also need to decide how you're storing this in MongoDB.
+# If you want it stored as an array in the `course_progress_records` collection,
+# then `details` in `CourseProgressSerializer` should also become a `ListField`.
 
-    def get_course_notes(self, obj):
-        notes_data = obj.get('details', {}).get('course_notes', {})
-        return CourseNoteProgressDetailSerializer(notes_data).data # CourseNoteProgressDetailSerializer expects 'opened'
+class CourseProgressSerializer(serializers.Serializer):
+    _id = serializers.CharField(read_only=True, required=False)
+    user_id = serializers.CharField()
+    course_id = serializers.CharField()
+    progress_percentage = serializers.IntegerField()
+    
+    # Change this to ListField if you want to store it as an array in MongoDB
+    details = serializers.ListField(
+        child=ProgressItemSerializer() # Using the new generic item serializer
+    )
+    last_updated = serializers.DateTimeField(required=False)
 
-    def get_assignments(self, obj):
-        assignments_data = obj.get('details', {}).get('assignments', {})
-        return AssignmentProgressDetailSerializer(assignments_data).data # AssignmentProgressDetailSerializer expects 'submitted'
+    # ... (create and update methods - they should work fine with ListField now) ...
+    def create(self, validated_data):
+        db = get_mongo_db()
+        progress_collection = db.course_progress_records
+        validated_data['last_updated'] = timezone.now()
+        validated_data['user_id'] = ObjectId(validated_data['user_id'])
+        validated_data['course_id'] = ObjectId(validated_data['course_id'])
 
-    def get_blog_pdfs(self, obj):
-        pdfs_data = obj.get('details', {}).get('blog_pdfs', {})
-        return PdfProgressDetailSerializer(pdfs_data).data # PdfProgressDetailSerializer expects 'viewed'
+        result = progress_collection.insert_one(validated_data)
+        created_doc = progress_collection.find_one({"_id": result.inserted_id})
+        if created_doc:
+            created_doc['_id'] = str(created_doc['_id'])
+            created_doc['user_id'] = str(created_doc['user_id'])
+            created_doc['course_id'] = str(created_doc['course_id'])
+        return created_doc
 
-    def to_representation(self, instance):
-        representation = super().to_representation(instance)
-        # This is where the output structure is formed for the client
-        details_data = {
-            "videos": representation.pop('videos'),
-            "course_notes": representation.pop('course_notes'),
-            "assignments": representation.pop('assignments'),
-            "blog_pdfs": representation.pop('blog_pdfs'),
-        }
-        representation['details'] = details_data
-        return representation
+    def update(self, instance, validated_data):
+        db = get_mongo_db()
+        progress_collection = db.course_progress_records
+        validated_data['last_updated'] = timezone.now()
+
+        instance_id = instance.get('_id')
+        if not isinstance(instance_id, ObjectId):
+            instance_id = ObjectId(instance_id)
+
+        if 'user_id' in validated_data and isinstance(validated_data['user_id'], str):
+             validated_data['user_id'] = ObjectId(validated_data['user_id'])
+        if 'course_id' in validated_data and isinstance(validated_data['course_id'], str):
+             validated_data['course_id'] = ObjectId(validated_data['course_id'])
+
+        progress_collection.update_one(
+            {"_id": instance_id},
+            {"$set": validated_data}
+        )
+        updated_doc = progress_collection.find_one({"_id": instance_id})
+        if updated_doc:
+            updated_doc['_id'] = str(updated_doc['_id'])
+            updated_doc['user_id'] = str(updated_doc['user_id'])
+            updated_doc['course_id'] = str(updated_doc['course_id'])
+        return updated_doc
 
 
 # --- CourseProgressSerializer (for storing data in MongoDB) ---
@@ -424,10 +479,9 @@ class CourseProgressRecordSerializer(serializers.Serializer):
 
     # These fields refer to the keys *within* the 'details' dictionary of the MongoDB document
     # Using source='details.videos' allows direct mapping from nested MongoDB fields.
-    videos = VideoProgressDetailSerializer(source='details.videos', required=False)
-    course_notes = CourseNoteProgressDetailSerializer(source='details.course_notes', required=False)
-    assignments = AssignmentProgressDetailSerializer(source='details.assignments', required=False)
-    blog_pdfs = PdfProgressDetailSerializer(source='details.blog_pdfs', required=False)
+    details = serializers.ListField(
+        child=ProgressItemSerializer() # Using the new generic item serializer
+    )
 
     def to_representation(self, instance):
         representation = super().to_representation(instance)

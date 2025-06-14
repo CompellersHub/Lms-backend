@@ -559,16 +559,7 @@ class SubmissionSerializer(serializers.Serializer):
 #         return db.course_orders.find_one({"_id": order_id})
 
 
-class CourseProgressDetailsSerializer(serializers.Serializer):
-    completed = serializers.IntegerField()
-    total = serializers.IntegerField()
 
-class CourseProgressResponseSerializer(serializers.Serializer):
-    user_id = serializers.CharField()
-    course_id = serializers.CharField()
-    course_name = serializers.CharField()
-    progress_percentage = serializers.IntegerField()
-    details = serializers.DictField(child=CourseProgressDetailsSerializer())
 
 class CompletionCertificateSerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)

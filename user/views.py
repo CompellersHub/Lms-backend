@@ -2,8 +2,7 @@
 
 from django.shortcuts import render
 from rest_framework import status
-from .serializer import CustomUserSerializer, TeacherProfileSerializer, NotificationSerializer
-from courses.serializer import CourseSerializer, CourseProgressResponseSerializer
+from .serializer import CourseProgressSerializer, CustomUserSerializer, TeacherProfileSerializer, NotificationSerializer, CourseProgressRecordSerializer, CourseProgressResponseSerializer
 from rest_framework_simplejwt.views import TokenObtainPairView # Use this for base JWT view
 from django.utils.translation import gettext_lazy as _
 from rest_framework.views import APIView
@@ -428,14 +427,10 @@ class StudentDetail(APIView):
 class StudentFilterByCourse(APIView):
     permission_classes = [IsAuthenticated]
 
-    # The 'course_id' parameter is now passed directly from the URL
     def get(self, request, course_id, format=None):
-        query = {"role": "STUDENT"} # Always filter for students
+        query = {"role": "STUDENT"}
 
         if not course_id:
-            # This check is less likely to be hit with a path parameter
-            # unless the URL pattern itself is malformed or optional,
-            # but it's good for robustness.
             return Response(
                 {"error": "Course ID must be provided in the URL path."},
                 status=status.HTTP_400_BAD_REQUEST
@@ -450,21 +445,34 @@ class StudentFilterByCourse(APIView):
         # Construct the query using the course_id from the URL path
         query["course._id"] = ObjectId(course_id)
         logger.info(f"Filtering students by course_id: {course_id}")
-        
+
         db = get_mongo_db()
-        
+
         try:
+            # Fetch the students
             students_cursor = db.customusers.find(query)
             students_list = list(students_cursor)
 
+            # Get the total count
+            total_students_count = len(students_list)
+
             if not students_list:
                 return Response(
-                    {"message": f"No students found in course with ID '{course_id}'."},
+                    {
+                        "message": f"No students found in course with ID '{course_id}'.",
+                        "students": [], # Return an empty list
+                        "total_students": 0 # Explicitly return 0
+                    },
                     status=status.HTTP_200_OK
                 )
 
             serializer = CustomUserSerializer(students_list, many=True)
-            return Response(serializer.data, status=status.HTTP_200_OK)
+
+            # Return both the serialized data and the total count
+            return Response({
+                "students": serializer.data,
+                "total_students": total_students_count
+            }, status=status.HTTP_200_OK)
 
         except Exception as e:
             logger.error(f"Error filtering students by course: {e}", exc_info=True)
@@ -512,6 +520,9 @@ def social_callback(request):
 
 
 class UserCourseProgressView(APIView):
+    # Consider adding permission_classes here, e.g., IsAuthenticated
+    # permission_classes = [IsAuthenticated] # Add if only authenticated users can view/update their progress
+
     def get(self, request, user_id, course_id):
         db = get_mongo_db()
 
@@ -527,7 +538,7 @@ class UserCourseProgressView(APIView):
         if not user or not course:
             return Response({"error": "User or course not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        # Fetch counts of user activities for this course
+        # --- Calculate Progress (as you already do) ---
         completed_videos_count = db.user_course_activity.count_documents(
             {"user_id": user_oid, "course_id": course_oid, "activity_type": "video_completed"}
         )
@@ -541,11 +552,10 @@ class UserCourseProgressView(APIView):
             {"user_id": user_oid, "course_id": course_oid, "activity_type": "pdf_viewed"}
         )
 
-        # Get total counts from the course structure
         total_videos = 0
         total_notes = 0
-        total_assignments = db.assignments.count_documents({"course._id": course_oid}) # Assuming assignments are linked by course ObjectId
-        total_pdfs = db.course_library.count_documents({"course._id": course_oid, "file": {"$ne": None}, "url": {"$eq": None}}) # Assuming PDFs are stored as files in course_library
+        total_assignments = db.assignments.count_documents({"course._id": course_oid})
+        total_pdfs = db.course_library.count_documents({"course._id": course_oid, "file": {"$ne": None}, "url": {"$eq": None}})
 
         if course.get('curriculum'):
             for module in course['curriculum']:
@@ -554,12 +564,43 @@ class UserCourseProgressView(APIView):
                 if module.get('course_note'):
                     total_notes += 1
 
-        # Calculate overall progress (you might need to adjust weights)
         total_progress_points = completed_videos_count + opened_notes_count + assignments_submitted_count + pdfs_viewed_count
         total_possible_points = total_videos + total_notes + total_assignments + total_pdfs
 
         progress_percentage = int((total_progress_points / total_possible_points) * 100) if total_possible_points > 0 else 0
 
+        calculated_progress_data = {
+            "user_id": str(user['_id']), # Store as string for the serializer
+            "course_id": str(course['_id']), # Store as string for the serializer
+            "progress_percentage": progress_percentage,
+            "details": {
+                "videos": {"completed": completed_videos_count, "total": total_videos},
+                "course_notes": {"opened": opened_notes_count, "total": total_notes},
+                "assignments": {"submitted": assignments_submitted_count, "total": total_assignments},
+                "blog_pdfs": {"viewed": pdfs_viewed_count, "total": total_pdfs},
+            },
+            "last_updated": timezone.now() # Add timestamp
+        }
+
+        # --- Upsert into course_progress collection ---
+        course_progress_collection = db.course_progress
+        existing_progress = course_progress_collection.find_one(
+            {"user_id": user_oid, "course_id": course_oid}
+        )
+
+        progress_serializer = CourseProgressSerializer(data=calculated_progress_data)
+        progress_serializer.is_valid(raise_exception=True)
+
+        if existing_progress:
+            # Update existing document
+            progress_instance = progress_serializer.update(existing_progress, progress_serializer.validated_data)
+            logger.info(f"Updated course progress for user {user_id} in course {course_id}")
+        else:
+            # Create new document
+            progress_instance = progress_serializer.create(progress_serializer.validated_data)
+            logger.info(f"Created new course progress for user {user_id} in course {course_id}")
+
+        # --- Prepare response for the client (same as before) ---
         response_data = {
             "user_id": str(user['_id']),
             "course_id": str(course['_id']),
@@ -573,10 +614,13 @@ class UserCourseProgressView(APIView):
             }
         }
 
-        serializer = CourseProgressResponseSerializer(data=response_data)
-        if serializer.is_valid():
-            return Response(serializer.data)
-        return Response(serializer.errors, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        # Use CourseProgressResponseSerializer for the final API response format
+        final_response_serializer = CourseProgressResponseSerializer(data=response_data)
+        if final_response_serializer.is_valid():
+            return Response(final_response_serializer.data, status=status.HTTP_200_OK)
+        else:
+            logger.error(f"Error serializing final response for user {user_id} course {course_id}: {final_response_serializer.errors}")
+            return Response(final_response_serializer.errors, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class TrackVideoProgressView(APIView):
     def post(self, request, user_id, video_id):
@@ -614,51 +658,60 @@ class TrackVideoProgressView(APIView):
             return Response({"error": str(e)}, status=400)
 
     
-class CourseProgressDetailView(APIView):
-    def get(self, request, user_id, course_id):
+class TeacherCourseProgressListView(APIView):
+    # This permission assumes only authenticated teachers can access this.
+    # You might need a custom permission like IsTeacher if all authenticated users are not teachers.
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, course_id):
         db = get_mongo_db()
+
+        # Optional: Add a check to ensure the requesting user is a teacher
+        # This assumes request.user is a CustomUser instance populated by your auth backend
+        # and has a 'role' attribute.
+        if not hasattr(request.user, '_mongo_doc') or request.user._mongo_doc.get('role') != 'TEACHER':
+            return Response(
+                {"error": "Access denied. Only teachers can view this resource."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
         try:
-            user_oid = ObjectId(user_id)
             course_oid = ObjectId(course_id)
         except Exception:
-            return Response({"error": "Invalid IDs"}, status=400)
+            return Response({"error": "Invalid course_id"}, status=status.HTTP_400_BAD_REQUEST)
 
-        user = db.customusers.find_one({"_id": user_oid})
+        # Find the course to get its name
         course = db.courses.find_one({"_id": course_oid})
+        if not course:
+            return Response({"error": "Course not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        if not user or not course:
-            return Response({"error": "Not found"}, status=404)
+        # Find all progress documents for this course
+        progress_records_cursor = db.course_progress.find({"course_id": course_oid})
+        progress_records = list(progress_records_cursor)
 
-        # Count user activities
-        completed_videos = db.customuser_course_activity.count_documents({"user_id": user_oid, "course_id": course_oid, "activity_type": "video_completed"})
-        opened_notes = db.customuser_course_activity.count_documents({"user_id": user_oid, "course_id": course_oid, "activity_type": "note_opened"})
-        submitted_assignments = db.customuser_course_activity.count_documents({"user_id": user_oid, "course_id": course_oid, "activity_type": "assignment_submitted"})
-        viewed_pdfs = db.customuser_course_activity.count_documents({"user_id": user_oid, "course_id": course_oid, "activity_type": "pdf_viewed"})
+        response_data = []
+        for record in progress_records:
+            # Fetch user details for each progress record
+            user_doc = db.customusers.find_one({"_id": record['user_id']}) # user_id is ObjectId here
 
-        # Count totals from the 'courses' collection
-        total_videos = sum(len(module.get('video', [])) for module in course.get('curriculum', []))
-        total_notes = sum(1 for module in course.get('curriculum', []) if module.get('course_note'))
-        total_assignments = db.assignments.count_documents({"course_id": course_oid})
-        total_pdfs = db.course_library.count_documents({"course_id": course_oid, "file": {"$ne": None}, "url": {"$eq": None}})
+            user_info = {
+                "id": str(user_doc['_id']),
+                "email": user_doc.get('email'),
+                "first_name": user_doc.get('first_name'),
+                "last_name": user_doc.get('last_name'),
+                "username": user_doc.get('username')
+            } if user_doc else {"id": str(record['user_id']), "email": "Unknown User", "first_name": "", "last_name": "", "username": ""}
 
-        # Calculate progress
-        total_progress = completed_videos + opened_notes + submitted_assignments + viewed_pdfs
-        total_possible = total_videos + total_notes + total_assignments + total_pdfs
-        progress_percentage = int((total_progress / total_possible) * 100) if total_possible > 0 else 0
+            response_data.append({
+                "student_info": user_info,
+                "course_id": str(record['course_id']),
+                "course_name": course.get('name'), # Add course name here
+                "progress_percentage": record.get('progress_percentage', 0),
+                "details": record.get('details', {}),
+                "last_updated": record.get('last_updated').isoformat() if record.get('last_updated') else None
+            })
 
-        response_data = {
-            "user_id": str(user['_id']),
-            "course_id": str(course['_id']),
-            "course_name": course.get('name'),
-            "progress_percentage": progress_percentage,
-            "details": {
-                "videos": {"completed": completed_videos, "total": total_videos},
-                "course_notes": {"opened": opened_notes, "total": total_notes},
-                "assignments": {"submitted": submitted_assignments, "total": total_assignments},
-                "blog_pdfs": {"viewed": viewed_pdfs, "total": total_pdfs},
-            }
-        }
-        return Response(response_data)
+        return Response(response_data, status=status.HTTP_200_OK)
     
 class GetCurrentUserProfile(APIView):
     authentication_classes = [JWTAuthentication] # Use JWT for authentication

@@ -289,13 +289,159 @@ class NotificationSerializer(serializers.Serializer):
         db.notifications.update_one({"_id": notification_id}, {"$set": validated_data})
         return db.notifications.find_one({"_id": notification_id})
 
-class CourseProgressDetailsSerializer(serializers.Serializer):
-    completed = serializers.IntegerField()
-    total = serializers.IntegerField()
+class VideoProgressDetailSerializer(serializers.Serializer):
+    completed = serializers.IntegerField(required=False) # Make optional to prevent errors if not present
+    total = serializers.IntegerField(required=False) # Make optional
 
+class CourseNoteProgressDetailSerializer(serializers.Serializer):
+    opened = serializers.IntegerField(required=False)
+    total = serializers.IntegerField(required=False)
+
+class AssignmentProgressDetailSerializer(serializers.Serializer):
+    submitted = serializers.IntegerField(required=False)
+    total = serializers.IntegerField(required=False)
+
+class PdfProgressDetailSerializer(serializers.Serializer):
+    viewed = serializers.IntegerField(required=False)
+    total = serializers.IntegerField(required=False)
+
+# --- MODIFIED: CourseProgressResponseSerializer ---
 class CourseProgressResponseSerializer(serializers.Serializer):
     user_id = serializers.CharField()
     course_id = serializers.CharField()
     course_name = serializers.CharField()
     progress_percentage = serializers.IntegerField()
-    details = serializers.DictField(child=CourseProgressDetailsSerializer())
+
+    # ***************************************************************
+    # THIS IS THE CRUCIAL CHANGE:
+    # REMOVE THE LINE "details = serializers.DictField(...)" ENTIRELY.
+    # Instead, the fields below directly define what would have been
+    # the *contents* of the 'details' dictionary.
+    # ***************************************************************
+
+    # These fields correspond to the keys *inside* the 'details' dictionary
+    # that your `response_data` creates in views.py.
+    # They are now top-level fields in this serializer,
+    # and we will re-nest them in to_representation.
+    videos = serializers.SerializerMethodField()
+    course_notes = serializers.SerializerMethodField()
+    assignments = serializers.SerializerMethodField()
+    blog_pdfs = serializers.SerializerMethodField()
+
+    # Define the methods that will return the serialized data for each sub-field
+    def get_videos(self, obj):
+        videos_data = obj.get('details', {}).get('videos', {})
+        return VideoProgressDetailSerializer(videos_data).data # VideoProgressDetailSerializer expects 'completed'
+
+    def get_course_notes(self, obj):
+        notes_data = obj.get('details', {}).get('course_notes', {})
+        return CourseNoteProgressDetailSerializer(notes_data).data # CourseNoteProgressDetailSerializer expects 'opened'
+
+    def get_assignments(self, obj):
+        assignments_data = obj.get('details', {}).get('assignments', {})
+        return AssignmentProgressDetailSerializer(assignments_data).data # AssignmentProgressDetailSerializer expects 'submitted'
+
+    def get_blog_pdfs(self, obj):
+        pdfs_data = obj.get('details', {}).get('blog_pdfs', {})
+        return PdfProgressDetailSerializer(pdfs_data).data # PdfProgressDetailSerializer expects 'viewed'
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        # This is where the output structure is formed for the client
+        details_data = {
+            "videos": representation.pop('videos'),
+            "course_notes": representation.pop('course_notes'),
+            "assignments": representation.pop('assignments'),
+            "blog_pdfs": representation.pop('blog_pdfs'),
+        }
+        representation['details'] = details_data
+        return representation
+
+
+# --- CourseProgressSerializer (for storing data in MongoDB) ---
+# This remains largely the same, its DictField for 'details' is fine here
+# as it handles the raw dictionary data for storage.
+class CourseProgressSerializer(serializers.Serializer):
+    _id = serializers.CharField(read_only=True, required=False)
+    user_id = serializers.CharField()
+    course_id = serializers.CharField()
+    progress_percentage = serializers.IntegerField()
+    details = serializers.DictField() # This DictField is fine here
+    last_updated = serializers.DateTimeField(required=False)
+
+    def create(self, validated_data):
+        db = get_mongo_db()
+        progress_collection = db.course_progress_records # Ensure this collection name is consistent
+        validated_data['last_updated'] = timezone.now()
+        validated_data['user_id'] = ObjectId(validated_data['user_id'])
+        validated_data['course_id'] = ObjectId(validated_data['course_id'])
+
+        result = progress_collection.insert_one(validated_data)
+        created_doc = progress_collection.find_one({"_id": result.inserted_id})
+        # Convert ObjectIds back to strings for serializer output
+        if created_doc:
+            created_doc['_id'] = str(created_doc['_id'])
+            created_doc['user_id'] = str(created_doc['user_id'])
+            created_doc['course_id'] = str(created_doc['course_id'])
+        return created_doc
+
+    def update(self, instance, validated_data):
+        db = get_mongo_db()
+        progress_collection = db.course_progress_records # Ensure this collection name is consistent
+        validated_data['last_updated'] = timezone.now()
+
+        instance_id = instance.get('_id')
+        if not isinstance(instance_id, ObjectId):
+            instance_id = ObjectId(instance_id)
+
+        if 'user_id' in validated_data and isinstance(validated_data['user_id'], str):
+             validated_data['user_id'] = ObjectId(validated_data['user_id'])
+        if 'course_id' in validated_data and isinstance(validated_data['course_id'], str):
+             validated_data['course_id'] = ObjectId(validated_data['course_id'])
+
+        progress_collection.update_one(
+            {"_id": instance_id},
+            {"$set": validated_data}
+        )
+        updated_doc = progress_collection.find_one({"_id": instance_id})
+        if updated_doc:
+            updated_doc['_id'] = str(updated_doc['_id'])
+            updated_doc['user_id'] = str(updated_doc['user_id'])
+            updated_doc['course_id'] = str(updated_doc['course_id'])
+        return updated_doc
+
+# --- CourseProgressRecordSerializer (for TeacherCourseProgressOverview) ---
+# This serializer should directly mirror the structure of documents in `course_progress_records`
+# and then use to_representation to format it for the API output.
+class CourseProgressRecordSerializer(serializers.Serializer):
+    id = serializers.CharField(source='_id', read_only=True)
+    user_id = serializers.CharField()
+    course_id = serializers.CharField()
+    course_name = serializers.CharField(required=False, allow_blank=True)
+    student_username = serializers.CharField(required=False, allow_blank=True)
+    progress_percentage = serializers.IntegerField()
+    last_updated_at = serializers.DateTimeField()
+
+    # These fields refer to the keys *within* the 'details' dictionary of the MongoDB document
+    # Using source='details.videos' allows direct mapping from nested MongoDB fields.
+    videos = VideoProgressDetailSerializer(source='details.videos', required=False)
+    course_notes = CourseNoteProgressDetailSerializer(source='details.course_notes', required=False)
+    assignments = AssignmentProgressDetailSerializer(source='details.assignments', required=False)
+    blog_pdfs = PdfProgressDetailSerializer(source='details.blog_pdfs', required=False)
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+
+        details_data = {}
+        # Safely pop and add to details_data, only if present in representation
+        if 'videos' in representation and representation['videos'] is not None:
+            details_data['videos'] = representation.pop('videos')
+        if 'course_notes' in representation and representation['course_notes'] is not None:
+            details_data['course_notes'] = representation.pop('course_notes')
+        if 'assignments' in representation and representation['assignments'] is not None:
+            details_data['assignments'] = representation.pop('assignments')
+        if 'blog_pdfs' in representation: # blog_pdfs might be empty if no PDFs
+            details_data['blog_pdfs'] = representation.pop('blog_pdfs')
+
+        representation['details'] = details_data
+        return representation

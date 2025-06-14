@@ -17,7 +17,9 @@ urlpatterns = [
      path('teacher-login/', views.TeacherLoginView.as_view(), name='teacher_login'),
     path('token/refresh/', views.TokenRefreshView.as_view(), name='token_refresh'), # For refreshing tokens
     # path('users/<str:user_id>/courses/<str:course_id>/progress/', views.UserCourseProgressView.as_view(), name='user-course-progress'),
-    path('users/<str:user_id>/courses/<str:course_id>/progress/details/', views.CourseProgressDetailView.as_view(), name='course-progress-details'),
+    path('user-course-progress/<str:user_id>/<str:course_id>/', views.UserCourseProgressView.as_view(), name='user_course_progress'),
     # ... other course URLs
     path('profile/', views.GetCurrentUserProfile.as_view(), name='get_current_user_profile'),
+    path('teacher/course-progress/<str:course_id>/', views.TeacherCourseProgressListView.as_view(), name='teacher_course_progress_list'),
+
 ]

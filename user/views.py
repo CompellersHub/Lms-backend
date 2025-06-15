@@ -38,7 +38,8 @@ from django.views.decorators.csrf import csrf_exempt
 from rest_framework_simplejwt.views import TokenRefreshView
 from .serializer import CustomTokenObtainPairSerializer # Import your custom serializer
 from rest_framework_simplejwt.tokens import RefreshToken
-
+from .utils.token_utils import create_jwt_tokens
+from bson.json_util import default as bson_default
 
 
 
@@ -232,9 +233,7 @@ class Login(APIView): # This view will now handle student login with JWT
                     )
 
                 # Generate JWT tokens manually
-                refresh = RefreshToken.for_user(user) # user must be an AbstractBaseUser instance
-                access_token = str(refresh.access_token)
-                refresh_token = str(refresh)
+                tokens = create_jwt_tokens(user)
 
                 # Update last_login in MongoDB (if not handled by backend)
                 # Your backend might already update this, but doing it here ensures it.
@@ -250,8 +249,8 @@ class Login(APIView): # This view will now handle student login with JWT
                 serializer = CustomUserSerializer(updated_user_document)
 
                 return Response({
-                    "access": access_token,
-                    "refresh": refresh_token,
+                    "access": tokens['access'],
+                    "refresh": tokens['refresh'],
                     "user_info": serializer.data, # Renamed 'user' to 'user_info' for consistency with TeacherLoginView
                     "message": "Student logged in successfully"
                 }, status=status.HTTP_200_OK)
@@ -743,43 +742,35 @@ class TeacherCourseProgressListView(APIView):
 
         return Response(response_data, status=status.HTTP_200_OK)
     
+logger = logging.getLogger(__name__)
+
 class GetCurrentUserProfile(APIView):
-    authentication_classes = [JWTAuthentication] # Use JWT for authentication
-    permission_classes = [IsAuthenticated]       # Only authenticated users can access this
+    # authentication_classes = [JWTAuthentication]
+    # permission_classes = [IsAuthenticated]
 
     def get(self, request, *args, **kwargs):
-        # request.user will be populated by JWTAuthentication if a valid token is provided
-        user = request.user
+        try:
+            db = get_mongo_db()
+            user_id = str(request.user.id)
+            
+            # Fetch user document (trying both collections)
+            user_data = db.customusers.find_one({"_id": ObjectId(user_id)}, {'password': 0})
+            if not user_data:
+                user_data = db.teacherprofiles.find_one({"_id": ObjectId(user_id)}, {'password': 0})
+                if not user_data:
+                    return Response(
+                        {"error": "User not found"},
+                        status=status.HTTP_404_NOT_FOUND
+                    )
 
-        if not hasattr(user, '_mongo_doc') or not user._mongo_doc:
-            # This should ideally not happen if MongoAuthBackend is working correctly
-            # and _mongo_doc is always attached.
+            # Convert MongoDB document to JSON-serializable format
+            serialized_data = json.loads(json.dumps(user_data, default=bson_default))
+            
+            return Response(serialized_data, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            logger.error(f"Error fetching user profile: {str(e)}", exc_info=True)
             return Response(
-                {"error": "User data not fully available. Please try logging in again."},
+                {"error": "Internal server error"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-
-        mongo_doc = user._mongo_doc
-        serializer_data = {}
-
-        # Determine which serializer to use based on the user's role
-        # Assuming your CustomUser and TeacherProfile models have a 'role' attribute
-        user_role = mongo_doc.get('role')
-
-        if user_role == 'STUDENT':
-            serializer = CustomUserSerializer(mongo_doc)
-            serializer_data = serializer.data
-        elif user_role == 'TEACHER':
-            # For teachers, you might want to fetch additional teacher-specific profile data
-            # if TeacherProfileSerializer expects it beyond the base user doc.
-            # However, if user._mongo_doc *is* the teacherprofiles document, it's simpler.
-            serializer = TeacherProfileSerializer(mongo_doc)
-            serializer_data = serializer.data
-        else:
-            # Handle unexpected roles or users without a defined role
-            return Response(
-                {"error": "User role not recognized or profile incomplete."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        return Response(serializer_data, status=status.HTTP_200_OK)

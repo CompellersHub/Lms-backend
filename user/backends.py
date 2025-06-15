@@ -1,131 +1,74 @@
-# users/backends.py
-
-from django.utils import timezone # Ensure this is the correct import for timezone
+from django.utils import timezone
 from django.contrib.auth.backends import BaseBackend
 from django.contrib.auth.hashers import check_password
 from bson import ObjectId
 import logging
-from courses.mongo_utils import get_mongo_db # Ensure this path is correct
-from .models import CustomUser, TeacherProfile # Ensure these models are imported correctly
+from courses.mongo_utils import get_mongo_db
+from .models import CustomUser, TeacherProfile
 
 logger = logging.getLogger(__name__)
 
 class MongoAuthBackend(BaseBackend):
     def authenticate(self, request, email=None, password=None, **kwargs):
         db = get_mongo_db()
-        # Change this line:
-        if db is None: # Explicitly check for None, as the error suggests
-            logger.error("MongoDB connection not available in MongoAuthBackend. 'db' is None.")
+        if db is None:
+            logger.error("MongoDB connection not available")
             return None
 
         if not email or not password:
             return None
 
-        # --- Try to authenticate as a Teacher first ---
+        # Try to authenticate as Teacher first
         teacher_doc = db.teacherprofiles.find_one({"email": email})
         if teacher_doc:
             if check_password(password, teacher_doc.get("password")):
-                user = TeacherProfile(
-                    id=str(teacher_doc['_id']),
-                    email=teacher_doc.get('email'),
-                    username=teacher_doc.get('username'),
-                    password=teacher_doc.get('password'),
-                    first_name=teacher_doc.get('first_name', ''),
-                    last_name=teacher_doc.get('last_name', ''),
-                    role=teacher_doc.get('role', 'TEACHER'),
-                    is_active=True,
-                    is_staff=True,
-                    is_superuser=False,
-                )
-                user.backend = 'users.backends.MongoAuthBackend'
-                user._mongo_doc = teacher_doc # Fix was already here, confirmed by you
+                return self._create_user_from_doc(teacher_doc, TeacherProfile)
+            return None
 
-                logger.debug(f"MongoAuthBackend: Authenticated Teacher {email}. _mongo_doc attached: {hasattr(user, '_mongo_doc')}")
-                return user
-            else:
-                logger.debug(f"Authentication failed for teacher {email}: incorrect password.")
-                return None
-
-        # --- If not a Teacher, try to authenticate as a CustomUser (student/general user) ---
-        custom_user_doc = db.customusers.find_one({"email": email})
-        if custom_user_doc:
-            if check_password(password, custom_user_doc.get("password")):
-                user = CustomUser(
-                    id=str(custom_user_doc['_id']),
-                    email=custom_user_doc.get('email'),
-                    username=custom_user_doc.get('username'),
-                    password=custom_user_doc.get('password'),
-                    first_name=custom_user_doc.get('first_name', ''),
-                    last_name=custom_user_doc.get('last_name', ''),
-                    role=custom_user_doc.get('role', 'STUDENT'),
-                    is_active=True,
-                    is_staff=False,
-                    is_superuser=False,
-                    date_joined=custom_user_doc.get('date_joined', timezone.now()),
-                )
-                user.backend = 'users.backends.MongoAuthBackend'
-                user._mongo_doc = custom_user_doc # Fix was already here, confirmed by you
-
-                logger.debug(f"MongoAuthBackend: Authenticated CustomUser {email}. _mongo_doc attached: {hasattr(user, '_mongo_doc')}")
-                return user
-            else:
-                logger.debug(f"Authentication failed for custom user {email}: incorrect password.")
-                return None
-
-        logger.debug(f"No user found with email {email} in either collection.")
+        # Try as CustomUser
+        user_doc = db.customusers.find_one({"email": email})
+        if user_doc and check_password(password, user_doc.get("password")):
+            return self._create_user_from_doc(user_doc, CustomUser)
+        
         return None
 
     def get_user(self, user_id):
         db = get_mongo_db()
-        # Change this line:
-        if db is None: # Explicitly check for None
+        if db is None:
             return None
 
         try:
             oid = ObjectId(user_id)
         except Exception:
-            logger.warning(f"Invalid ObjectId format for user_id in get_user: {user_id}")
+            logger.warning(f"Invalid ObjectId format: {user_id}")
             return None
 
-        # --- Try to retrieve from TeacherProfile collection ---
-        teacher_doc = db.teacherprofiles.find_one({"_id": oid})
-        if teacher_doc:
-            user = TeacherProfile(
-                id=str(teacher_doc['_id']),
-                email=teacher_doc.get('email'),
-                username=teacher_doc.get('username'),
-                password=teacher_doc.get('password'),
-                first_name=teacher_doc.get('first_name', ''),
-                last_name=teacher_doc.get('last_name', ''),
-                role=teacher_doc.get('role', 'TEACHER'),
-                is_active=True,
-                is_staff=True,
-                is_superuser=False,
-            )
-            user.backend = 'users.backends.MongoAuthBackend'
-            user._mongo_doc = teacher_doc # Fix was already here, confirmed by you
-            logger.debug(f"MongoAuthBackend: get_user for Teacher {user_id}. _mongo_doc attached: {hasattr(user, '_mongo_doc')}")
-            return user
-        
-        # --- Try to retrieve from CustomUser collection ---
-        custom_user_doc = db.customusers.find_one({"_id": oid})
-        if custom_user_doc:
-            user = CustomUser(
-                id=str(custom_user_doc['_id']),
-                email=custom_user_doc.get('email'),
-                username=custom_user_doc.get('username'),
-                password=custom_user_doc.get('password'),
-                first_name=custom_user_doc.get('first_name', ''),
-                last_name=custom_user_doc.get('last_name', ''),
-                role=custom_user_doc.get('role', 'STUDENT'),
-                is_active=True,
-                is_staff=False,
-                is_superuser=False,
-                date_joined=custom_user_doc.get('date_joined', timezone.now()),
-            )
-            user.backend = 'users.backends.MongoAuthBackend'
-            user._mongo_doc = custom_user_doc # Fix was already here, confirmed by you
-            logger.debug(f"MongoAuthBackend: get_user for CustomUser {user_id}. _mongo_doc attached: {hasattr(user, '_mongo_doc')}")
-            return user
+        # Search in both collections
+        user_doc = db.customusers.find_one({"_id": oid})
+        if user_doc:
+            return self._create_user_from_doc(user_doc, CustomUser)
+
+        user_doc = db.teacherprofiles.find_one({"_id": oid})
+        if user_doc:
+            return self._create_user_from_doc(user_doc, TeacherProfile)
 
         return None
+
+    def _create_user_from_doc(self, doc, user_class):
+        """Helper method to create user instances from MongoDB documents"""
+        user = user_class(
+            id=str(doc['_id']),
+            email=doc.get('email'),
+            username=doc.get('username'),
+            password=doc.get('password'),
+            first_name=doc.get('first_name', ''),
+            last_name=doc.get('last_name', ''),
+            role=doc.get('role', 'STUDENT'),
+            is_active=doc.get('is_active', True),
+            is_staff=doc.get('is_staff', False),
+            is_superuser=doc.get('is_superuser', False),
+            date_joined=doc.get('date_joined', timezone.now()),
+        )
+        user._mongo_doc = doc  # Attach raw document
+        user.backend = f"{self.__module__}.{self.__class__.__name__}"
+        return user

@@ -216,7 +216,7 @@ REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework.authentication.SessionAuthentication',
         #'rest_framework.authentication.TokenAuthentication',
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'user.authentication.JWTAuthentication',
     ],
          'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticatedOrReadOnly', #  desired default permission
@@ -421,41 +421,40 @@ LOGGING = {
             'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
             'style': '{',
         },
-        'simple': {
-            'format': '{levelname} {message}',
-            'style': '{',
-        },
     },
     'handlers': {
         'console': {
-            'level': 'DEBUG', # This must be DEBUG to see debug messages
             'class': 'logging.StreamHandler',
-            'formatter': 'simple', # Or 'verbose' if you want more detail
+            'formatter': 'verbose', # Use verbose to get more info
         },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'INFO', # Default level
     },
     'loggers': {
-        'django': {
+        'user.backends': { # Your custom backend
             'handlers': ['console'],
-            'level': 'INFO', # Keep Django's default log level to INFO
+            'level': 'DEBUG', # VERY IMPORTANT: See all debug messages here
             'propagate': False,
         },
-        'user': { # This is your app's logger
+        'rest_framework': { # General DRF logging
             'handlers': ['console'],
-            'level': 'DEBUG', # Set your app's logger to DEBUG
+            'level': 'DEBUG', # See DRF authentication/permission debugs
             'propagate': False,
         },
-        # If you have other custom app loggers, add them here
-        # e.g., 'courses': {
-        #     'handlers': ['console'],
-        #     'level': 'DEBUG',
-        #     'propagate': False,
-        # },
-        '': { # This is the root logger
+        'django.request': { # See what Django itself is doing with the request
             'handlers': ['console'],
-            'level': 'WARNING', # Default for unconfigured loggers, can be DEBUG if needed
+            'level': 'DEBUG', # Important for tracing request lifecycle
+            'propagate': False,
         },
-    },
-} 
+        'django.security.DisallowedHost': {
+            'handlers': ['console'],
+            'propagate': False,
+            'level': 'ERROR',
+        },
+    }
+}
 
 
 

@@ -70,6 +70,13 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return self.username
+    
+    def get_full_name(self):
+        """
+        Return the first_name plus the last_name, with a space in between.
+        """
+        full_name = f"{self.first_name} {self.last_name}"
+        return full_name.strip()
 
     def to_dict(self):
         return {
@@ -145,6 +152,13 @@ class TeacherProfile(AbstractUser):
 
     def __str__(self):
         return self.username
+    
+    def get_full_name(self):
+        """
+        Return the first_name plus the last_name, with a space in between.
+        """
+        full_name = f"{self.first_name} {self.last_name}"
+        return full_name.strip()
 
 class Submission(models.Model):
     student = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='student_submissions')

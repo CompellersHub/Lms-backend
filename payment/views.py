@@ -336,129 +336,122 @@ class CreatePayPalOrderView(APIView):
 
 
 @permission_classes([IsAuthenticated])
-class CapturePayPalOrderView(APIView):
+class VerifyPayPalOrderAndEnrollView(APIView):
     """
-    Endpoint to capture a PayPal Order (v2 API).
-    The frontend calls this from the onApprove callback.
+    Endpoint to verify a completed PayPal order and enroll the user.
+    The frontend calls this after successfully capturing the payment.
     """
     def post(self, request):
-        order_id = request.data.get('orderID') # Expecting orderID from frontend
+        order_id = request.data.get('orderID')
         
         if not order_id:
-            return Response({"error": "orderID is required."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"error": "orderID is required."}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         db = get_mongo_db()
         if db is None:
-            logger.error("MongoDB connection not available for CapturePayPalOrderView.")
+            logger.error("MongoDB connection not available.")
             return Response(
                 {"error": "Database connection error. Please try again later."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
         try:
-            # 1. Call PayPal API to capture the order
-            paypal_response = paypal_client.capture_order(order_id)
+            # 1. Verify the order details with PayPal
+            order_details = paypal_client._make_request(
+                "GET", 
+                f"/v2/checkout/orders/{order_id}"
+            )
             
-            # Check the status of the capture
-            if paypal_response.get("status") == "COMPLETED":
-                # Extract user_id and course_id from custom_id passed during order creation
-                # The custom_id is embedded in the purchase_units -> payments -> captures -> custom_id
-                # Or you can fetch the order details via GET /v2/checkout/orders/{order_id}
-                
-                # For simplicity, let's assume we store the custom_id or fetch order details if needed.
-                # In a robust system, you'd fetch the order details and verify
-                # custom_id = paypal_response['purchase_units'][0]['payments']['captures'][0]['custom_id']
-                # user_id_str, course_id_str = custom_id.split('|')
-
-                # As a fallback, since user is authenticated, we can use request.user.id
-                user_oid = ObjectId(request.user.id) 
-
-                # To get the course_id related to this specific order, 
-                # it's best to fetch the order details from PayPal or store it temporarily.
-                # For this example, let's assume we already have course_id passed to frontend (which is likely true)
-                # or better, fetch the order details from PayPal API to retrieve the 'custom_id' field.
-                # Let's get it from PayPal's order details API
-                order_details = paypal_client._make_request("GET", f"/v2/checkout/orders/{order_id}")
-                custom_id_from_paypal = order_details['purchase_units'][0].get('custom_id')
-                
-                if not custom_id_from_paypal:
-                    logger.error(f"Custom ID not found in PayPal order {order_id}. Cannot enroll user.")
-                    return Response({"error": "Order details incomplete. Cannot enroll."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-                user_id_from_paypal_str, course_id_str = custom_id_from_paypal.split('|')
-                
-                # IMPORTANT: Verify that user_id_from_paypal_str matches request.user.id for security
-                if user_id_from_paypal_str != str(request.user.id):
-                    logger.error(f"Security Warning: User ID mismatch during PayPal capture. Authenticated user {request.user.id} vs PayPal order user {user_id_from_paypal_str}")
-                    # You might want to log this and potentially revert transaction or flag for manual review
-                    return Response({"error": "Security check failed. User mismatch."}, status=status.HTTP_403_FORBIDDEN)
-
-
-                course_oid = ObjectId(course_id_str) # Use the course_id from custom_id
-                
-                # 2. Check if user is already enrolled (Idempotency)
-                user_doc = db.customusers.find_one({"_id": user_oid})
-                if not user_doc:
-                    logger.error(f"User {user_oid} not found in MongoDB during PayPal capture (post-order).")
-                    # This is an unusual state if authentication passed. Log and handle.
-                    return Response({"error": "User profile not found for enrollment."}, status=status.HTTP_404_NOT_FOUND)
-
-                if any(c['_id'] == course_oid for c in user_doc.get('course', [])):
-                    logger.info(f"User {user_oid} already enrolled in course {course_oid}. Idempotent fulfillment for PayPal order {order_id}.")
-                    return Response(
-                        {'message': 'Payment successful, but course was already enrolled.'},
-                        status=status.HTTP_200_OK
-                    )
-                
-                # 3. Enroll the user
-                course_doc = db.courses.find_one({'_id': course_oid}, {'name': 1, 'price': 1})
-                if not course_doc:
-                    logger.error(f"Course {course_oid} not found in MongoDB during PayPal capture (post-order).")
-                    return Response({'error': 'Course not found for enrollment.'}, status=status.HTTP_404_NOT_FOUND)
-
-                db.customusers.update_one(
-                    {"_id": user_oid},
-                    {"$push": {"course": {
-                        "_id": course_doc['_id'],
-                        "name": course_doc['name'],
-                        "price": course_doc['price'],
-                        "enrollment_date": datetime.datetime.utcnow(),
-                    }}}
+            # 2. Extract custom ID containing user_id and course_id
+            custom_id = order_details['purchase_units'][0].get('custom_id')
+            if not custom_id:
+                logger.error(f"Custom ID missing in PayPal order {order_id}")
+                return Response(
+                    {"error": "Order verification failed. Missing required data."},
+                    status=status.HTTP_400_BAD_REQUEST
                 )
 
-                # 4. Record the transaction
-                capture_details = paypal_response['purchase_units'][0]['payments']['captures'][0]
-                db.enrollments_transactions.insert_one({
-                    "user_id": user_oid,
-                    "course_id": course_oid,
-                    "order_id": order_id, # PayPal Order ID
-                    "capture_id": capture_details['id'], # PayPal Capture ID
-                    "payer_id": paypal_response['payer']['payer_id'], # Payer ID from completed order
-                    "amount_paid": float(capture_details['amount']['value']),
-                    "currency": capture_details['amount']['currency_code'],
-                    "status": capture_details['status'],
-                    "payment_method": "paypal",
-                    "timestamp": datetime.datetime.utcnow(),
-                })
-
-                logger.info(f"PayPal Order {order_id} successfully captured and user {user_oid} enrolled in course {course_oid}.")
+            user_id_str, course_id_str = custom_id.split('|')
+            
+            # 3. Security check - verify the order belongs to the authenticated user
+            if user_id_str != str(request.user.id):
+                logger.error(f"User ID mismatch: Auth {request.user.id} vs Order {user_id_str}")
                 return Response(
-                    {'message': f'Payment successful! You are now enrolled in {course_doc.get("name", "this course")}'},
+                    {"error": "This order doesn't belong to the current user."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+
+            user_oid = ObjectId(request.user.id)
+            course_oid = ObjectId(course_id_str)
+
+            # 4. Check if user is already enrolled (idempotency)
+            if db.customusers.find_one({
+                "_id": user_oid,
+                "course._id": course_oid
+            }):
+                logger.info(f"User {user_oid} already enrolled in course {course_oid}")
+                return Response(
+                    {'message': 'You are already enrolled in this course.'},
                     status=status.HTTP_200_OK
                 )
 
-            else:
-                status_detail = paypal_response.get("status", "UNKNOWN")
-                logger.error(f"Failed to capture PayPal Order {order_id}. Status: {status_detail}. Response: {paypal_response}")
-                # You might want to provide more specific error messages based on PayPal status
-                return Response({'error': f'Failed to capture PayPal order. Status: {status_detail}'}, status=status.HTTP_400_BAD_REQUEST)
+            # 5. Get course details and enroll the user
+            course = db.courses.find_one(
+                {'_id': course_oid}, 
+                {'name': 1, 'price': 1}
+            )
+            if not course:
+                logger.error(f"Course {course_oid} not found")
+                return Response(
+                    {'error': 'Course not found.'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            # 6. Perform enrollment
+            db.customusers.update_one(
+                {"_id": user_oid},
+                {"$push": {"course": {
+                    "_id": course['_id'],
+                    "name": course['name'],
+                    "price": course['price'],
+                    "enrollment_date": datetime.datetime.utcnow(),
+                }}}
+            )
+
+            # 7. Record the transaction (optional, if you still want to track)
+            db.enrollments_transactions.insert_one({
+                "user_id": user_oid,
+                "course_id": course_oid,
+                "order_id": order_id,
+                "payment_method": "paypal",
+                "timestamp": datetime.datetime.utcnow(),
+                "status": "COMPLETED"  # Assuming frontend verified this
+            })
+
+            logger.info(f"User {user_oid} enrolled in course {course_oid}")
+            return Response(
+                {'message': f'Successfully enrolled in {course.get("name", "the course")}!'},
+                status=status.HTTP_200_OK
+            )
 
         except InvalidId:
-            logger.error("Invalid ObjectId format encountered during PayPal capture.")
-            return Response({'error': 'Invalid ID format.'}, status=status.HTTP_400_BAD_REQUEST)
+            logger.error("Invalid ID format encountered")
+            return Response(
+                {'error': 'Invalid ID format.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         except PyMongoError as e:
-            logger.error(f"MongoDB operation error in CapturePayPalOrderView: {e}")
-            return Response({'error': 'Database error during payment capture. Please try again later.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.error(f"MongoDB error: {e}")
+            return Response(
+                {'error': 'Database error during enrollment.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
         except Exception as e:
-            logger.error(f"Unexpected error capturing PayPal order: {str(e)}", exc_info=True)
-            return Response({'error': f'An unexpected error occurred during payment capture: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.error(f"Unexpected error: {str(e)}", exc_info=True)
+            return Response(
+                {'error': 'An unexpected error occurred during enrollment.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

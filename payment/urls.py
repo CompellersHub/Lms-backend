@@ -1,6 +1,6 @@
 # payment/urls.py
 from django.urls import path
-from .views import CreatePaymentIntentView, PaymentSuccessView, CreatePayPalOrderView, CapturePayPalOrderView
+from .views import CreatePaymentIntentView, PaymentSuccessView, CreatePayPalOrderView,  VerifyPayPalOrderAndEnrollView
 
 app_name = 'payment'
 
@@ -9,5 +9,5 @@ urlpatterns = [
     # This one doesn't take URL arguments, it expects data in the POST body
     path('payment-success/', PaymentSuccessView.as_view(), name='payment-success-webhook-alternative'),
     path('paypal/create-order/', CreatePayPalOrderView.as_view(), name='paypal-create-order'),
-    path('paypal/capture-order/', CapturePayPalOrderView.as_view(), name='paypal-capture-order'),
+    path('paypal/verify-order/',  VerifyPayPalOrderAndEnrollView.as_view(), name='paypal-capture-order'),
 ]

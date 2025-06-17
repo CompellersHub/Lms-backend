@@ -1,4 +1,5 @@
 # payment/views.py
+import traceback
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -13,7 +14,7 @@ import uuid
 from rest_framework.decorators import authentication_classes, permission_classes
 from pymongo.errors import PyMongoError 
 from bson.errors import InvalidId 
-
+from datetime import datetime, timezone
 
 # Make sure this import matches where your get_mongo_db function is located
 from courses.mongo_utils import get_mongo_db # Assuming it's in courses app
@@ -335,123 +336,263 @@ class CreatePayPalOrderView(APIView):
             return Response({'error': f'An unexpected error occurred: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+
+logger = logging.getLogger(__name__)
+
 @permission_classes([IsAuthenticated])
 class VerifyPayPalOrderAndEnrollView(APIView):
     """
-    Endpoint to verify a completed PayPal order and enroll the user.
-    The frontend calls this after successfully capturing the payment.
+    Enhanced endpoint for PayPal verification and enrollment with:
+    - Detailed error logging
+    - Failed payment tracking
+    - User-friendly messages
+    - Security validation
     """
+
     def post(self, request):
+        # Initialize logging context
+        log_context = {
+            "user_id": str(request.user.id),
+            "endpoint": "verify-paypal-order",
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+
+        # 1. Validate Order ID
         order_id = request.data.get('orderID')
-        
         if not order_id:
-            return Response(
-                {"error": "orderID is required."}, 
-                status=status.HTTP_400_BAD_REQUEST
+            logger.error("Missing orderID", extra={
+                **log_context,
+                "request_data": request.data
+            })
+            return self._error_response(
+                code="MISSING_ORDER_ID",
+                message="Payment verification failed: Order ID is required",
+                user_message="We couldn't process your payment. Please try again.",
+                status=status.HTTP_400_BAD_REQUEST,
+                context=log_context
             )
 
+        log_context["order_id"] = order_id
+
+        # 2. Database Connection Check
         db = get_mongo_db()
-        if db is None:
-            logger.error("MongoDB connection not available.")
-            return Response(
-                {"error": "Database connection error. Please try again later."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        if db is None: # <-- MODIFIED THIS LINE
+            logger.critical("MongoDB connection failed", extra=log_context)
+            return self._error_response(
+                code="DATABASE_UNAVAILABLE",
+                message="Database connection error",
+                user_message="Our systems are busy. Please try again later.",
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                context=log_context
             )
 
         try:
-            # 1. Verify the order details with PayPal
-            order_details = paypal_client._make_request(
-                "GET", 
-                f"/v2/checkout/orders/{order_id}"
-            )
-            
-            # 2. Extract custom ID containing user_id and course_id
-            custom_id = order_details['purchase_units'][0].get('custom_id')
+            # 3. Verify PayPal Order
+            try:
+                order_details = paypal_client._make_request(
+                    "GET",
+                    f"/v2/checkout/orders/{order_id}"
+                )
+                logger.info("PayPal order retrieved", extra={
+                    **log_context,
+                    "paypal_status": order_details.get("status")
+                })
+            except Exception as e:
+                logger.error("PayPal API failed", extra={
+                    **log_context,
+                    "error": str(e)
+                })
+                return self._error_response(
+                    code="PAYPAL_API_ERROR",
+                    message=f"PayPal verification failed: {str(e)}",
+                    user_message="We couldn't verify your payment. Please try again.",
+                    status=status.HTTP_400_BAD_REQUEST,
+                    context=log_context
+                )
+
+            # 4. Validate Custom ID
+            purchase_unit = order_details['purchase_units'][0]
+            custom_id = purchase_unit.get('custom_id')
+
             if not custom_id:
-                logger.error(f"Custom ID missing in PayPal order {order_id}")
-                return Response(
-                    {"error": "Order verification failed. Missing required data."},
-                    status=status.HTTP_400_BAD_REQUEST
+                logger.error("Missing custom_id", extra={
+                    **log_context,
+                    "paypal_response": order_details
+                })
+                return self._error_response(
+                    code="INVALID_ORDER_DATA",
+                    message="Missing custom_id in PayPal order",
+                    user_message="Invalid payment information received.",
+                    status=status.HTTP_400_BAD_REQUEST,
+                    context=log_context,
+                    details={"paypal_response": order_details}
                 )
 
-            user_id_str, course_id_str = custom_id.split('|')
-            
-            # 3. Security check - verify the order belongs to the authenticated user
+            try:
+                user_id_str, course_id_str = custom_id.split('|')
+                user_oid = ObjectId(user_id_str)
+                course_oid = ObjectId(course_id_str)
+            except (ValueError, InvalidId) as e:
+                logger.error("Invalid ID format", extra={
+                    **log_context,
+                    "custom_id": custom_id,
+                    "error": str(e)
+                })
+                return self._error_response(
+                    code="INVALID_ID_FORMAT",
+                    message=f"ID validation failed: {str(e)}",
+                    user_message="We encountered an issue with your payment details.",
+                    status=status.HTTP_400_BAD_REQUEST,
+                    context=log_context,
+                    details={"custom_id": custom_id}
+                )
+
+            # 5. Security Validation
             if user_id_str != str(request.user.id):
-                logger.error(f"User ID mismatch: Auth {request.user.id} vs Order {user_id_str}")
-                return Response(
-                    {"error": "This order doesn't belong to the current user."},
-                    status=status.HTTP_403_FORBIDDEN
+                logger.warning("User ID mismatch", extra={
+                    **log_context,
+                    "auth_user": str(request.user.id),
+                    "order_user": user_id_str
+                })
+                return self._error_response(
+                    code="USER_MISMATCH",
+                    message="Authenticated user doesn't match payment owner",
+                    user_message="This payment doesn't belong to your account.",
+                    status=status.HTTP_403_FORBIDDEN,
+                    context=log_context,
+                    details={
+                        "auth_user": str(request.user.id),
+                        "order_user": user_id_str
+                    }
                 )
 
-            user_oid = ObjectId(request.user.id)
-            course_oid = ObjectId(course_id_str)
-
-            # 4. Check if user is already enrolled (idempotency)
-            if db.customusers.find_one({
-                "_id": user_oid,
-                "course._id": course_oid
-            }):
-                logger.info(f"User {user_oid} already enrolled in course {course_oid}")
+            # 6. Check Existing Enrollment
+            if db.customusers.find_one({"_id": user_oid, "course._id": course_oid}):
+                logger.info("Already enrolled", extra={
+                    **log_context,
+                    "course_id": course_id_str
+                })
                 return Response(
-                    {'message': 'You are already enrolled in this course.'},
+                    {
+                        "status": "success",
+                        "code": "ALREADY_ENROLLED",
+                        "message": "User already enrolled",
+                        "user_message": "You're already enrolled in this course!"
+                    },
                     status=status.HTTP_200_OK
                 )
 
-            # 5. Get course details and enroll the user
+            # 7. Validate Course Exists
             course = db.courses.find_one(
-                {'_id': course_oid}, 
+                {'_id': course_oid},
                 {'name': 1, 'price': 1}
             )
             if not course:
-                logger.error(f"Course {course_oid} not found")
-                return Response(
-                    {'error': 'Course not found.'},
-                    status=status.HTTP_404_NOT_FOUND
+                logger.error("Course not found", extra={
+                    **log_context,
+                    "course_id": course_id_str
+                })
+                return self._error_response(
+                    code="COURSE_NOT_FOUND",
+                    message="Course does not exist",
+                    user_message="The course could not be found.",
+                    status=status.HTTP_404_NOT_FOUND,
+                    context=log_context
                 )
 
-            # 6. Perform enrollment
-            db.customusers.update_one(
-                {"_id": user_oid},
-                {"$push": {"course": {
-                    "_id": course['_id'],
-                    "name": course['name'],
-                    "price": course['price'],
-                    "enrollment_date": datetime.datetime.utcnow(),
-                }}}
-            )
+            # 8. Process Enrollment
+            try:
+                # Update user's courses
+                db.customusers.update_one(
+                    {"_id": user_oid},
+                    {"$push": {"course": {
+                        "_id": course['_id'],
+                        "name": course['name'],
+                        "price": course['price'],
+                        "enrollment_date": datetime.now(timezone.utc),
+                    }}}
+                )
 
-            # 7. Record the transaction (optional, if you still want to track)
-            db.enrollments_transactions.insert_one({
-                "user_id": user_oid,
-                "course_id": course_oid,
-                "order_id": order_id,
-                "payment_method": "paypal",
-                "timestamp": datetime.datetime.utcnow(),
-                "status": "COMPLETED"  # Assuming frontend verified this
-            })
+                # Record transaction
+                db.enrollments_transactions.insert_one({
+                    "user_id": user_oid,
+                    "course_id": course_oid,
+                    "order_id": order_id,
+                    "payment_method": "paypal",
+                    "timestamp": datetime.now(timezone.utc),
+                    "status": "COMPLETED",
+                    "amount": purchase_unit.get('amount', {}).get('value')
+                })
 
-            logger.info(f"User {user_oid} enrolled in course {course_oid}")
-            return Response(
-                {'message': f'Successfully enrolled in {course.get("name", "the course")}!'},
-                status=status.HTTP_200_OK
-            )
+                logger.info("Enrollment successful", extra={
+                    **log_context,
+                    "course_name": course.get('name')
+                })
 
-        except InvalidId:
-            logger.error("Invalid ID format encountered")
-            return Response(
-                {'error': 'Invalid ID format.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        except PyMongoError as e:
-            logger.error(f"MongoDB error: {e}")
-            return Response(
-                {'error': 'Database error during enrollment.'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+                return Response(
+                    {
+                        "status": "success",
+                        "message": f"Enrolled in {course.get('name', 'the course')}",
+                        "user_message": f"Successfully enrolled in {course.get('name', 'the course')}!",
+                        "course_id": course_id_str
+                    },
+                    status=status.HTTP_200_OK
+                )
+
+            except PyMongoError as e:
+                logger.error("Enrollment failed", extra={
+                    **log_context,
+                    "error": str(e),
+                    "stack_trace": traceback.format_exc()
+                })
+                return self._error_response(
+                    code="ENROLLMENT_FAILED",
+                    message="Database error during enrollment",
+                    user_message="We couldn't complete your enrollment. Please contact support.",
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    context=log_context
+                )
+
         except Exception as e:
-            logger.error(f"Unexpected error: {str(e)}", exc_info=True)
-            return Response(
-                {'error': 'An unexpected error occurred during enrollment.'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            logger.critical("Unhandled exception", extra={
+                **log_context,
+                "error": str(e),
+                "stack_trace": traceback.format_exc()
+            })
+            return self._error_response(
+                code="UNKNOWN_ERROR",
+                message="An unexpected error occurred",
+                user_message="Something went wrong. Our team has been notified.",
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                context=log_context
             )
+
+    def _error_response(self, code, message, user_message, status, context=None, details=None):
+        """Standardized error response with logging"""
+        error_data = {
+            "status": "failed",
+            "code": code,
+            "message": message,
+            "user_message": user_message,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+
+        if details:
+            error_data["details"] = details
+
+        # Log to failed payments collection
+        # Ensure db is not None before attempting to insert
+        db = get_mongo_db() # Get db again for this context, or pass it if appropriate
+        if context and db is not None: # <-- MODIFIED THIS LINE
+            try:
+                db.failed_payments.insert_one({
+                    **context,
+                    "error_code": code,
+                    "error_message": message,
+                    "details": details or {},
+                    "resolved": False
+                })
+            except Exception as e:
+                logger.error(f"Failed to log payment failure: {str(e)}")
+
+        return Response(error_data, status=status)

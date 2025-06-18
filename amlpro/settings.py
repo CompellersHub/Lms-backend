@@ -453,6 +453,12 @@ LOGGING = {
             'propagate': False,
             'level': 'ERROR',
         },
+        'paypal_api_client': { # Your specific logger name
+            'handlers': ['console'],
+            'level': 'CRITICAL', # Set this to CRITICAL to see your debug messages
+                                 # or DEBUG if you want all debug messages from this logger
+            'propagate': False, # Prevent messages from being passed to root logger
+        },
     }
 }
 

@@ -1,4 +1,3 @@
-# payment/paypal_api_client.py
 import uuid
 import requests
 import json
@@ -10,25 +9,38 @@ logger = logging.getLogger(__name__)
 
 class PayPalAPIClient:
     def __init__(self):
-        # Base URL for PayPal API (sandbox or live)
         self.base_url = "https://api-m.paypal.com" if settings.PAYPAL_MODE == "live" else "https://api-m.sandbox.paypal.com"
         self._access_token = None
         self._token_expires_at = 0 # Unix timestamp
 
     def _get_access_token(self):
         """Fetches a new PayPal access token if expired or not set."""
+        # Use timezone-aware datetime for comparison for robustness
+        from datetime import datetime, timezone
+
         # Check if token is still valid (with a 60-second buffer)
-        if self._access_token and self._token_expires_at > datetime.datetime.now().timestamp() + 60:
+        # Use datetime.now(timezone.utc).timestamp() for consistent UTC comparison
+        if self._access_token and self._token_expires_at > datetime.now(timezone.utc).timestamp() + 60:
+            logger.info("Using cached PayPal access token.")
             return self._access_token
 
         logger.info("Fetching new PayPal access token...")
         headers = {
             "Accept": "application/json",
-            "Accept-Language": "en_US"
+            "Accept-Language": "en_US",
+            "Content-Type": "application/x-www-form-urlencoded" # <-- ADD THIS LINE
         }
         # Use HTTP Basic Auth for token endpoint
-        auth = (settings.PAYPAL_CLIENT_ID, settings.PAYPAL_CLIENT_SECRET)
+        auth = (settings.PAYPAL_CLIENT_ID , settings.PAYPAL_CLIENT_SECRET)
         data = {"grant_type": "client_credentials"}
+
+        # --- CRITICAL DEBUGGING PRINTS ---
+        logger.critical(f"DEBUG: PayPal Base URL: {self.base_url}")
+        logger.critical(f"DEBUG: Client ID from settings: '{settings.PAYPAL_CLIENT_ID}'")
+        # Be EXTREMELY careful not to leak secrets in production logs!
+        logger.critical(f"DEBUG: Secret from settings (first 5 chars): '{settings.PAYPAL_CLIENT_SECRET[:5]}...'")
+        logger.critical(f"DEBUG: Auth tuple being sent: {auth}")
+        # --- END CRITICAL DEBUGGING PRINTS ---
 
         try:
             response = requests.post(
@@ -36,21 +48,25 @@ class PayPalAPIClient:
                 headers=headers,
                 auth=auth,
                 data=data,
-                timeout=10 # Set a timeout for the request
+                timeout=10
             )
-            response.raise_for_status() # Raise an exception for 4xx or 5xx status codes
+            response.raise_for_status()
             token_data = response.json()
-            
+
             self._access_token = token_data["access_token"]
-            # Calculate expiration time, subtracting a buffer to refresh early
-            self._token_expires_at = datetime.datetime.now().timestamp() + token_data.get("expires_in", 32400) - 300 # 5-minute buffer
+            # Calculate expiration time using timezone-aware datetime
+            self._token_expires_at = datetime.now(timezone.utc).timestamp() + token_data.get("expires_in", 32400) - 300 # 5-minute buffer
 
             logger.info("Successfully fetched new PayPal access token.")
             return self._access_token
         except requests.exceptions.RequestException as e:
             logger.error(f"Error fetching PayPal access token: {e}")
             if hasattr(e, 'response') and e.response is not None:
-                logger.error(f"PayPal token response error: {e.response.text}")
+                logger.error(f"PayPal token response status: {e.response.status_code}")
+                try:
+                    logger.error(f"PayPal token response error: {e.response.json()}")
+                except json.JSONDecodeError:
+                    logger.error(f"PayPal token raw error response: {e.response.text}")
             raise Exception(f"Failed to get PayPal access token: {e}")
         except Exception as e:
             logger.error(f"An unexpected error occurred during PayPal token fetch: {e}")

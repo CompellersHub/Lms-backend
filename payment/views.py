@@ -1,4 +1,5 @@
 # payment/views.py
+import json
 import traceback
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -350,15 +351,29 @@ class VerifyPayPalOrderAndEnrollView(APIView):
     """
 
     def post(self, request):
-        # Initialize logging context
-        log_context = {
-            "user_id": str(request.user.id),
-            "endpoint": "verify-order",
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        }
+        log_context = {} # Initialize empty to ensure it always exists
+
+        try: # NEW: Wrap initial setup to catch errors early
+            log_context = {
+                "user_id": str(request.user.id),
+                "endpoint": "verify-order",
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        except Exception as e:
+            logger.critical(f"Error initializing log_context: {e}", exc_info=True) # exc_info=True will print full traceback
+            return Response(
+                {
+                    "status": "failed",
+                    "code": "INITIALIZATION_ERROR",
+                    "message": "Failed to initialize request context.",
+                    "user_message": "An internal error occurred. Please try again later.",
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
         # 1. Validate Order ID
-        order_id = request.data.get('order_id')
+        order_id = request.data.get('order_id') # Make sure this matches your client's payload ('order_id' or 'orderID')
         if not order_id:
             logger.error("Missing orderID", extra={
                 **log_context,
@@ -368,7 +383,7 @@ class VerifyPayPalOrderAndEnrollView(APIView):
                 code="MISSING_ORDER_ID",
                 message="Payment verification failed: Order ID is required",
                 user_message="We couldn't process your payment. Please try again.",
-                status=status.HTTP_400_BAD_REQUEST,
+                status_code=status.HTTP_400_BAD_REQUEST, # Use status_code here as per your _error_response
                 context=log_context
             )
 
@@ -376,73 +391,83 @@ class VerifyPayPalOrderAndEnrollView(APIView):
 
         # 2. Database Connection Check
         db = get_mongo_db()
-        if db is None: # <-- MODIFIED THIS LINE
+        if db is None:
             logger.critical("MongoDB connection failed", extra=log_context)
             return self._error_response(
                 code="DATABASE_UNAVAILABLE",
                 message="Database connection error",
                 user_message="Our systems are busy. Please try again later.",
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, # Use status_code here
                 context=log_context
             )
 
-        try:
-            # 3. Verify PayPal Order
-            try:
-                order_details = paypal_client._make_request(
-                    "GET",
-                    f"/v2/checkout/orders/{order_id}"
-                )
-                logger.info("PayPal order retrieved", extra={
-                    **log_context,
-                    "paypal_status": order_details.get("status")
-                })
-            except Exception as e:
-                logger.error("PayPal API failed", extra={
-                    **log_context,
-                    "error": str(e)
-                })
-                return self._error_response(
-                    code="PAYPAL_API_ERROR",
-                    message=f"PayPal verification failed: {str(e)}",
-                    user_message="We couldn't verify your payment. Please try again.",
-                    status=status.HTTP_400_BAD_REQUEST,
-                    context=log_context
-                )
+        try: # This main try block starts here
+            # 3. Verify PayPal Order by getting its details
+            order_details = paypal_client._make_request(
+                "GET",
+                f"/v2/checkout/orders/{order_id}"
+            )
+            logger.critical(f"DEBUG: PayPal order_details received: {json.dumps(order_details, indent=2)}")
 
-            # 4. Validate Custom ID
-            purchase_unit = order_details['purchase_units'][0]
-            custom_id = purchase_unit.get('custom_id')
+            # --- MODIFIED SECTION START ---
 
-            if not custom_id:
-                logger.error("Missing custom_id", extra={
+            # Safely check for 'purchase_units' and get the first one
+            purchase_unit = None
+            if order_details and isinstance(order_details, dict) and \
+               'purchase_units' in order_details and \
+               isinstance(order_details['purchase_units'], list) and \
+               len(order_details['purchase_units']) > 0:
+                
+                purchase_unit = order_details['purchase_units'][0]
+            
+            # If purchase_unit couldn't be extracted, it means PayPal response was not as expected
+            if not purchase_unit:
+                logger.error("PayPal response missing expected 'purchase_units' or it's empty/malformed.", extra={
                     **log_context,
                     "paypal_response": order_details
                 })
                 return self._error_response(
-                    code="INVALID_ORDER_DATA",
-                    message="Missing custom_id in PayPal order",
-                    user_message="Invalid payment information received.",
-                    status=status.HTTP_400_BAD_REQUEST,
+                    code="INVALID_PAYPAL_RESPONSE_STRUCTURE",
+                    message="PayPal order details missing 'purchase_units' or invalid structure.",
+                    user_message="Invalid payment information. Please try again.",
+                    status_code=status.HTTP_400_BAD_REQUEST,
                     context=log_context,
                     details={"paypal_response": order_details}
                 )
 
+            # Safely get custom_id
+            custom_id = purchase_unit.get('custom_id')
+
+            if not custom_id:
+                logger.error("Missing custom_id in PayPal order purchase unit.", extra={
+                    **log_context,
+                    "paypal_purchase_unit": purchase_unit
+                })
+                return self._error_response(
+                    code="MISSING_CUSTOM_ID",
+                    message="Missing 'custom_id' in PayPal purchase unit.",
+                    user_message="Payment details incomplete. Please contact support.",
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    context=log_context,
+                    details={"paypal_purchase_unit": purchase_unit}
+                )
+
+            # Validate the format of custom_id and extract IDs
             try:
                 user_id_str, course_id_str = custom_id.split('|')
                 user_oid = ObjectId(user_id_str)
                 course_oid = ObjectId(course_id_str)
             except (ValueError, InvalidId) as e:
-                logger.error("Invalid ID format", extra={
+                logger.error("Invalid ID format in custom_id from PayPal.", extra={
                     **log_context,
                     "custom_id": custom_id,
                     "error": str(e)
                 })
                 return self._error_response(
-                    code="INVALID_ID_FORMAT",
-                    message=f"ID validation failed: {str(e)}",
-                    user_message="We encountered an issue with your payment details.",
-                    status=status.HTTP_400_BAD_REQUEST,
+                    code="INVALID_CUSTOM_ID_FORMAT",
+                    message=f"Invalid 'custom_id' format from PayPal: {str(e)}",
+                    user_message="We encountered an issue with your payment details. Please contact support.",
+                    status_code=status.HTTP_400_BAD_REQUEST,
                     context=log_context,
                     details={"custom_id": custom_id}
                 )
@@ -554,7 +579,7 @@ class VerifyPayPalOrderAndEnrollView(APIView):
                 )
 
         except Exception as e:
-            logger.critical("Unhandled exception", extra={
+            logger.critical("Unhandled exception during PayPal verification process", extra={
                 **log_context,
                 "error": str(e),
                 "stack_trace": traceback.format_exc()
@@ -563,7 +588,7 @@ class VerifyPayPalOrderAndEnrollView(APIView):
                 code="UNKNOWN_ERROR",
                 message="An unexpected error occurred",
                 user_message="Something went wrong. Our team has been notified.",
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, # Use status_code here
                 context=log_context
             )
 

@@ -353,12 +353,12 @@ class VerifyPayPalOrderAndEnrollView(APIView):
         # Initialize logging context
         log_context = {
             "user_id": str(request.user.id),
-            "endpoint": "verify-paypal-order",
+            "endpoint": "verify-order",
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
         # 1. Validate Order ID
-        order_id = request.data.get('orderID')
+        order_id = request.data.get('order_id')
         if not order_id:
             logger.error("Missing orderID", extra={
                 **log_context,

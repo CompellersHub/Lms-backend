@@ -16,6 +16,8 @@ from rest_framework.decorators import authentication_classes, permission_classes
 from pymongo.errors import PyMongoError 
 from bson.errors import InvalidId 
 from datetime import datetime, timezone
+stripe.api_key = settings.STRIPE_SECRET_KEY
+
 
 # Make sure this import matches where your get_mongo_db function is located
 from courses.mongo_utils import get_mongo_db # Assuming it's in courses app
@@ -26,84 +28,185 @@ class CreatePaymentIntentView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, *args, **kwargs):
-        db = get_mongo_db()
-        if db is None:
-            logger.error("MongoDB connection not available for CreatePaymentIntentView.")
+        # Initialize logging context
+        log_context = {
+            "user_id": str(request.user.id),
+            "endpoint": "create-payment-intent",
+            "timestamp": datetime.utcnow().isoformat()
+        }
+
+        # 1. Verify Stripe API Key
+        if not stripe.api_key:
+            logger.critical("Stripe API key not configured", extra=log_context)
             return Response(
-                {"error": "Database connection error. Please try again later."},
+                {
+                    "status": "failed",
+                    "code": "STRIPE_NOT_CONFIGURED",
+                    "message": "Payment system configuration error",
+                    "user_message": "Our payment system is currently unavailable. Please try again later."
+                },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-        course_id = request.data.get('course_id')
-
-        if not course_id:
+        # 2. Database Connection Check
+        db = get_mongo_db()
+        if db is None:
+            logger.error("MongoDB connection failed", extra=log_context)
             return Response(
-                {"error": "Course ID is required."},
+                {
+                    "status": "failed",
+                    "code": "DATABASE_UNAVAILABLE",
+                    "message": "Database connection error",
+                    "user_message": "Our systems are busy. Please try again later."
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        # 3. Validate Course ID
+        course_id = request.data.get('course_id')
+        if not course_id:
+            logger.error("Missing course_id", extra={
+                **log_context,
+                "request_data": request.data
+            })
+            return Response(
+                {
+                    "status": "failed",
+                    "code": "MISSING_COURSE_ID",
+                    "message": "Course ID is required",
+                    "user_message": "Please select a course to enroll in."
+                },
                 status=status.HTTP_400_BAD_REQUEST
             )
 
         try:
             course_oid = ObjectId(course_id)
-        except Exception:
+            log_context["course_id"] = course_id
+        except Exception as e:
+            logger.error("Invalid Course ID format", extra={
+                **log_context,
+                "error": str(e),
+                "provided_course_id": course_id
+            })
             return Response(
-                {"error": "Invalid Course ID format."},
+                {
+                    "status": "failed",
+                    "code": "INVALID_COURSE_ID",
+                    "message": "Invalid Course ID format",
+                    "user_message": "The course information is invalid. Please try again."
+                },
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        course = db.courses.find_one({"_id": course_oid})
-
-        if not course:
+        # 4. Fetch Course Details
+        try:
+            course = db.courses.find_one({"_id": course_oid})
+            if not course:
+                logger.error("Course not found", extra=log_context)
+                return Response(
+                    {
+                        "status": "failed",
+                        "code": "COURSE_NOT_FOUND",
+                        "message": "Course not found",
+                        "user_message": "The course could not be found."
+                    },
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            log_context["course_name"] = course.get('name')
+            log_context["course_price"] = course.get('price')
+        except PyMongoError as e:
+            logger.error("Database error fetching course", extra={
+                **log_context,
+                "error": str(e),
+                "stack_trace": traceback.format_exc()
+            })
             return Response(
-                {"error": "Course not found."},
-                status=status.HTTP_404_NOT_FOUND
+                {
+                    "status": "failed",
+                    "code": "DATABASE_ERROR",
+                    "message": "Error fetching course details",
+                    "user_message": "We couldn't retrieve course information. Please try again."
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+        # 5. Create Payment Intent
         try:
-            # Convert price to cents (Stripe expects integer in smallest currency unit)
-            amount_in_cents = int(course['price'] * 100) 
+            amount_in_cents = int(course['price'] * 100)
+            user_email = request.user.email
+            
+            logger.info("Creating PaymentIntent", extra={
+                **log_context,
+                "amount_in_cents": amount_in_cents,
+                "currency": "GBP"
+            })
 
-            # User object from request.user (set by JWTAuthentication)
-            # request.user should have an 'id' attribute (from AbstractBaseUser)
-            # and a '_mongo_doc' attribute (from your MongoAuthBackend if implemented as discussed)
-            user_id = str(request.user.id) 
-            user_email = request.user.email # Assuming your user model has an email field
-
-            # Create a PaymentIntent
             payment_intent = stripe.PaymentIntent.create(
                 amount=amount_in_cents,
-                currency='GBP', # Or your desired currency
+                currency='GBP',
                 metadata={
                     'course_id': course_id,
-                    'user_id': user_id,
-                    'course_price_at_payment': str(course['price']), # Store original price
-                    'user_email': user_email, # Useful for Stripe dashboard
+                    'user_id': str(request.user.id),
+                    'course_price_at_payment': str(course['price']),
+                    'user_email': user_email,
+                    'enrollment_ids': f"{request.user.id}|{course_id}"  # For consistency with PayPal
                 },
-                # Optional: description, receipt_email etc.
                 description=f"Enrollment in {course['name']} for {user_email}",
             )
 
+            logger.info("PaymentIntent created successfully", extra={
+                **log_context,
+                "payment_intent_id": payment_intent.id,
+                "payment_status": payment_intent.status
+            })
+
             return Response({
+                "status": "success",
                 "clientSecret": payment_intent.client_secret,
-                "publishableKey": settings.STRIPE_PUBLISHABLE_KEY,
+                "payment_intent_id": payment_intent.id,
                 "course_id": course_id,
-                "payment_intent_id": payment_intent.id, # Useful for tracking
+                "amount": course['price'],
+                "currency": "GBP"
             }, status=status.HTTP_200_OK)
 
         except stripe.error.StripeError as e:
-            logger.error(f"Stripe error creating Payment Intent: {e}")
+            logger.error("Stripe API error", extra={
+                **log_context,
+                "error_type": type(e).__name__,
+                "error_code": getattr(e, 'code', None),
+                "error_message": str(e),
+                "stripe_request_id": getattr(e, 'request_id', None)
+            })
+            
             return Response(
-                {"error": f"Stripe error: {e.user_message or e.code}"},
-                status=status.HTTP_400_BAD_REQUEST # Or 500 depending on the specific error
+                {
+                    "status": "failed",
+                    "code": "STRIPE_ERROR",
+                    "message": f"Payment processing error: {e.user_message or e.code}",
+                    "user_message": "We couldn't process your payment. Please try again.",
+                    "stripe_code": e.code
+                },
+                status=status.HTTP_400_BAD_REQUEST
             )
+            
         except Exception as e:
-            logger.error(f"An unexpected error occurred: {e}")
+            logger.critical("Unexpected error", extra={
+                **log_context,
+                "error": str(e),
+                "stack_trace": traceback.format_exc()
+            })
             return Response(
-                {"error": "An unexpected error occurred. Please try again."},
+                {
+                    "status": "failed",
+                    "code": "UNKNOWN_ERROR",
+                    "message": "An unexpected error occurred",
+                    "user_message": "Something went wrong. Our team has been notified."
+                },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
 
-stripe.api_key = settings.STRIPE_SECRET_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -129,9 +232,9 @@ class PaymentSuccessView(APIView):
         }
 
         # 1. Validate Payment Intent ID
-        payment_intent_id = request.data.get('paymentIntentId')
+        payment_intent_id = request.data.get('payment_intent_id')
         if not payment_intent_id:
-            logger.error("Missing paymentIntentId", extra=log_context)
+            logger.error("Missing payment_intent_id", extra=log_context)
             return self._error_response(
                 code="MISSING_PAYMENT_INTENT",
                 message="Payment verification failed: paymentIntentId is required",
@@ -143,13 +246,13 @@ class PaymentSuccessView(APIView):
 
         # 2. Database Connection Check
         db = get_mongo_db()
-        if not db:
+        if db is None:
             logger.critical("MongoDB connection failed", extra=log_context)
             return self._error_response(
                 code="DATABASE_UNAVAILABLE",
                 message="Database connection error",
                 user_message="Our systems are busy. Please try again later.",
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, # Use status_code here
                 context=log_context
             )
 

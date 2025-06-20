@@ -15,7 +15,7 @@ from anymail.message import AnymailMessage
 import logging
 import threading
 from django.contrib.auth import get_user_model
-from .tasks import send_welcome_email_task
+# from .tasks import send_welcome_email_task
 
 
 def model_to_dict(instance):
@@ -203,23 +203,23 @@ def password_reset_token_created(sender, instance, reset_password_token, *args, 
 
 
 
-User = get_user_model()
-logger = logging.getLogger(__name__)
+# User = get_user_model()
+# logger = logging.getLogger(__name__)
 
-# --- Asynchronous Email Thread Class (for simple async without Celery) ---
-@receiver(post_save, sender=User)
-def trigger_welcome_email_on_signup(sender, instance, created, **kwargs):
-    """
-    Signal receiver to trigger a welcome email when a new user is created (signs up).
-    """
-    if created: # This condition ensures the email is sent ONLY on user creation
-        user_email = instance.email
-        user_name = instance.get_full_name() or instance.username
+# # --- Asynchronous Email Thread Class (for simple async without Celery) ---
+# @receiver(post_save, sender=User)
+# def trigger_welcome_email_on_signup(sender, instance, created, **kwargs):
+#     """
+#     Signal receiver to trigger a welcome email when a new user is created (signs up).
+#     """
+#     if created: # This condition ensures the email is sent ONLY on user creation
+#         user_email = instance.email
+#         user_name = instance.get_full_name() or instance.username
 
-        if user_email:
-            logger.info(f"New user {instance.username} signed up. Queuing welcome email to {user_email}.")
+#         if user_email:
+#             logger.info(f"New user {instance.username} signed up. Queuing welcome email to {user_email}.")
 
-            # --- Trigger the Celery task ---
-            send_welcome_email_task.delay(instance.id) # Pass the user ID to the task
-        else:
-            logger.warning(f"New user {instance.username} created but has no email address. Skipping welcome email trigger.")
+#             # --- Trigger the Celery task ---
+#             send_welcome_email_task.delay(instance.id) # Pass the user ID to the task
+#         else:
+#             logger.warning(f"New user {instance.username} created but has no email address. Skipping welcome email trigger.")

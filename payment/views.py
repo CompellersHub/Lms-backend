@@ -103,13 +103,24 @@ class CreatePaymentIntentView(APIView):
             )
 
 
+stripe.api_key = settings.STRIPE_SECRET_KEY
+
+logger = logging.getLogger(__name__)
+
 class PaymentSuccessView(APIView):
-    # This view could be called by your frontend after a successful payment client-side.
-    # For production, it's highly recommended to use a Stripe Webhook for server-side fulfillment.
-    # However, based on your tests, you're using this direct callback approach.
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
+        # Verify Stripe is configured
+        if not stripe.api_key:
+            return self._error_response(
+                code="STRIPE_NOT_CONFIGURED",
+                message="Stripe API key not configured",
+                user_message="Payment system unavailable",
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        # [Rest of your original implementation...]
         # Initialize logging context
         log_context = {
             "user_id": str(request.user.id),

@@ -78,6 +78,7 @@ requests-oauthlib==2.0.0
 rsa==4.9.1
 s3transfer==0.13.0
 service-identity==24.2.0
+sib-api-v3-sdk==7.6.0
 six==1.17.0
 social-auth-app-django==5.4.3
 social-auth-core==4.5.6

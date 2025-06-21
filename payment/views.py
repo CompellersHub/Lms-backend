@@ -16,7 +16,8 @@ from rest_framework.decorators import authentication_classes, permission_classes
 from pymongo.errors import PyMongoError 
 from bson.errors import InvalidId 
 from datetime import datetime, timezone
-stripe.api_key = settings.STRIPE_SECRET_KEY
+import os
+stripe.api_key = os.getenv('STRIPE_TEST_kEY')
 
 
 # Make sure this import matches where your get_mongo_db function is located

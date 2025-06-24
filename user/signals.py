@@ -198,6 +198,9 @@ def password_reset_token_created(sender, instance, reset_password_token, *args, 
         'site_name': getattr(settings, 'SITE_NAME', current_site.name), # Use SITE_NAME from settings or current site
         'domain': getattr(settings, 'FRONTEND_DOMAIN', current_site.domain), # Use FRONTEND_DOMAIN from settings or current site
         # Add any other variables your Brevo template expects
+        'logo_url': getattr(settings, 'BREVO_EMAIL_LOGO_URL', 'staticfiles/logo/logo.jpg'), 
+        'contact_url': getattr(settings, 'BREVO_EMAIL_CONTACT_URL', 'https://your-site.com/contact'),
+        'privacy_url': getattr(settings, 'BREVO_EMAIL_PRIVACY_URL', 'https://your-site.com/privacy-policy'),
     }
 
     # Use DEFAULT_FROM_EMAIL from settings.py for the sender

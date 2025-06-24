@@ -284,7 +284,7 @@ EMAIL_PORT = 587                    # Brevo's SMTP port (587 for TLS, 465 for SS
 EMAIL_USE_TLS = True                # Use TLS for encryption
 EMAIL_HOST_USER = os.getenv('BREVO_SMTP_LOGIN') # Your Brevo SMTP login (often your Brevo email)
 EMAIL_HOST_PASSWORD = os.getenv('BREVO_SMTP_KEY') # Your Brevo SMTP key (the auto-generated password)
-DEFAULT_FROM_EMAIL = 'olomoshuaomozafen@gmail.com' # The email address you want emails to appear from
+# DEFAULT_FROM_EMAIL = 'olomoshuaomozafen@gmail.com' # The email address you want emails to appear from
 
 
 
@@ -292,14 +292,10 @@ DEFAULT_FROM_EMAIL = 'olomoshuaomozafen@gmail.com' # The email address you want 
 
 # settings.py
 
-ANYMAIL_BACKEND = "anymail.backends.brevo.EmailBackend"
 
-ANYMAIL = {
-    "BREVO_API_KEY": os.getenv('Brevo_API'), # Replace with your actual API key
-    # "IGNORE_RECIPIENT_STATUS": True, # Optional: To ignore recipient status errors
-}
 
-DEFAULT_FROM_EMAIL = 'olomoshuaomozafen@gmail.com' # Required for Django's mail functions
+BREVO_API_KEY = os.getenv('Brevo_API')
+DEFAULT_FROM_EMAIL = 'marketing@titanscareers.com' # Required for Django's mail functions
 SERVER_EMAIL = DEFAULT_FROM_EMAIL # Default from-email for Django errors
 
 AUTH_USER_MODEL = 'user.CustomUser'

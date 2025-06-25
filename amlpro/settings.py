@@ -109,14 +109,23 @@ AWS_STORAGE_BUCKET_NAME = os.getenv('S3_BUCKET') # The S3 bucket name you create
 AWS_S3_REGION_NAME = os.getenv('S3_REGION') # e.g., 'us-east-1'
 AWS_S3_FILE_OVERWRITE = False # Prevents overwriting files with the same name
 
+# Add these to your AWS S3 Settings section
+AWS_S3_OBJECT_PARAMETERS = {
+    'CacheControl': 'max-age=86400',
+}
+AWS_DEFAULT_ACL = 'public-read'  # or None for private files
+AWS_QUERYSTRING_AUTH = False  # For public files
+AWS_S3_SIGNATURE_VERSION = 's3v4'
+
 
 # Optional: If you want to use a custom domain for S3 (e.g., if you map a CNAME to S3 direct)
 # AWS_S3_CUSTOM_DOMAIN = f'{AWS_STORAGE_BUCKET_NAME}.s3.{AWS_S3_REGION_NAME}.amazonaws.com'
 
 # For media files (user uploads)
-DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
-MEDIA_URL = f'https://{AWS_STORAGE_BUCKET_NAME}.s3.{AWS_S3_REGION_NAME}.amazonaws.com/' # Direct S3 URL for media uploads
-MEDIA_ROOT = ''
+
+DEFAULT_FILE_STORAGE = 'courses.storage_backends.PublicMediaStorage'
+MEDIA_URL = f'https://{AWS_STORAGE_BUCKET_NAME}.s3.{AWS_S3_REGION_NAME}.amazonaws.com/'
+MEDIA_ROOT = ''  # This should be empty for S3
 
 # For CloudFront Integration (highly recommended for video)
 # Use your CloudFront Distribution Domain Name here

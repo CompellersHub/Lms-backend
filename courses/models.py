@@ -71,7 +71,7 @@ class Module(models.Model):
     id = models.AutoField(primary_key=True, editable=False)
     title = models.CharField(max_length=200) # Required
     video = models.ManyToManyField('Video') # REQUIRED (removed blank=True, null=True)
-    course_note = models.ForeignKey('CourseNote', on_delete=models.CASCADE, unique=True) # Required
+    course_note = models.ForeignKey('CourseNote', on_delete=models.CASCADE) # Required
     order = models.IntegerField() # REQUIRED, removed default
     created_at = models.DateTimeField(auto_now_add=True) # Auto-set
     updated_at = models.DateTimeField(auto_now=True) # Auto-set
@@ -175,8 +175,8 @@ class Course(models.Model):
     id = models.AutoField(primary_key=True, editable=False)
     name = models.CharField(max_length=150) # Required
     course_image = models.ImageField(upload_to='course_images/') # Required
-    preview_id = models.CharField(max_length=60) # REQUIRED (removed null=True, blank=True)
-    preview_description = models.CharField(max_length=255) # REQUIRED (removed null=True, blank=True)
+    preview_id = models.CharField(max_length=60,null=True, blank=True ) # REQUIRED (removed null=True, blank=True)
+    preview_description = models.CharField(max_length=255, null=True, blank=True) # REQUIRED (removed null=True, blank=True)
     description = models.TextField() # Required
     category = models.ForeignKey('Category', on_delete=models.CASCADE) # Required
     created_at = models.DateTimeField(auto_now_add=True) # Auto-set
@@ -345,7 +345,7 @@ class CompletionCertificate(models.Model):
     signature = models.CharField(
         _('Signature'),
         max_length=255,
-        # REMOVED blank=True, null=True, making it required
+        blank=True, null=True, 
         help_text=_('The name or file path of the signature.')
     ) # REQUIRED
 

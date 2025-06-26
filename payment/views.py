@@ -629,7 +629,7 @@ class VerifyPayPalOrderAndEnrollView(APIView):
                 code="MISSING_ORDER_ID",
                 message="Payment verification failed: Order ID is required",
                 user_message="We couldn't process your payment. Please try again.",
-                status_code=status.HTTP_400_BAD_REQUEST, # Use status_code here as per your _error_response
+                status=status.HTTP_400_BAD_REQUEST, # Use status_code here as per your _error_response
                 context=log_context
             )
 
@@ -643,7 +643,7 @@ class VerifyPayPalOrderAndEnrollView(APIView):
                 code="DATABASE_UNAVAILABLE",
                 message="Database connection error",
                 user_message="Our systems are busy. Please try again later.",
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, # Use status_code here
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR, # Use status_code here
                 context=log_context
             )
 
@@ -676,7 +676,7 @@ class VerifyPayPalOrderAndEnrollView(APIView):
                     code="INVALID_PAYPAL_RESPONSE_STRUCTURE",
                     message="PayPal order details missing 'purchase_units' or invalid structure.",
                     user_message="Invalid payment information. Please try again.",
-                    status_code=status.HTTP_400_BAD_REQUEST,
+                    status=status.HTTP_400_BAD_REQUEST,
                     context=log_context,
                     details={"paypal_response": order_details}
                 )
@@ -693,7 +693,7 @@ class VerifyPayPalOrderAndEnrollView(APIView):
                     code="MISSING_CUSTOM_ID",
                     message="Missing 'custom_id' in PayPal purchase unit.",
                     user_message="Payment details incomplete. Please contact support.",
-                    status_code=status.HTTP_400_BAD_REQUEST,
+                    status=status.HTTP_400_BAD_REQUEST,
                     context=log_context,
                     details={"paypal_purchase_unit": purchase_unit}
                 )
@@ -713,7 +713,7 @@ class VerifyPayPalOrderAndEnrollView(APIView):
                     code="INVALID_CUSTOM_ID_FORMAT",
                     message=f"Invalid 'custom_id' format from PayPal: {str(e)}",
                     user_message="We encountered an issue with your payment details. Please contact support.",
-                    status_code=status.HTTP_400_BAD_REQUEST,
+                    status=status.HTTP_400_BAD_REQUEST,
                     context=log_context,
                     details={"custom_id": custom_id}
                 )
@@ -825,7 +825,7 @@ class VerifyPayPalOrderAndEnrollView(APIView):
                 )
 
         except Exception as e:
-            logger.critical("Unhandled exception during PayPal verification process", extra={
+            logger.critical("Unhandled exception", extra={
                 **log_context,
                 "error": str(e),
                 "stack_trace": traceback.format_exc()
@@ -834,12 +834,21 @@ class VerifyPayPalOrderAndEnrollView(APIView):
                 code="UNKNOWN_ERROR",
                 message="An unexpected error occurred",
                 user_message="Something went wrong. Our team has been notified.",
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, # Use status_code here
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 context=log_context
             )
 
     def _error_response(self, code, message, user_message, status, context=None, details=None):
-        """Standardized error response with logging"""
+        """Standardized error response with logging
+        
+        Args:
+            code: Machine-readable error code
+            message: Technical error message
+            user_message: Friendly message for users
+            status: HTTP status code (use status.HTTP_400_BAD_REQUEST etc.)
+            context: Additional logging context
+            details: Debug details
+        """
         error_data = {
             "status": "failed",
             "code": code,
@@ -851,17 +860,17 @@ class VerifyPayPalOrderAndEnrollView(APIView):
         if details:
             error_data["details"] = details
 
-        # Log to failed payments collection
-        # Ensure db is not None before attempting to insert
-        db = get_mongo_db() # Get db again for this context, or pass it if appropriate
-        if context and db is not None: # <-- MODIFIED THIS LINE
+        # Log to MongoDB if available
+        db = get_mongo_db()
+        if context and db is not None:  # Changed from 'if context and db'
             try:
                 db.failed_payments.insert_one({
                     **context,
                     "error_code": code,
                     "error_message": message,
                     "details": details or {},
-                    "resolved": False
+                    "resolved": False,
+                    "timestamp": datetime.now(timezone.utc)
                 })
             except Exception as e:
                 logger.error(f"Failed to log payment failure: {str(e)}")

@@ -276,8 +276,8 @@ ACCOUNT_UNIQUE_EMAIL = True
 
 
 
-LOGIN_REDIRECT_URL = 'http://localhost:5173/'
-ACCOUNT_LOGOUT_REDIRECT_URL = 'http://localhost:5173/'
+LOGIN_REDIRECT_URL = 'https://api.titanscareers.com/'
+ACCOUNT_LOGOUT_REDIRECT_URL = 'https://api.titanscareers.com/'
 
 SOCIALACCOUNT_FORMS = {
     'disconnect': 'allauth.socialaccount.forms.DisconnectForm',

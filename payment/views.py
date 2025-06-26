@@ -15,7 +15,7 @@ import uuid
 from rest_framework.decorators import authentication_classes, permission_classes
 from pymongo.errors import PyMongoError 
 from bson.errors import InvalidId 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import os
 stripe.api_key = os.getenv('STRIPE_TEST_kEY')
 
@@ -774,13 +774,14 @@ class VerifyPayPalOrderAndEnrollView(APIView):
             # 8. Process Enrollment
             try:
                 # Update user's courses
+                enrollment_date = datetime.now(timezone.utc)
                 db.customusers.update_one(
                     {"_id": user_oid},
                     {"$push": {"course": {
                         "_id": course['_id'],
                         "name": course['name'],
                         "price": course['price'],
-                        "enrollment_date": datetime.now(timezone.utc),
+                        "enrollment_date": enrollment_date,
                     }}}
                 )
 
@@ -790,7 +791,7 @@ class VerifyPayPalOrderAndEnrollView(APIView):
                     "course_id": course_oid,
                     "order_id": order_id,
                     "payment_method": "paypal",
-                    "timestamp": datetime.now(timezone.utc),
+                    "timestamp": enrollment_date,
                     "status": "COMPLETED",
                     "amount": purchase_unit.get('amount', {}).get('value')
                 })
@@ -800,12 +801,21 @@ class VerifyPayPalOrderAndEnrollView(APIView):
                     "course_name": course.get('name')
                 })
 
+                # Prepare response with additional fields
                 return Response(
                     {
                         "status": "success",
                         "message": f"Enrolled in {course.get('name', 'the course')}",
                         "user_message": f"Successfully enrolled in {course.get('name', 'the course')}!",
-                        "course_id": course_id_str
+                        "course_id": course_id_str,
+                        "order_id": order_id,  # Added order_id
+                        "course_access": {     # Added course_access details
+                            "access_granted": True,
+                            "access_type": "premium",  # or "basic" depending on your course types
+                            "expiration_date": (enrollment_date + timedelta(days=365)).isoformat(),  # 1 year access
+                            "features_available": ["video_lessons", "course_libraries", "continous_assessments", "certificate"],
+                            "enrollment_date": enrollment_date.isoformat()
+                        }
                     },
                     status=status.HTTP_200_OK
                 )

@@ -360,20 +360,49 @@ class CoursesByCategory(APIView):
 #         serializer = CourseOrderItemSerializer(items, many=True)
 #         return Response(serializer.data)
 
+logger = logging.getLogger(__name__)
+
 class Assignment(APIView):
+    """
+    API endpoint for Assignment operations (GET and POST).
+    """
+
     def get(self, request):
         db = get_mongo_db()
         assignments = list(db.make_assignments.find())
         serializer = AssignmentSerializer(assignments, many=True)
         return Response(serializer.data)
     
-
     def post(self, request):
+        """
+        Handles POST requests to create a new Assignment document in MongoDB.
+        """
         serializer = AssignmentSerializer(data=request.data)
+        
         if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            try:
+                # This calls the create() method defined in your AssignmentSerializer
+                assignment_instance = serializer.save() 
+                
+                # Use a new serializer instance with the created object
+                # to ensure to_representation is called for the full response,
+                # including embedded 'teacher' data.
+                response_serializer = AssignmentSerializer(instance=assignment_instance)
+                
+                return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+            except Exception as e:
+                # Log the exception for debugging purposes
+                logger.exception("Error creating assignment in MongoDB via API.")
+                
+                # Return a 500 Internal Server Error for database-related issues
+                return Response(
+                    {"detail": f"An internal server error occurred while creating the assignment: {e}"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+        else:
+            # If validation fails, return 400 Bad Request with serializer errors
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
 
 class AssignmentDetail(APIView):
     def get_object(self, pk: str):

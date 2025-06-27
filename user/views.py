@@ -40,7 +40,9 @@ from .serializer import CustomTokenObtainPairSerializer # Import your custom ser
 from rest_framework_simplejwt.tokens import RefreshToken
 from .utils.token_utils import create_jwt_tokens
 from bson.json_util import default as bson_default
-
+from sib_api_v3_sdk.rest import ApiException
+import sib_api_v3_sdk as brevo_sdk
+from rest_framework import serializers
 
 
 db = get_mongo_db()
@@ -772,5 +774,73 @@ class GetCurrentUserProfile(APIView):
             logger.error(f"Error fetching user profile: {str(e)}", exc_info=True)
             return Response(
                 {"error": "Internal server error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+logger = logging.getLogger(__name__)
+
+# Configure Brevo (same as you have it in signals.py)
+configuration = brevo_sdk.Configuration()
+configuration.api_key['api-key'] = settings.BREVO_API_KEY
+api_instance = brevo_sdk.TransactionalEmailsApi(brevo_sdk.ApiClient(configuration))
+
+# --- New Serializer for input validation ---
+class SendTemplate1Serializer(serializers.Serializer):
+    email = serializers.EmailField(required=True)
+    # Add any other fields your Brevo Template 1 expects, e.g.:
+    # user_name = serializers.CharField(required=False, allow_blank=True)
+
+
+# --- New API View ---
+class SendTemplate1View(APIView):
+    """
+    API endpoint to send Brevo Template 1 to a specified email address.
+    """
+    def post(self, request, *args, **kwargs):
+        serializer = SendTemplate1Serializer(data=request.data)
+        serializer.is_valid(raise_exception=True) # This will automatically return 400 if validation fails
+
+        recipient_email = serializer.validated_data['email']
+        # Retrieve other parameters if your template needs them, e.g.:
+        # user_name = serializer.validated_data.get('user_name', 'Guest')
+
+        # --- Brevo Template 1 Configuration ---
+        BREVO_TEMPLATE_1_ID = 1 # <--- IMPORTANT: REPLACE WITH YOUR ACTUAL BREVO TEMPLATE 1 ID
+                                 #      e.g., if it's ID 5, set to 5
+
+        # Define parameters for the template.
+        # Check your Brevo template to see what dynamic fields (e.g., {{ params.variable_name }}) it uses.
+        template_params = {
+            # "user_name": user_name, # Example if your template uses a user name
+            # "custom_url": "https://yourwebsite.com/some-link/", # Example if your template has a custom link
+        }
+
+        send_smtp_email = brevo_sdk.SendSmtpEmail(
+            to=[{"email": recipient_email}],
+            template_id=BREVO_TEMPLATE_1_ID,
+            params=template_params, # Pass parameters here
+            # Optional: Set a sender if different from default configured in Brevo
+            # sender={"name": "Your App Name", "email": "no-reply@yourdomain.com"},
+            # Optional: Subject can be overridden, but templates usually handle this
+            # subject="Subject for Template 1",
+        )
+
+        try:
+            api_response = api_instance.send_transac_email(send_smtp_email)
+            logger.info(f"Brevo Template 1 sent successfully to {recipient_email}. Response: {api_response}")
+            return Response(
+                {"message": f"Brevo Template 1 sent successfully to {recipient_email}."},
+                status=status.HTTP_200_OK
+            )
+        except ApiException as e:
+            logger.error(f"Brevo API Error sending Template 1 to {recipient_email}: {e}")
+            return Response(
+                {"error": "Failed to send email via Brevo.", "details": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        except Exception as e:
+            logger.error(f"Unexpected error sending Template 1 to {recipient_email}: {e}")
+            return Response(
+                {"error": "An unexpected error occurred while sending the email."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )

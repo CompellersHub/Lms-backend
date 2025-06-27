@@ -21,5 +21,5 @@ urlpatterns = [
     # ... other course URLs
     path('profile/', views.GetCurrentUserProfile.as_view(), name='get_current_user_profile'),
     path('teacher/course-progress/<str:course_id>/', views.TeacherCourseProgressListView.as_view(), name='teacher_course_progress_list'),
-
+    path('send-template-1/', views.SendTemplate1View.as_view(), name='send-template-1'),
 ]

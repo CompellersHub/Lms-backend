@@ -1,6 +1,10 @@
+import datetime
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
+from django.utils.translation import gettext_lazy as _
+from django.contrib.auth import authenticate, login
+from user.utils.token_utils import create_jwt_tokens
 from .serializer import CategorySerializer, BlogSerializer, BlogUserSerializer
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.authentication import SessionAuthentication
@@ -128,16 +132,50 @@ class Login(APIView):
         if not password:
             return Response({"error": "Password is required"}, status=status.HTTP_400_BAD_REQUEST)
 
-        db = get_mongo_db()
-        user = db.blogusers.find_one({"email": email})
+        user = authenticate(request=request, email=email, password=password)
 
-        if user and check_password(password, user['password']):
-            serializer = BlogUserSerializer(user)
-            user_data = serializer.data
-            # user_data['id'] = int(user_data['id'])  # Ensure ObjectId is converted to string
-            return Response({"user": user_data, "message": "User logged in successfully"}, status=status.HTTP_200_OK)
+        if user is not None:
+            if user.is_active:
+                # IMPORTANT: Role check for students
+                # Ensure this login endpoint is specifically for students
+                # Or, if it's a general login, ensure the user has the 'STUDENT' role.
+                # Assuming 'customusers' collection is for students/general users with a role field.
+                db = get_mongo_db()
+                custom_user_doc = db.bloguser.find_one({"_id": user._mongo_doc['_id']}) # Get the full doc again if needed
 
-        return Response({"error": "Invalid credentials, please try again"}, status=status.HTTP_400_BAD_REQUEST)
+                if not custom_user_doc or custom_user_doc.get('role') != 'STUDENT':
+                    return Response(
+                        {"detail": _('Only students can log in via this endpoint or incorrect role.')},
+                        status=status.HTTP_403_FORBIDDEN # Or 401 if you prefer
+                    )
+
+                # Generate JWT tokens manually
+                tokens = create_jwt_tokens(user)
+
+                # Update last_login in MongoDB (if not handled by backend)
+                # Your backend might already update this, but doing it here ensures it.
+                db.customusers.update_one(
+                    {"_id": user._mongo_doc['_id']},
+                    {"$set": {"last_login": datetime.utcnow()}}
+                )
+                
+                # Re-fetch the updated document for the response, including updated last_login
+                updated_user_document = db.bloguser.find_one({"_id": user._mongo_doc['_id']})
+
+                # Use CustomUserSerializer to serialize the full MongoDB document for the response.
+                serializer = BlogUserSerializer(updated_user_document)
+
+                return Response({
+                    "access": tokens['access'],
+                    "refresh": tokens['refresh'],
+                    "user_info": serializer.data, # Renamed 'user' to 'user_info' for consistency with TeacherLoginView
+                    "message": "Student logged in successfully"
+                }, status=status.HTTP_200_OK)
+            else:
+                return Response({"error": "User account is inactive."}, status=status.HTTP_401_UNAUTHORIZED)
+        else:
+            # Authentication failed (either user not found or password incorrect)
+            return Response({"error": "Invalid credentials, please try again"}, status=status.HTTP_400_BAD_REQUEST)
 
 class Logout(APIView):
     authentication_classes = [SessionAuthentication]

@@ -1,9 +1,12 @@
 import datetime
+import os
 from rest_framework import serializers
 from bson.objectid import ObjectId
 from .mongo_utils import get_mongo_db
 # from user.serializer import TeacherProfileSerializer, CustomUserSerializer
 import logging
+from django.core.files.storage import default_storage # THIS WILL NOW USE S3!
+from django.conf import settings 
 
 
 class CategorySerializer(serializers.Serializer):
@@ -417,7 +420,7 @@ class AssignmentSerializer(serializers.Serializer):
         representation = super().to_representation(instance)
 
         if hasattr(instance, '_id'):
-            representation['id'] = str(instance._id)
+            representation['id'] = str(instance._id)  
         elif '_id' in instance:
             representation['id'] = str(instance['_id'])
 
@@ -455,22 +458,125 @@ class AssignmentSerializer(serializers.Serializer):
 
     def create(self, validated_data):
         db = get_mongo_db()
-        validated_data['course'] = ObjectId(validated_data.get('course_id')) # Store Course ObjectId
+        
+        # Extract the file object before saving to MongoDB
+        uploaded_file = validated_data.pop('file', None) 
+
+        # Convert incoming 'course' string ID to ObjectId for storage
+        # The field name is 'course' for both input and storage
+        if 'course' in validated_data:
+            validated_data['course'] = ObjectId(validated_data['course']) # Use validated_data['course'] directly
+        else:
+            raise serializers.ValidationError({"course": "This field is required."}) # Error message refers to 'course'
+
+        if 'teacher_id' in validated_data and validated_data['teacher_id'] is not None:
+            validated_data['teacher'] = ObjectId(validated_data.pop('teacher_id'))
+        elif 'teacher_id' in validated_data: 
+            validated_data.pop('teacher_id')
+
+        # --- Handle File Storage ---
+        file_s3_key = None # Renamed for clarity, holds the S3 key
+        if uploaded_file:
+            try:
+                s3_key_prefix = 'assignments/' 
+                filename_for_s3 = default_storage.get_available_name(os.path.join(s3_key_prefix, uploaded_file.name))
+                
+                file_s3_key = default_storage.save(filename_for_s3, uploaded_file)
+                validated_data['file'] = default_storage.url(file_s3_key)
+                logger.info(f"File uploaded to S3: {validated_data['file']}")
+            except Exception as e:
+                logger.exception(f"Error saving uploaded file to S3: {e}")
+                raise serializers.ValidationError({"file": f"Could not save uploaded file: {e}"})
+        else:
+            validated_data['file'] = None
+
+        # --- Proceed with MongoDB Insertion ---
         try:
             result = db.make_assignments.insert_one(validated_data)
             return db.make_assignments.find_one({"_id": result.inserted_id})
         except Exception as e:
-            raise serializers.ValidationError("Error creating assignment in the database.")
+            logger.exception("Error creating assignment in the database.")
+            if file_s3_key: 
+                try:
+                    default_storage.delete(file_s3_key)
+                    logger.info(f"Cleaned up S3 file {file_s3_key} due to DB error.")
+                except Exception as cleanup_e:
+                    logger.error(f"Failed to clean up S3 file {file_s3_key}: {cleanup_e}")
+            raise serializers.ValidationError(f"Error creating assignment: {e}")
 
     def update(self, instance, validated_data):
         db = get_mongo_db()
         assignment_id = ObjectId(instance['id'])
-        validated_data['course'] = ObjectId(validated_data.get('course_id', instance.get('course_id'))) # Store Course ObjectId
+
+        uploaded_file = validated_data.pop('file', None)
+        old_file_s3_key_to_delete = None 
+        new_file_s3_key = None
+
+        if uploaded_file:
+            try:
+                old_file_url = instance.get('file')
+                if old_file_url:
+                    if old_file_url.startswith(settings.MEDIA_URL):
+                        old_file_s3_key_to_delete = old_file_url[len(settings.MEDIA_URL):]
+                    else:
+                        old_file_s3_key_to_delete = old_file_url
+                    logger.info(f"Identified old S3 file for deletion: {old_file_s3_key_to_delete}")
+
+                s3_key_prefix = 'assignments/'
+                filename_for_s3 = default_storage.get_available_name(os.path.join(s3_key_prefix, uploaded_file.name))
+                new_file_s3_key = default_storage.save(filename_for_s3, uploaded_file)
+                validated_data['file'] = default_storage.url(new_file_s3_key)
+                logger.info(f"New file uploaded to S3: {validated_data['file']}")
+            except Exception as e:
+                logger.exception(f"Error saving updated file to S3: {e}")
+                raise serializers.ValidationError({"file": f"Could not save updated file: {e}"})
+        elif 'file' in validated_data and validated_data['file'] is None:
+            old_file_url = instance.get('file')
+            if old_file_url:
+                if old_file_url.startswith(settings.MEDIA_URL):
+                    old_file_s3_key_to_delete = old_file_url[len(settings.MEDIA_URL):]
+                else:
+                    old_file_s3_key_to_delete = old_file_url
+            validated_data['file'] = None
+
+        # Convert incoming 'course' string ID to ObjectId for storage
+        # The field name is 'course' for both input and storage
+        if 'course' in validated_data: # Now checks for 'course' directly
+            validated_data['course'] = ObjectId(validated_data['course'])
+        elif 'course' in instance: # If not provided in validated_data, keep existing
+            # Ensure it's converted to ObjectId if it was stored as string previously or for some reason
+            existing_course_val = instance['course']
+            if isinstance(existing_course_val, str):
+                validated_data['course'] = ObjectId(existing_course_val)
+            else: # Assume it's already an ObjectId or correct type
+                validated_data['course'] = existing_course_val
+
+        if 'teacher_id' in validated_data and validated_data['teacher_id'] is not None:
+            validated_data['teacher'] = ObjectId(validated_data.pop('teacher_id'))
+        elif 'teacher_id' in validated_data: 
+            validated_data.pop('teacher_id')
+
         try:
             db.make_assignments.update_one({"_id": assignment_id}, {"$set": validated_data})
+            
+            if old_file_s3_key_to_delete and old_file_s3_key_to_delete != new_file_s3_key: 
+                try:
+                    default_storage.delete(old_file_s3_key_to_delete)
+                    logger.info(f"Deleted old S3 file: {old_file_s3_key_to_delete}")
+                except Exception as cleanup_e:
+                    logger.error(f"Failed to delete old S3 file {old_file_s3_key_to_delete}: {cleanup_e}")
+
             return db.make_assignments.find_one({"_id": assignment_id})
         except Exception as e:
-            raise serializers.ValidationError("Error updating assignment in the database.")
+            logger.exception("Error updating assignment in the database.")
+            if new_file_s3_key:
+                try:
+                    default_storage.delete(new_file_s3_key)
+                    logger.info(f"Cleaned up newly uploaded S3 file {new_file_s3_key} due to DB error.")
+                except Exception as cleanup_e:
+                    logger.error(f"Failed to clean up new S3 file {new_file_s3_key}: {cleanup_e}")
+            raise serializers.ValidationError(f"Error updating assignment: {e}")
+
 
 class SubmissionSerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)

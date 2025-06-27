@@ -224,7 +224,7 @@ class PaymentSuccessView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-        # [Rest of your original implementation...]
+        
         # Initialize logging context
         log_context = {
             "user_id": str(request.user.id),
@@ -811,7 +811,7 @@ class VerifyPayPalOrderAndEnrollView(APIView):
                         "order_id": order_id,  # Added order_id
                         "course_access": {     # Added course_access details
                             "access_granted": True,
-                            "access_type": "premium",  # or "basic" depending on your course types
+                            "access_type": "premium",  # or "basic" depending on your course access you want to grant
                             "expiration_date": (enrollment_date + timedelta(days=365)).isoformat(),  # 1 year access
                             "features_available": ["video_lessons", "course_libraries", "continous_assessments", "certificate"],
                             "enrollment_date": enrollment_date.isoformat()

@@ -45,7 +45,7 @@ class AssignmentStorage(S3Boto3Storage):
     file_overwrite = False
 
 class CourseMediaStorage(S3Boto3Storage):
-    location = 'courses'
+    location = ''
     file_overwrite = False
 
 class CourseNotesStorage(S3Boto3Storage):

@@ -2,6 +2,8 @@ from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, Permis
 from django.db import models
 from django.utils import timezone
 
+from courses.storages_backends import PublicMediaStorage, ProfilePicturesStorage, TeacherPicturesStorage, SubmissionStorage
+
 
 
 class CustomUserManager(BaseUserManager):
@@ -41,7 +43,7 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     role = models.CharField(max_length=20, default='STUDENT')
     course = models.ManyToManyField('courses.Course',  blank=True, null=True)
     phone_number = models.CharField(max_length=15, blank=True, null=True)
-    profile_pic = models.ImageField(upload_to='profile_pics/', blank=True, null=True)
+    profile_pic = models.FileField(storage=ProfilePicturesStorage(), blank=True, null=True)
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     date_joined = models.DateTimeField(default=timezone.now)
@@ -124,7 +126,7 @@ class TeacherProfile(AbstractUser):
     password = models.CharField(max_length=128, default='')
     role = models.CharField(max_length=20, default='TEACHER')
     bio = models.TextField(blank=True, null=True)
-    profile_picture = models.ImageField(upload_to='teacher_pics/', blank=True, null=True)
+    profile_picture = models.FileField(storage=TeacherPicturesStorage(), blank=True, null=True)
     phone_number = models.CharField(max_length=15, blank=True, default='')
     is_active = models.BooleanField(default=True)
     past_experience = models.TextField(blank=True, null=True)
@@ -164,7 +166,7 @@ class Submission(models.Model):
     student = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='student_submissions')
     assignment = models.ForeignKey('courses.Make_Assignment', on_delete=models.CASCADE, related_name='assignment_submissions')
     submission_date = models.DateTimeField(auto_now_add=True)
-    file = models.FileField(upload_to='submissions/')
+    file = models.FileField(storage=SubmissionStorage(), blank=True, null=True)
     marks_obtained = models.IntegerField(default=0, blank=True, null=True)
     feedback = models.TextField(blank=True, null=True)
     marked_by = models.ForeignKey('TeacherProfile', on_delete=models.CASCADE, related_name='marked_assignments', blank=True, null=True)

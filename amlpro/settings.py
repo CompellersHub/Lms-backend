@@ -113,7 +113,7 @@ AWS_S3_FILE_OVERWRITE = False # Prevents overwriting files with the same name
 AWS_S3_OBJECT_PARAMETERS = {
     'CacheControl': 'max-age=86400',
 }
-AWS_DEFAULT_ACL = 'public-read'  # or None for private files
+AWS_DEFAULT_ACL = None  # or None for private files
 AWS_QUERYSTRING_AUTH = False  # For public files
 AWS_S3_SIGNATURE_VERSION = 's3v4'
 

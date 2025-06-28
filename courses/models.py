@@ -1,5 +1,6 @@
 from django.db import models
 from django.utils import timezone
+from courses.storages_backends import AssignmentStorage, CourseMediaStorage, CourseNotesStorage, VideoMediaStorage
 from user.models import TeacherProfile
 from django.conf import settings
 from django.utils.translation import gettext_lazy as _
@@ -22,7 +23,7 @@ class Video(models.Model):
     title = models.CharField(max_length=255) # Required
     video_id = models.CharField(max_length=60) # REQUIRED
     description = models.TextField() # REQUIRED
-    video_file = models.FileField(upload_to='videos/') # REQUIRED
+    video_file = models.FileField(storage=VideoMediaStorage(), blank=True, null=True)
     duration = models.CharField(max_length=50, help_text="Duration of the video (e.g., '15 minutes', '30:45')") # REQUIRED
     order = models.IntegerField() # REQUIRED, removed default
     created_at = models.DateTimeField(auto_now_add=True) # Auto-set
@@ -51,7 +52,7 @@ class Video(models.Model):
 class CourseNote(models.Model):
     id = models.AutoField(primary_key=True, editable=False)
     title = models.CharField(max_length=255) # Required
-    note_file = models.FileField(upload_to='course_notes/') # Required
+    note_file = models.FileField(storage=CourseNotesStorage(), blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True) # Auto-set
     updated_at = models.DateTimeField(auto_now=True) # Auto-set
 
@@ -174,8 +175,8 @@ class Course(models.Model):
 
     id = models.AutoField(primary_key=True, editable=False)
     name = models.CharField(max_length=150) # Required
-    course_image = models.ImageField(upload_to='course_images/') # Required
-    preview_id = models.CharField(max_length=60,null=True, blank=True ) # REQUIRED (removed null=True, blank=True)
+    course_image = models.FileField(storage=CourseMediaStorage(), blank=True, null=True)
+    preview_id = models.FileField(storage=VideoMediaStorage(), blank=True, null=True)
     preview_description = models.CharField(max_length=255, null=True, blank=True) # REQUIRED (removed null=True, blank=True)
     description = models.TextField() # Required
     category = models.ForeignKey('Category', on_delete=models.CASCADE) # Required
@@ -201,7 +202,7 @@ class Course(models.Model):
             "id": self.id,
             "name": self.name,
             "course_image": self.course_image.url,
-            "preview_id": self.preview_id,
+            "preview_id": self.preview_id.url,
             "preview_description": self.preview_description,
             "description": self.description,
             "category": self.category.to_dict(),
@@ -220,8 +221,8 @@ class Course(models.Model):
 class CourseLibraryVideo(models.Model):
     id = models.AutoField(primary_key=True, editable=False)
     title = models.CharField(max_length=200) # Required
-    video_file = models.FileField(upload_to='course_library/') # REQUIRED (removed blank=True, null=True)
-    video_id = models.CharField(max_length=50) # REQUIRED (removed blank=True, null=True)
+    video_file = models.FileField(storage=VideoMediaStorage(), blank=True, null=True) # REQUIRED (removed blank=True, null=True)
+    video_id = models.CharField(max_length=50, blank=True, null=True) # REQUIRED (removed blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True) # Auto-set
     updated_at = models.DateTimeField(auto_now=True) # Auto-set
 
@@ -272,7 +273,7 @@ class Make_Assignment(models.Model):
     due_date = models.DateTimeField() # Required
     course = models.ForeignKey('Course', on_delete=models.CASCADE, related_name='course_assignments') # Required
     total_marks = models.IntegerField() # REQUIRED, removed default
-    file = models.FileField(upload_to='assignments/') # REQUIRED (removed blank=True)
+    video_file = models.FileField(storage=AssignmentStorage(), blank=True, null=True)
 
     def __str__(self):
         return f"{self.title} - {self.course.name}"

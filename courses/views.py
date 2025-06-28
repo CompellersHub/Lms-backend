@@ -454,10 +454,11 @@ class AssignmentByCourse(APIView):
     def get(self, request, course_id):
         db = get_mongo_db()
         try:
-            # Validate the course_id
+            # 1. Validate the course_id and convert it to ObjectId
             course_oid = ObjectId(course_id)
 
-            # Fetch assignments for the given course_id by querying the embedded course.id
+            # 2. Fetch assignments for the given course_id by querying the embedded 'course.id' field
+            #    This is the core of querying assignments by course_id
             assignments = list(db.make_assignments.find({"course.id": course_oid}))
 
             if not assignments:
@@ -469,10 +470,6 @@ class AssignmentByCourse(APIView):
         except InvalidId:
             logger.error(f"Invalid course ID format: {course_id}")
             return Response({"detail": "Invalid course ID format."}, status=status.HTTP_400_BAD_REQUEST)
-
-        except Exception as e:
-            logger.error(f"An error occurred while retrieving assignments: {e}")
-            return Response({"detail": "An error occurred while retrieving assignments."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
 class AssignmentSubmission(APIView):
     def get(self, request):

@@ -32,6 +32,10 @@ class VideoMediaStorage(S3Boto3Storage):
     location = 'videos'
     file_overwrite = False
 
+class BlogMediaStorage(S3Boto3Storage):
+    location = 'blogs'
+    file_overwrite = False
+
 class SubmissionStorage(S3Boto3Storage):
     location = 'submissions'
     file_overwrite = False

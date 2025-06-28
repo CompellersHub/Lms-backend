@@ -47,40 +47,79 @@ class BlogUserSerializer(serializers.Serializer):
     last_name = serializers.CharField(max_length=150, allow_blank=True, required=False)
     phone_number = serializers.CharField(max_length=15, allow_blank=True, required=False)
     created_at = serializers.DateTimeField(read_only=True)
+    
+    # Add the 'role' field. It should be read-only if it's set internally upon creation.
+    role = serializers.CharField(read_only=True) 
 
     def validate_username(self, value):
         db = get_mongo_db()
-        if db.blogusers.find_one({"username": value}):
+        # Query the MongoDB 'bloguser' collection for uniqueness
+        if db.bloguser.find_one({"username": value}):
             raise serializers.ValidationError("A user with this username already exists.")
         return value
 
     def validate_email(self, value):
         db = get_mongo_db()
-        if db.blogusers.find_one({"email": value}):
+        # Query the MongoDB 'bloguser' collection for uniqueness
+        if db.bloguser.find_one({"email": value}):
             raise serializers.ValidationError("A user with this email already exists.")
         return value
 
     def to_representation(self, instance):
-        if '_id' in instance:
-            instance['id'] = str(instance['_id'])
-            del instance['_id']
-        return super().to_representation(instance)
+        # Create a mutable copy to modify, as 'instance' might be an immutable MongoDB result
+        representation = super().to_representation(instance)
+        
+        # Convert MongoDB's _id to 'id' string for the response
+        if '_id' in instance and isinstance(instance['_id'], ObjectId):
+            representation['id'] = str(instance['_id'])
+        elif '_id' in representation: # In case super().to_representation already included _id
+            representation['id'] = str(representation['_id'])
+            
+        # Ensure '_id' is removed from the final representation if 'id' is preferred
+        if '_id' in representation:
+            del representation['_id']
+            
+        # Ensure password is never included in the response
+        if 'password' in representation:
+            del representation['password']
+            
+        return representation
 
     def create(self, validated_data):
         db = get_mongo_db()
+        
+        # Hash the password before saving
         validated_data['password'] = make_password(validated_data['password'])
-        validated_data['created_at'] = datetime.now()  # Correct usage
-        result = db.blogusers.insert_one(validated_data)
-        return db.blogusers.find_one({"_id": result.inserted_id})
+        
+        # Set creation timestamp
+        validated_data['created_at'] = datetime.now() # Using local time, consider .utcnow() if server is UTC
+        
+        # --- IMPORTANT CHANGE: Set the role to 'blogger' ---
+        validated_data['role'] = 'blogger' 
+        # --- End of IMPORTANT CHANGE ---
+
+        result = db.bloguser.insert_one(validated_data)
+        
+        # Fetch the newly created document from MongoDB to return a complete representation
+        return db.bloguser.find_one({"_id": result.inserted_id})
 
     def update(self, instance, validated_data):
         db = get_mongo_db()
+        
+        # Get the user's MongoDB _id from the instance's 'id' field (which holds the string representation)
         user_id = ObjectId(instance['id'])
+        
+        # Re-hash password if it's being updated
         if 'password' in validated_data:
             validated_data['password'] = make_password(validated_data['password'])
-        db.blogusers.update_one({"_id": user_id}, {"$set": validated_data})
-        return db.blogusers.find_one({"_id": user_id})
-
+        
+        # --- IMPORTANT FIX: Corrected collection name from 'blogusers' to 'bloguser' ---
+        db.bloguser.update_one({"_id": user_id}, {"$set": validated_data})
+        # --- End of IMPORTANT FIX ---
+        
+        # Fetch the updated document from MongoDB to return a complete representation
+        return db.bloguser.find_one({"_id": user_id})
+    
 class BlogSerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)
     title = serializers.CharField(max_length=150)

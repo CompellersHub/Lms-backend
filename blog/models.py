@@ -1,5 +1,6 @@
 from django.db import models
 from django.conf import settings
+from courses.storages_backends import BlogMediaStorage, ProfilePicturesStorage
 from user.models import *
 from django.contrib.auth.models import AbstractUser, Group, Permission
 # Create your models here.
@@ -23,7 +24,20 @@ class BlogUser(AbstractUser):
     username = models.CharField(max_length=150, unique=True)
     email = models.EmailField(unique=True)
     phone_number = models.CharField(max_length=15, null=True, blank=True)
-    profile_pic = models.ImageField(upload_to='profile_pics/', null=True, blank=True)
+    profile_pic = models.FileField(storage=ProfilePicturesStorage(), blank=True, null=True)
+
+    ROLE_CHOICES = (
+        ('blogger', 'Blogger'),
+        ('STUDENT', 'Student'),
+        ('TEACHER', 'Teacher'),
+        # Add any other roles you might have
+    )
+    role = models.CharField(
+        max_length=20,
+        choices=ROLE_CHOICES,
+        default='blogger', # Set 'blogger' as the default role for new BlogUsers
+        help_text='The user\'s role in the system.'
+    )
 
     groups = models.ManyToManyField(
         Group,
@@ -51,7 +65,8 @@ class BlogUser(AbstractUser):
             "username": self.username,
             "email": self.email,
             "phone_number": self.phone_number,
-            "profile_pic": self.profile_pic.url if self.profile_pic else None
+            "profile_pic": self.profile_pic.url if self.profile_pic else None,
+            "role": self.role,
         }
     
 
@@ -61,7 +76,7 @@ class Blog(models.Model):
     id = models.AutoField(primary_key=True)
     created_by = models.ForeignKey(BlogUser, on_delete=models.CASCADE, default=None, null=True)
     category = models.ForeignKey('Category', on_delete=models.CASCADE)
-    image = models.ImageField(upload_to='blog_images/')
+    image = models.FileField(storage=BlogMediaStorage(), blank=True, null=True)
     title = models.CharField(max_length=150)
     description = models.TextField()
     created_at = models.DateTimeField(auto_now=True)

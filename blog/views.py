@@ -13,6 +13,7 @@ from django.contrib.auth import logout
 from courses.mongo_utils import get_mongo_db
 from bson.objectid import ObjectId
 from bson.errors import InvalidId
+from datetime import datetime, timedelta
 
 # Initialize the MongoDB database connection
 db = get_mongo_db()
@@ -143,7 +144,7 @@ class Login(APIView):
                 db = get_mongo_db()
                 custom_user_doc = db.bloguser.find_one({"_id": user._mongo_doc['_id']}) # Get the full doc again if needed
 
-                if not custom_user_doc or custom_user_doc.get('role') != 'STUDENT':
+                if not custom_user_doc or custom_user_doc.get('role') != "blogger":
                     return Response(
                         {"detail": _('Only students can log in via this endpoint or incorrect role.')},
                         status=status.HTTP_403_FORBIDDEN # Or 401 if you prefer
@@ -154,7 +155,7 @@ class Login(APIView):
 
                 # Update last_login in MongoDB (if not handled by backend)
                 # Your backend might already update this, but doing it here ensures it.
-                db.customusers.update_one(
+                db.bloguser.update_one(
                     {"_id": user._mongo_doc['_id']},
                     {"$set": {"last_login": datetime.utcnow()}}
                 )

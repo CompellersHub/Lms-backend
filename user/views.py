@@ -43,6 +43,7 @@ from bson.json_util import default as bson_default
 from sib_api_v3_sdk.rest import ApiException
 import sib_api_v3_sdk as brevo_sdk
 from rest_framework import serializers
+from rest_framework import permissions
 
 
 db = get_mongo_db()
@@ -787,32 +788,27 @@ api_instance = brevo_sdk.TransactionalEmailsApi(brevo_sdk.ApiClient(configuratio
 # --- New Serializer for input validation ---
 class SendTemplate1Serializer(serializers.Serializer):
     email = serializers.EmailField(required=True)
-    # Add any other fields your Brevo Template 1 expects, e.g.:
-    # user_name = serializers.CharField(required=False, allow_blank=True)
+    
 
 
 # --- New API View ---
 class SendTemplate1View(APIView):
-    """
-    API endpoint to send Brevo Template 1 to a specified email address.
-    """
+
+
+    permission_classes = [permissions.AllowAny]
     def post(self, request, *args, **kwargs):
         serializer = SendTemplate1Serializer(data=request.data)
-        serializer.is_valid(raise_exception=True) # This will automatically return 400 if validation fails
+        serializer.is_valid(raise_exception=True)
 
         recipient_email = serializer.validated_data['email']
-        # Retrieve other parameters if your template needs them, e.g.:
-        # user_name = serializer.validated_data.get('user_name', 'Guest')
+        
+        # webinar_link = serializer.validated_data['webinar_link'] # DELETE OR COMMENT THIS LINE
 
-        # --- Brevo Template 1 Configuration ---
-        BREVO_TEMPLATE_1_ID = 1 # <--- IMPORTANT: REPLACE WITH YOUR ACTUAL BREVO TEMPLATE 1 ID
-                                 #      e.g., if it's ID 5, set to 5
+        BREVO_TEMPLATE_1_ID = 1 # <--- Your actual template ID
 
-        # Define parameters for the template.
-        # Check your Brevo template to see what dynamic fields (e.g., {{ params.variable_name }}) it uses.
         template_params = {
-            # "user_name": user_name, # Example if your template uses a user name
-            # "custom_url": "https://yourwebsite.com/some-link/", # Example if your template has a custom link
+            "PDF_DOWNLOAD_LINK": 'https://titanscareers.s3.eu-north-1.amazonaws.com/media/Launch-Your-UK-Career-Titans-Careers-Guide.pdf'
+            # "WEBINAR_LINK": webinar_link, # DELETE OR COMMENT THIS LINE
         }
 
         send_smtp_email = brevo_sdk.SendSmtpEmail(

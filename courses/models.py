@@ -21,8 +21,8 @@ class Category(models.Model):
 class Video(models.Model):
     id = models.AutoField(primary_key=True, editable=False)
     title = models.CharField(max_length=255) # Required
-    video_id = models.CharField(max_length=60) # REQUIRED
-    description = models.TextField() # REQUIRED
+    video_id = models.CharField(max_length=60, blank=True, null=True) # REQUIRED
+    description = models.TextField(blank=True, null=True    ) # REQUIRED
     video_file = models.FileField(storage=VideoMediaStorage(), blank=True, null=True)
     duration = models.CharField(max_length=50, help_text="Duration of the video (e.g., '15 minutes', '30:45')") # REQUIRED
     order = models.IntegerField() # REQUIRED, removed default

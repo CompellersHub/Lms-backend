@@ -35,7 +35,7 @@ class VideoSerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)
     title = serializers.CharField(max_length=200)
     duration = serializers.CharField()
-    description = serializers.CharField()
+    description = serializers.CharField(allow_blank=True, required=False, allow_null=True)
     video_file = serializers.URLField(allow_null=True, required=False)
 
     def to_representation(self, instance):

@@ -2,6 +2,9 @@
 
 from django.shortcuts import render
 from rest_framework import status
+
+from blog.models import BlogUser
+from blog.serializer import BlogUserSerializer
 from .serializer import CourseProgressSerializer, CustomUserSerializer, TeacherProfileSerializer, NotificationSerializer, CourseProgressRecordSerializer, CourseProgressResponseSerializer
 from rest_framework_simplejwt.views import TokenObtainPairView # Use this for base JWT view
 from django.utils.translation import gettext_lazy as _
@@ -25,6 +28,7 @@ from allauth.socialaccount.providers.google.views import GoogleOAuth2Adapter
 from allauth.socialaccount.providers.oauth2.client import OAuth2Error
 import jwt
 from datetime import datetime, timedelta
+
 from django.conf import settings
 import os
 import logging
@@ -211,57 +215,58 @@ class Login(APIView): # This view will now handle student login with JWT
         email = request.data.get("email")
         password = request.data.get("password")
 
-        if not email:
-            return Response({"error": "Email is required"}, status=status.HTTP_400_BAD_REQUEST)
-        if not password:
-            return Response({"error": "Password is required"}, status=status.HTTP_400_BAD_REQUEST)
+        if not email or not password:
+            return Response({"error": "Email and password are required"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Authenticate the user using your MongoAuthBackend
-        # This will return a CustomUser instance if successful
+        # The authenticate call will use your MongoAuthBackend
         user = authenticate(request=request, email=email, password=password)
 
         if user is not None:
             if user.is_active:
-                # IMPORTANT: Role check for students
-                # Ensure this login endpoint is specifically for students
-                # Or, if it's a general login, ensure the user has the 'STUDENT' role.
-                # Assuming 'customusers' collection is for students/general users with a role field.
                 db = get_mongo_db()
-                custom_user_doc = db.customusers.find_one({"_id": user._mongo_doc['_id']}) # Get the full doc again if needed
+                serializer_class = None
+                collection_name = None
+                message = "Logged in successfully"
 
-                if not custom_user_doc or custom_user_doc.get('role') != 'STUDENT':
-                    return Response(
-                        {"detail": _('Only students can log in via this endpoint or incorrect role.')},
-                        status=status.HTTP_403_FORBIDDEN # Or 401 if you prefer
-                    )
+                # Determine which serializer to use and which collection to update
+                if isinstance(user, CustomUser):
+                    serializer_class = CustomUserSerializer
+                    collection_name = 'customusers'
+                    message = "Student logged in successfully"
+                elif isinstance(user, BlogUser):
+                    serializer_class = BlogUserSerializer
+                    collection_name = 'bloguser'
+                    message = "Blogger logged in successfully" # BlogUser can only be 'BLOGGER' now
+                else:
+                    logger.error(f"UnifiedLogin: Unknown user type returned by backend for user_id: {user.id}")
+                    return Response({"error": "An internal error occurred (unknown user type)."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-                # Generate JWT tokens manually
-                tokens = create_jwt_tokens(user)
+                if serializer_class is None:
+                     return Response({"error": "Could not determine user type for serialization."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-                # Update last_login in MongoDB (if not handled by backend)
-                # Your backend might already update this, but doing it here ensures it.
-                db.customusers.update_one(
+                # Update last_login in the correct MongoDB collection
+                db[collection_name].update_one(
                     {"_id": user._mongo_doc['_id']},
-                    {"$set": {"last_login": datetime.utcnow()}}
+                    {"$set": {"last_login": timezone.now()}}
                 )
                 
                 # Re-fetch the updated document for the response, including updated last_login
-                updated_user_document = db.customusers.find_one({"_id": user._mongo_doc['_id']})
+                updated_user_document = db[collection_name].find_one({"_id": user._mongo_doc['_id']})
 
-                # Use CustomUserSerializer to serialize the full MongoDB document for the response.
-                serializer = CustomUserSerializer(updated_user_document)
+                serializer = serializer_class(updated_user_document)
+
+                tokens = create_jwt_tokens(user)
 
                 return Response({
                     "access": tokens['access'],
                     "refresh": tokens['refresh'],
-                    "user_info": serializer.data, # Renamed 'user' to 'user_info' for consistency with TeacherLoginView
-                    "message": "Student logged in successfully"
+                    "user_info": serializer.data,
+                    "message": message
                 }, status=status.HTTP_200_OK)
             else:
                 return Response({"error": "User account is inactive."}, status=status.HTTP_401_UNAUTHORIZED)
         else:
-            # Authentication failed (either user not found or password incorrect)
-            return Response({"error": "Invalid credentials, please try again"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": "Invalid credentials. Please check your email and password."}, status=status.HTTP_400_BAD_REQUEST)
 
 
 

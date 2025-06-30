@@ -27,7 +27,7 @@ class BlogUser(AbstractUser):
     profile_pic = models.FileField(storage=ProfilePicturesStorage(), blank=True, null=True)
 
     ROLE_CHOICES = (
-        ('blogger', 'Blogger'),
+        ('BLOGGER', 'Blogger'),
         ('STUDENT', 'Student'),
         ('TEACHER', 'Teacher'),
         # Add any other roles you might have
@@ -35,7 +35,7 @@ class BlogUser(AbstractUser):
     role = models.CharField(
         max_length=20,
         choices=ROLE_CHOICES,
-        default='blogger', # Set 'blogger' as the default role for new BlogUsers
+        default='BLOGGER', # Set 'blogger' as the default role for new BlogUsers
         help_text='The user\'s role in the system.'
     )
 

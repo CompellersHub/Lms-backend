@@ -144,7 +144,7 @@ class Login(APIView):
                 db = get_mongo_db()
                 custom_user_doc = db.bloguser.find_one({"_id": user._mongo_doc['_id']}) # Get the full doc again if needed
 
-                if not custom_user_doc or custom_user_doc.get('role') != "blogger":
+                if not custom_user_doc or custom_user_doc.get('role') != "Blogger":
                     return Response(
                         {"detail": _('Only students can log in via this endpoint or incorrect role.')},
                         status=status.HTTP_403_FORBIDDEN # Or 401 if you prefer
@@ -179,7 +179,7 @@ class Login(APIView):
             return Response({"error": "Invalid credentials, please try again"}, status=status.HTTP_400_BAD_REQUEST)
 
 class Logout(APIView):
-    authentication_classes = [SessionAuthentication]
+    
     permission_classes = [IsAuthenticated]
 
     def post(self, request, format=None):

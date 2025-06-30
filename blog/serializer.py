@@ -95,7 +95,7 @@ class BlogUserSerializer(serializers.Serializer):
         validated_data['created_at'] = datetime.now() # Using local time, consider .utcnow() if server is UTC
         
         # --- IMPORTANT CHANGE: Set the role to 'blogger' ---
-        validated_data['role'] = 'blogger' 
+        validated_data['role'] = 'BLOGGER'  # Set the default role for new BlogUsers
         # --- End of IMPORTANT CHANGE ---
 
         result = db.bloguser.insert_one(validated_data)

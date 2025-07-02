@@ -1,10 +1,12 @@
 from datetime import datetime
 from rest_framework import serializers
 from bson.objectid import ObjectId
+from blog.models import Blog
 from courses.mongo_utils import get_mongo_db
 from rest_framework.exceptions import ValidationError
 from django.contrib.auth.hashers import make_password
 import re
+import datetime
 
 class CategorySerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)
@@ -120,51 +122,101 @@ class BlogUserSerializer(serializers.Serializer):
         # Fetch the updated document from MongoDB to return a complete representation
         return db.bloguser.find_one({"_id": user_id})
     
+class ContentBlockSerializer(serializers.Serializer):
+    id = serializers.CharField(required=False)
+    type = serializers.ChoiceField(choices=[
+        'paragraph', 'heading', 'image', 
+        'video', 'quote', 'list', 'button', 'code', 'embed'
+    ])
+    content = serializers.JSONField()
+    style = serializers.ChoiceField(choices=[
+        'normal', 'highlight', 'warning', 
+        'success', 'info', 'h1', 'h2', 'h3'
+    ], required=False)
+    anchor = serializers.CharField(required=False)
+    link = serializers.URLField(required=False)
+    buttonText = serializers.CharField(required=False)
+    title = serializers.CharField(required=False)
+
+    def validate_content(self, value):
+        """Validate content based on type"""
+        block_type = self.initial_data.get('type')
+        if block_type == 'list' and not isinstance(value, list):
+            raise ValidationError("List blocks must have array content")
+        elif block_type != 'list' and not isinstance(value, str):
+            raise ValidationError("Non-list blocks must have string content")
+        return value
+
 class BlogSerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)
     title = serializers.CharField(max_length=150)
-    description = serializers.CharField()
-    category = CategorySerializer()
-    created_by = BlogUserSerializer()
-    image = serializers.URLField()
-    created_at = serializers.DateTimeField(read_only=True)
+    slug = serializers.SlugField(max_length=150, required=False)
+    author = serializers.SerializerMethodField()
+    authorRole = serializers.SerializerMethodField()
+    authorImage = serializers.SerializerMethodField()
+    date = serializers.SerializerMethodField()
+    category = serializers.SerializerMethodField()
+    tags = serializers.ListField(child=serializers.CharField())
+    image = serializers.SerializerMethodField()
+    excerpt = serializers.CharField(max_length=300, required=False)
+    content = serializers.ListField(child=serializers.DictField())
+    status = serializers.CharField()
+    createdAt = serializers.SerializerMethodField()
+    updatedAt = serializers.SerializerMethodField()
+    publishedAt = serializers.SerializerMethodField()
 
-    def to_representation(self, instance):
-        if '_id' in instance:
-            instance['id'] = str(instance['_id'])
-            del instance['_id']
-        if 'category' in instance and isinstance(instance['category'], dict):
-            instance['category'] = CategorySerializer().to_representation(instance['category'])
-        if 'created_by' in instance and isinstance(instance['created_by'], dict):
-            instance['created_by'] = BlogUserSerializer().to_representation(instance['created_by'])
-        return super().to_representation(instance)
+    def get_author(self, obj):
+        if isinstance(obj.get('created_by'), dict):
+            return obj['created_by'].get('username', '')
+        return obj.created_by.username if hasattr(obj, 'created_by') else ''
 
-    def create(self, validated_data):
-        db = get_mongo_db()
-        category_data = validated_data.pop('category')
-        category_serializer = CategorySerializer(data=category_data)
-        if category_serializer.is_valid():
-            category_instance = category_serializer.save()
-            validated_data['category'] = category_instance
-        else:
-            raise serializers.ValidationError("Invalid category data")
+    def get_authorRole(self, obj):
+        if isinstance(obj.get('created_by'), dict):
+            return obj['created_by'].get('role', '')
+        return obj.created_by.role if hasattr(obj, 'created_by') else ''
 
-        validated_data['created_at'] = datetime.datetime.now()
-        result = db.blogs.insert_one(validated_data)
-        return db.blogs.find_one({"_id": result.inserted_id})
+    def get_authorImage(self, obj):
+        if isinstance(obj.get('created_by'), dict):
+            return obj['created_by'].get('profile_pic', {}).get('url', '') if isinstance(obj['created_by'].get('profile_pic'), dict) else ''
+        return obj.created_by.profile_pic.url if hasattr(obj, 'created_by') and obj.created_by.profile_pic else ''
 
-    def update(self, instance, validated_data):
-        db = get_mongo_db()
-        blog_id = ObjectId(instance['_id'])
+    def get_date(self, obj):
+        date = obj.get('published_at') if isinstance(obj, dict) else obj.published_at
+        return self._format_datetime(date)
 
-        if 'category' in validated_data:
-            category_data = validated_data.pop('category')
-            category_serializer = CategorySerializer(data=category_data)
-            if category_serializer.is_valid():
-                category_instance = category_serializer.save()
-                validated_data['category'] = category_instance
-            else:
-                raise serializers.ValidationError("Invalid category data")
+    def get_category(self, obj):
+        if isinstance(obj.get('category'), dict):
+            return obj['category'].get('name', '')
+        return obj.category.name if hasattr(obj, 'category') and obj.category else ''
 
-        db.blogs.update_one({"_id": blog_id}, {"$set": validated_data})
-        return db.blogs.find_one({"_id": blog_id})
+    def get_image(self, obj):
+        if isinstance(obj, dict):
+            image = obj.get('image')
+            if isinstance(image, dict):
+                return image.get('url', '')
+            return ''
+        return obj.image.url if hasattr(obj, 'image') and obj.image else ''
+
+    def get_createdAt(self, obj):
+        created_at = obj.get('created_at') if isinstance(obj, dict) else obj.created_at
+        return self._format_datetime(created_at)
+
+    def get_updatedAt(self, obj):
+        updated_at = obj.get('updated_at') if isinstance(obj, dict) else obj.updated_at
+        return self._format_datetime(updated_at)
+
+    def get_publishedAt(self, obj):
+        published_at = obj.get('published_at') if isinstance(obj, dict) else obj.published_at
+        return self._format_datetime(published_at)
+
+    def _format_datetime(self, dt):
+        """Safe datetime formatting"""
+        if isinstance(dt, str):
+            try:
+                dt = datetime.datetime.fromisoformat(dt)
+            except ValueError:
+                return None
+        
+        if isinstance(dt, (datetime.datetime, datetime.date)):
+            return dt.isoformat()
+        return None

@@ -15,17 +15,17 @@ class Command(BaseCommand):
         MONGO_DATABASE_NAME = os.getenv('DATABASE_NAME')
 
         # Connect to MongoDB
-        client = MongoClient(MONGO_URI, ssl=True, ssl_cert_reqs='CERT_NONE')
+        client = MongoClient(MONGO_URI, tls=True, tlsAllowInvalidCertificates=True)
         db = client[MONGO_DATABASE_NAME]
 
         # Export categories
-        categories = Category.objects.all()
-        categories_data = [category.to_dict() for category in categories]
-        if categories_data:
-            db.categories.insert_many(categories_data)
-            self.stdout.write(self.style.SUCCESS('categories data exported successfully'))
-        else:
-            self.stdout.write(self.style.WARNING('No users data to export'))
+        # categories = Category.objects.all()
+        # categories_data = [category.to_dict() for category in categories]
+        # if categories_data:
+        #     db.categories.insert_many(categories_data)
+        #     self.stdout.write(self.style.SUCCESS('categories data exported successfully'))
+        # else:
+        #     self.stdout.write(self.style.WARNING('No users data to export'))
 
         # Export blogs
         blogs = Blog.objects.all()
@@ -37,10 +37,10 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING('No teachers data to export'))
 
         # Export courses
-        bloguser = BlogUser.objects.all()
-        bloguser_data = [bloguser.to_dict() for bloguser in bloguser]
-        if bloguser_data:
-            db.bloguser.insert_many(bloguser_data)
-            self.stdout.write(self.style.SUCCESS('bloguser data exported successfully'))
-        else:
-            self.stdout.write(self.style.WARNING('No students data to export'))
+        # bloguser = BlogUser.objects.all()
+        # bloguser_data = [bloguser.to_dict() for bloguser in bloguser]
+        # if bloguser_data:
+        #     db.bloguser.insert_many(bloguser_data)
+        #     self.stdout.write(self.style.SUCCESS('bloguser data exported successfully'))
+        # else:
+        #     self.stdout.write(self.style.WARNING('No students data to export'))

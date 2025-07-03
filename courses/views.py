@@ -701,6 +701,38 @@ class CreateLiveClassView(APIView):
         serializer = LiveClassSerializer(assignments, many=True)
         return Response(serializer.data)
     
+
+class LiveClassDetailView(APIView):
+    def get(self, request, live_class_id):
+        try:
+            db = get_mongo_db()
+            
+            # Validate if the ID is a valid ObjectId
+            if not ObjectId.is_valid(live_class_id):
+                return Response(
+                    {"error": "Invalid live class ID format"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Find the live class in MongoDB
+            live_class = db.liveclasss.find_one({'_id': ObjectId(live_class_id)})
+            
+            if not live_class:
+                return Response(
+                    {"error": "Live class not found"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Serialize the data
+            serializer = LiveClassSerializer(live_class)
+            
+            return Response(serializer.data)
+            
+        except Exception as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
     
     
     

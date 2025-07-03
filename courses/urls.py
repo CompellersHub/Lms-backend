@@ -34,6 +34,8 @@ urlpatterns = [
     
     path('CreateLiveClass/', views.CreateLiveClassView.as_view(), name='start_live_class'),
 
+    path('live-classes/<str:live_class_id>/', views.LiveClassDetailView.as_view(), name='live-class-detail'),
+
     path('GenerateCertificate/', views.GenerateCertificatePDF.as_view(), name='generate-certificate'),
     
     

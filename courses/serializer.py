@@ -332,7 +332,7 @@ class CourseLibrarySerializer(serializers.Serializer):
 # ... (rest of your serializers remain the same)
 
 class LiveClassSerializer(serializers.Serializer):
-    id = serializers.CharField(read_only=True)
+    id = serializers.CharField(read_only=True)  # This will be the live class ID
     course_id = serializers.CharField(write_only=True)  # For input
     course = serializers.SerializerMethodField(read_only=True)  # For output
     teacher_id = serializers.CharField(write_only=True)  # For input
@@ -349,16 +349,13 @@ class LiveClassSerializer(serializers.Serializer):
         if not course_id:
             return None
             
-        # If course_id is ObjectId, convert to string
         if isinstance(course_id, ObjectId):
             course_id = str(course_id)
             
-        # Fetch complete course data from database
         course = db.courses.find_one({'_id': ObjectId(course_id)})
         if not course:
             return None
             
-        # Return simplified course data or use CourseSerializer if available
         return {
             'id': str(course['_id']),
             'name': course.get('name'),
@@ -366,11 +363,8 @@ class LiveClassSerializer(serializers.Serializer):
         }
 
     def get_teacher(self, obj):
-    
         try:
             db = get_mongo_db()
-
-            # Get teacher_id from various possible fields
             teacher_id = (obj.get('teacher_id') or 
                          obj.get('teacher') or 
                          (obj['teacher'] if 'teacher' in obj else None))
@@ -378,14 +372,12 @@ class LiveClassSerializer(serializers.Serializer):
             if not teacher_id:
                 return None
 
-            # Convert to ObjectId if needed
             if not isinstance(teacher_id, ObjectId):
                 teacher_id = ObjectId(str(teacher_id))
 
-            # Fetch minimal teacher data
             teacher = db.teacherprofiles.find_one(
                 {'_id': teacher_id},
-                {'first_name': 1, 'last_name': 1}  # Projection - only get these fields
+                {'first_name': 1, 'last_name': 1}
             )
 
             if not teacher:
@@ -396,9 +388,7 @@ class LiveClassSerializer(serializers.Serializer):
                 'first_name': teacher.get('first_name', ''),
                 'last_name': teacher.get('last_name', ''),
             }
-
         except Exception as e:
-            # Log error if needed
             print(f"Error fetching teacher data: {str(e)}")
             return None
 
@@ -413,21 +403,40 @@ class LiveClassSerializer(serializers.Serializer):
             'created_at': timezone.now()
         }
         result = db.liveclasss.insert_one(live_class)
+        # Return the complete object with _id included
         live_class['_id'] = result.inserted_id
+        live_class['id'] = str(result.inserted_id)  # Add string version of ID
         return live_class
 
-
-
     def update(self, instance, validated_data):
-        # Update the live class in the LiveClass collection
         db = get_mongo_db()
-        instance['course_id'] = ObjectId(validated_data.get('course_id', instance['course_id']))
-        instance['teacher_id'] = ObjectId(validated_data.get('teacher_id', instance['teacher_id']))
-        instance['start_time'] = validated_data.get('start_time', instance['start_time'])
-        instance['end_time'] = validated_data.get('end_time', instance['end_time'])
-        db.liveclasss.update_one({'_id': ObjectId(instance['id'])}, {'$set': instance})
+        updates = {
+            'course_id': ObjectId(validated_data.get('course_id', instance['course_id'])),
+            'teacher_id': ObjectId(validated_data.get('teacher_id', instance['teacher_id'])),
+            'start_time': validated_data.get('start_time', instance['start_time']),
+            'end_time': validated_data.get('end_time', instance['end_time']),
+            'link': validated_data.get('link', instance.get('link'))
+        }
+        
+        db.liveclasss.update_one({'_id': ObjectId(instance['_id'])}, {'$set': updates})
+        
+        # Update the instance with the new values
+        instance.update(updates)
+        # Ensure the ID is included in the response
+        instance['id'] = str(instance['_id'])
         return instance
 
+    def to_representation(self, instance):
+        """
+        Convert the '_id' field to 'id' and ensure it's always included in the output.
+        """
+        representation = super().to_representation(instance)
+        
+        # If we have a MongoDB ObjectId in the instance, include it in the response
+        if '_id' in instance and not 'id' in representation:
+            representation['id'] = str(instance['_id'])
+        
+        return representation
 
 logger = logging.getLogger(__name__)
 

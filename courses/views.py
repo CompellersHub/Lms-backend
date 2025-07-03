@@ -23,6 +23,7 @@ from pymongo import MongoClient
 from rest_framework.authentication import SessionAuthentication
 from rest_framework.decorators import authentication_classes, permission_classes
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 
 
 from user.serializer import CustomUserSerializer
@@ -635,48 +636,64 @@ class VideoDetail(APIView):
         return Response(status=status.HTTP_404_NOT_FOUND)
     
 class CreateLiveClassView(APIView):
-    def post(self, request):
-        course_id = request.data.get('course_id')
-        teacher_id = request.data.get('teacher_id')
-        start_time = request.data.get('start_time')
-        end_time = request.data.get('end_time')
+    permission_classes = [IsAuthenticated]
 
-        if not all([course_id, teacher_id, start_time, end_time]):
-            return Response({"error": "Missing required fields"}, status=status.HTTP_400_BAD_REQUEST)
+    def post(self, request):
+        serializer = LiveClassSerializer(data=request.data)
+        
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             db = get_mongo_db()
-
-            # Insert the live class into the LiveClass collection
-            live_class = {
-                'course_id': ObjectId(course_id),
-                'teacher_id': ObjectId(teacher_id),
-                'start_time': start_time,
-                'end_time': end_time,
-                'created_at': datetime.now()
-            }
-            db.liveclasss.insert_one(live_class)
-
-            # Find all students enrolled in the course
+            
+            # Validate course exists
+            course_id = serializer.validated_data['course_id']
+            if not db.courses.find_one({'_id': ObjectId(course_id)}):
+                return Response(
+                    {"error": "Course not found"}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Validate teacher exists
+            teacher_id = serializer.validated_data['teacher_id']
+            if not db.teacherprofiles.find_one({'_id': ObjectId(teacher_id)}):
+                return Response(
+                    {"error": "Teacher not found"}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Create the live class
+            live_class = serializer.save()
+            
+            # Send notifications to enrolled students
             enrollments = db.CourseEnrollment.find({'course_id': ObjectId(course_id)})
             channel_layer = get_channel_layer()
 
             for enrollment in enrollments:
-                notification_message = f"A new live class has been scheduled for your course. Start time: {start_time}"
-
-                # Send notification via WebSocket
                 async_to_sync(channel_layer.group_send)(
                     f"user_{enrollment['student_id']}",
                     {
                         "type": "send_notification",
-                        "message": notification_message
+                        "message": f"New live class scheduled for course {course_id}",
+                        "live_class_id": str(live_class['_id']),
+                        "course_id": course_id
                     }
                 )
 
-            return Response({"message": "Live class created successfully"}, status=status.HTTP_201_CREATED)
+            return Response(
+                {
+                    "message": "Live class created successfully",
+                    "data": LiveClassSerializer(live_class).data
+                }, 
+                status=status.HTTP_201_CREATED
+            )
 
         except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response(
+                {"error": f"An error occurred: {str(e)}"}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
     def get(self, request):
         db = get_mongo_db()

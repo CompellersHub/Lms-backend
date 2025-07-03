@@ -7,6 +7,7 @@ from .mongo_utils import get_mongo_db
 import logging
 from django.core.files.storage import default_storage # THIS WILL NOW USE S3!
 from django.conf import settings 
+from django.utils import timezone  # Add this import at the top
 
 
 class CategorySerializer(serializers.Serializer):
@@ -332,66 +333,47 @@ class CourseLibrarySerializer(serializers.Serializer):
 
 class LiveClassSerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)
-    course = serializers.CharField()
-    teacher = 'user.serializer.TeacherProfileSerializer'
+    course_id = serializers.CharField(write_only=True)  # For input
+    course = serializers.SerializerMethodField(read_only=True)  # For output
+    teacher_id = serializers.CharField(write_only=True)  # For input
+    teacher = serializers.SerializerMethodField(read_only=True)  # For output
     start_time = serializers.DateTimeField()
     end_time = serializers.DateTimeField()
     created_at = serializers.DateTimeField(read_only=True)
     link = serializers.URLField()
 
-    def to_representation(self, instance):
-        representation = super().to_representation(instance)
+    def get_course(self, obj):
+        # Implement course detail representation if needed
+        from courses.serializer import CourseSerializer
+        if hasattr(obj, 'course') and obj.course:
+            return CourseSerializer(obj.course).data
+        elif 'course' in obj and obj['course']:
+            return CourseSerializer(obj['course']).data
+        return None
 
-        if hasattr(instance, '_id'):
-            representation['id'] = str(instance._id)
-        elif '_id' in instance:
-            representation['id'] = str(instance['_id'])
-
-        if '_id' in representation:
-            del representation['_id']
-
-        teacher_data = instance.get('teacher')
-        representation['teacher'] = None  # Initialize as None
-
+    def get_teacher(self, obj):
+        # Your existing teacher representation logic
+        teacher_data = obj.get('teacher')
         if teacher_data:
             from user.serializer import TeacherProfileSerializer
-            if isinstance(teacher_data, dict):
-                representation['teacher'] = TeacherProfileSerializer().to_representation(teacher_data)
-            elif isinstance(teacher_data, str):
-                try:
-                    teacher_profile_id = ObjectId(teacher_data)
-                    db = get_mongo_db()
-                    teacher_profile = db.teacher_profiles.find_one({"_id": teacher_profile_id})
-                    if teacher_profile:
-                        representation['teacher'] = TeacherProfileSerializer().to_representation(teacher_profile)
-                except Exception as e:
-                    print(f"Error fetching TeacherProfile with ID '{teacher_data}': {e}")
-            elif isinstance(teacher_data, ObjectId):
-                db = get_mongo_db()
-                teacher_profile = db.teacher_profiles.find_one({"_id": teacher_data})
-                if teacher_profile:
-                    representation['teacher'] = TeacherProfileSerializer().to_representation(teacher_profile)
-
-         # Handle Course (assuming course ObjectId is stored as string in MongoDB)
-        representation['course_id'] = representation.get('course')
-        if 'course' in representation:
-            del representation['course']
-
-        return representation
+            return TeacherProfileSerializer(teacher_data).data
+        return None
 
     def create(self, validated_data):
-        # Insert the live class into the LiveClass collection
-        db = get_mongo_db()  # Assume this function gets your MongoDB database
+        db = get_mongo_db()
         live_class = {
             'course_id': ObjectId(validated_data['course_id']),
             'teacher_id': ObjectId(validated_data['teacher_id']),
             'start_time': validated_data['start_time'],
             'end_time': validated_data['end_time'],
-            'created_at': datetime.now()
+            'link': validated_data.get('link'),
+            'created_at': timezone.now()
         }
         result = db.liveclasss.insert_one(live_class)
-        live_class['id'] = str(result.inserted_id)
+        live_class['_id'] = result.inserted_id
         return live_class
+
+
 
     def update(self, instance, validated_data):
         # Update the live class in the LiveClass collection

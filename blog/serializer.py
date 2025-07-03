@@ -5,6 +5,7 @@ from blog.models import Blog
 from courses.mongo_utils import get_mongo_db
 from rest_framework.exceptions import ValidationError
 from django.contrib.auth.hashers import make_password
+from django.core.files.storage import default_storage
 import re
 import datetime
 
@@ -166,57 +167,101 @@ class BlogSerializer(serializers.Serializer):
     publishedAt = serializers.SerializerMethodField()
 
     def get_author(self, obj):
-        if isinstance(obj.get('created_by'), dict):
-            return obj['created_by'].get('username', '')
-        return obj.created_by.username if hasattr(obj, 'created_by') else ''
+        """Get author username with fallback"""
+        created_by = self._get_created_by(obj)
+        if isinstance(created_by, dict):
+            return created_by.get('username', '')
+        elif hasattr(created_by, 'username'):
+            return created_by.username
+        return ''
 
     def get_authorRole(self, obj):
-        if isinstance(obj.get('created_by'), dict):
-            return obj['created_by'].get('role', '')
-        return obj.created_by.role if hasattr(obj, 'created_by') else ''
+        """Get author role with fallback"""
+        created_by = self._get_created_by(obj)
+        if isinstance(created_by, dict):
+            return created_by.get('role', '')
+        elif hasattr(created_by, 'role'):
+            return created_by.role
+        return ''
 
     def get_authorImage(self, obj):
-        if isinstance(obj.get('created_by'), dict):
-            return obj['created_by'].get('profile_pic', {}).get('url', '') if isinstance(obj['created_by'].get('profile_pic'), dict) else ''
-        return obj.created_by.profile_pic.url if hasattr(obj, 'created_by') and obj.created_by.profile_pic else ''
+        """Get author image URL with fallback"""
+        created_by = self._get_created_by(obj)
+        if not created_by:
+            return ''
+        
+        if isinstance(created_by, dict):
+            profile_pic = created_by.get('profile_pic', {})
+            if isinstance(profile_pic, dict):
+                return profile_pic.get('url', '')
+        elif hasattr(created_by, 'profile_pic') and created_by.profile_pic:
+            return created_by.profile_pic.url
+        return ''
 
     def get_date(self, obj):
-        date = obj.get('published_at') if isinstance(obj, dict) else obj.published_at
-        return self._format_datetime(date)
+        """Get published date in ISO format"""
+        return self._get_iso_date(obj, 'published_at')
 
     def get_category(self, obj):
-        if isinstance(obj.get('category'), dict):
-            return obj['category'].get('name', '')
-        return obj.category.name if hasattr(obj, 'category') and obj.category else ''
+        """Handle both string and object/dict categories"""
+        category = self._get_category(obj)
+        
+        if isinstance(category, str):
+            return category
+        elif isinstance(category, dict):
+            return category.get('name', '')
+        elif hasattr(category, 'name'):
+            return category.name
+        return ''
 
     def get_image(self, obj):
-        if isinstance(obj, dict):
-            image = obj.get('image')
-            if isinstance(image, dict):
-                return image.get('url', '')
+        """Get image URL with proper storage handling"""
+        image = obj.get('image') if isinstance(obj, dict) else getattr(obj, 'image', None)
+        
+        if not image:
             return ''
-        return obj.image.url if hasattr(obj, 'image') and obj.image else ''
+        
+        if isinstance(image, dict):
+            return image.get('url', '')
+        elif hasattr(image, 'url'):
+            return default_storage.url(image.name)
+        return str(image)
 
     def get_createdAt(self, obj):
-        created_at = obj.get('created_at') if isinstance(obj, dict) else obj.created_at
-        return self._format_datetime(created_at)
+        """Get creation date in ISO format"""
+        return self._get_iso_date(obj, 'created_at')
 
     def get_updatedAt(self, obj):
-        updated_at = obj.get('updated_at') if isinstance(obj, dict) else obj.updated_at
-        return self._format_datetime(updated_at)
+        """Get update date in ISO format"""
+        return self._get_iso_date(obj, 'updated_at')
 
     def get_publishedAt(self, obj):
-        published_at = obj.get('published_at') if isinstance(obj, dict) else obj.published_at
-        return self._format_datetime(published_at)
+        """Get publication date in ISO format"""
+        return self._get_iso_date(obj, 'published_at')
 
-    def _format_datetime(self, dt):
-        """Safe datetime formatting"""
+    def _get_created_by(self, obj):
+        """Safe getter for created_by field"""
+        if isinstance(obj, dict):
+            return obj.get('created_by')
+        return getattr(obj, 'created_by', None)
+
+    def _get_category(self, obj):
+        """Safe getter for category field"""
+        if isinstance(obj, dict):
+            return obj.get('category')
+        return getattr(obj, 'category', None)
+
+    def _get_iso_date(self, obj, field_name):
+        """Safe datetime to ISO format conversion"""
+        if isinstance(obj, dict):
+            dt = obj.get(field_name)
+        else:
+            dt = getattr(obj, field_name, None)
+        
         if isinstance(dt, str):
             try:
                 dt = datetime.datetime.fromisoformat(dt)
             except ValueError:
                 return None
         
-        if isinstance(dt, (datetime.datetime, datetime.date)):
-            return dt.isoformat()
-        return None
+        return dt.isoformat() if dt else None

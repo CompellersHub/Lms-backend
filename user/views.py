@@ -28,7 +28,7 @@ from allauth.socialaccount.providers.google.views import GoogleOAuth2Adapter
 from allauth.socialaccount.providers.oauth2.client import OAuth2Error
 import jwt
 from datetime import datetime, timedelta
-
+import datetime
 from django.conf import settings
 import os
 import logging
@@ -696,16 +696,12 @@ class TrackVideoProgressView(APIView):
 
     
 class TeacherCourseProgressListView(APIView):
-    # This permission assumes only authenticated teachers can access this.
-    # You might need a custom permission like IsTeacher if all authenticated users are not teachers.
     permission_classes = [IsAuthenticated]
 
     def get(self, request, course_id):
         db = get_mongo_db()
 
-        # Optional: Add a check to ensure the requesting user is a teacher
-        # This assumes request.user is a CustomUser instance populated by your auth backend
-        # and has a 'role' attribute.
+        # Check if user is a teacher
         if not hasattr(request.user, '_mongo_doc') or request.user._mongo_doc.get('role') != 'TEACHER':
             return Response(
                 {"error": "Access denied. Only teachers can view this resource."},
@@ -722,14 +718,49 @@ class TeacherCourseProgressListView(APIView):
         if not course:
             return Response({"error": "Course not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        # Find all progress documents for this course
+        # Find all progress documents for this course (to get students)
         progress_records_cursor = db.course_progress.find({"course_id": course_oid})
         progress_records = list(progress_records_cursor)
 
+        # Get total number of students
+        total_students = len(progress_records)
+
+        # Get all assignments for this course
+        assignments = list(db.assignments.find({"course_id": course_oid}))
+        assignments_data = []
+        for assignment in assignments:
+            assignments_data.append({
+                "id": str(assignment['_id']),
+                "title": assignment.get('title'),
+                "description": assignment.get('description'),
+                "due_date": assignment.get('due_date').isoformat() if assignment.get('due_date') else None,
+                "created_at": assignment.get('created_at').isoformat() if assignment.get('created_at') else None,
+                "status": assignment.get('status')
+            })
+
+        # Get upcoming live classes (scheduled after now)
+        now = datetime.datetime.now()
+        upcoming_classes = list(db.live_classes.find({
+            "course_id": course_oid,
+            "scheduled_time": {"$gt": now}
+        }).sort("scheduled_time", 1))  # Sort by scheduled_time ascending
+
+        upcoming_classes_data = []
+        for class_ in upcoming_classes:
+            upcoming_classes_data.append({
+                "id": str(class_['_id']),
+                "title": class_.get('title'),
+                "description": class_.get('description'),
+                "scheduled_time": class_.get('scheduled_time').isoformat() if class_.get('scheduled_time') else None,
+                "duration_minutes": class_.get('duration_minutes'),
+                "meeting_url": class_.get('meeting_url')
+            })
+
+        # Prepare student progress data
         response_data = []
         for record in progress_records:
             # Fetch user details for each progress record
-            user_doc = db.customusers.find_one({"_id": record['user_id']}) # user_id is ObjectId here
+            user_doc = db.customusers.find_one({"_id": record['user_id']})  # user_id is ObjectId here
 
             user_info = {
                 "id": str(user_doc['_id']),
@@ -742,13 +773,25 @@ class TeacherCourseProgressListView(APIView):
             response_data.append({
                 "student_info": user_info,
                 "course_id": str(record['course_id']),
-                "course_name": course.get('name'), # Add course name here
+                "course_name": course.get('name'),  # Add course name here
                 "progress_percentage": record.get('progress_percentage', 0),
                 "details": record.get('details', {}),
                 "last_updated": record.get('last_updated').isoformat() if record.get('last_updated') else None
             })
 
-        return Response(response_data, status=status.HTTP_200_OK)
+        # Construct final response with all data
+        final_response = {
+            "course_info": {
+                "course_id": course_id,
+                "course_name": course.get('name'),
+                "total_students": total_students
+            },
+            "assignments": assignments_data,
+            "upcoming_classes": upcoming_classes_data,
+            "student_progress": response_data
+        }
+
+        return Response(final_response, status=status.HTTP_200_OK)
     
 logger = logging.getLogger(__name__)
 

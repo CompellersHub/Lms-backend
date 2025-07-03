@@ -343,21 +343,64 @@ class LiveClassSerializer(serializers.Serializer):
     link = serializers.URLField()
 
     def get_course(self, obj):
-        # Implement course detail representation if needed
-        from courses.serializer import CourseSerializer
-        if hasattr(obj, 'course') and obj.course:
-            return CourseSerializer(obj.course).data
-        elif 'course' in obj and obj['course']:
-            return CourseSerializer(obj['course']).data
-        return None
+        db = get_mongo_db()
+        course_id = obj.get('course_id') or (obj['course'] if 'course' in obj else None)
+        
+        if not course_id:
+            return None
+            
+        # If course_id is ObjectId, convert to string
+        if isinstance(course_id, ObjectId):
+            course_id = str(course_id)
+            
+        # Fetch complete course data from database
+        course = db.courses.find_one({'_id': ObjectId(course_id)})
+        if not course:
+            return None
+            
+        # Return simplified course data or use CourseSerializer if available
+        return {
+            'id': str(course['_id']),
+            'name': course.get('name'),
+            # include other course fields you need
+        }
 
     def get_teacher(self, obj):
-        # Your existing teacher representation logic
-        teacher_data = obj.get('teacher')
-        if teacher_data:
-            from user.serializer import TeacherProfileSerializer
-            return TeacherProfileSerializer(teacher_data).data
-        return None
+    
+        try:
+            db = get_mongo_db()
+
+            # Get teacher_id from various possible fields
+            teacher_id = (obj.get('teacher_id') or 
+                         obj.get('teacher') or 
+                         (obj['teacher'] if 'teacher' in obj else None))
+
+            if not teacher_id:
+                return None
+
+            # Convert to ObjectId if needed
+            if not isinstance(teacher_id, ObjectId):
+                teacher_id = ObjectId(str(teacher_id))
+
+            # Fetch minimal teacher data
+            teacher = db.teacherprofiles.find_one(
+                {'_id': teacher_id},
+                {'first_name': 1, 'last_name': 1}  # Projection - only get these fields
+            )
+
+            if not teacher:
+                return None
+
+            return {
+                'id': str(teacher['_id']),
+                'first_name': teacher.get('first_name', ''),
+                'last_name': teacher.get('last_name', ''),
+            }
+
+        except Exception as e:
+            # Log error if needed
+            print(f"Error fetching teacher data: {str(e)}")
+            return None
 
     def create(self, validated_data):
         db = get_mongo_db()

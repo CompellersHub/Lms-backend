@@ -888,3 +888,79 @@ class SendTemplate1View(APIView):
                 {"error": "An unexpected error occurred while sending the email."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+class TeacherDashboardView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        db = get_mongo_db()
+
+        # Check if user is a teacher
+        if not hasattr(request.user, '_mongo_doc') or request.user._mongo_doc.get('role') != 'TEACHER':
+            return Response(
+                {"error": "Access denied. Only teachers can view this resource."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        teacher_id = request.user._mongo_doc['_id']
+
+        # 1. Get total number of courses taught by this teacher
+        total_courses = db.courses.count_documents({"teacher_id": teacher_id})
+
+        # 2. Get all courses taught by this teacher
+        teacher_courses = list(db.courses.find({"teacher_id": teacher_id}))
+        course_ids = [course['_id'] for course in teacher_courses]
+
+        # Get total students across all courses
+        total_students = db.course_progress.count_documents({"course_id": {"$in": course_ids}})
+
+        # 3. Get pending assignments (submissions not made)
+        pending_assignments_count = 0
+        assignments = list(db.assignments.find({"course_id": {"$in": course_ids}}))
+        
+        for assignment in assignments:
+            # Count students who haven't submitted this assignment
+            total_students_in_course = db.course_progress.count_documents({
+                "course_id": assignment['course_id']
+            })
+            
+            submitted_count = db.assignment_submissions.count_documents({
+                "assignment_id": assignment['_id'],
+                "status": "submitted"
+            })
+            
+            pending_assignments_count += (total_students_in_course - submitted_count)
+
+        # 4. Get upcoming live classes (within next 30 days)
+        now = datetime.datetime.now()
+        thirty_days_later = now + datetime.timedelta(days=30)
+        
+        upcoming_classes = list(db.live_classes.find({
+            "course_id": {"$in": course_ids},
+            "scheduled_time": {
+                "$gt": now,
+                "$lt": thirty_days_later
+            }
+        }).sort("scheduled_time", 1).limit(5))  # Get next 5 upcoming classes
+
+        upcoming_classes_data = []
+        for class_ in upcoming_classes:
+            # Get course name for each class
+            course = db.courses.find_one({"_id": class_['course_id']})
+            upcoming_classes_data.append({
+                "id": str(class_['_id']),
+                "title": class_.get('title'),
+                "course_name": course.get('name') if course else "Unknown Course",
+                "scheduled_time": class_.get('scheduled_time').isoformat() if class_.get('scheduled_time') else None,
+                "duration_minutes": class_.get('duration_minutes')
+            })
+
+        response_data = {
+            "total_courses": total_courses,
+            "total_students": total_students,
+            "pending_assignments": pending_assignments_count,
+            "upcoming_classes": upcoming_classes_data,
+            "upcoming_classes_count": len(upcoming_classes_data)
+        }
+
+        return Response(response_data, status=status.HTTP_200_OK)

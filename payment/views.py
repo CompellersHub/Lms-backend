@@ -445,7 +445,7 @@ class PaymentSuccessView(APIView):
 
         # Log to failed payments collection
         db = get_mongo_db()
-        if context and db:
+        if context and db is not None:  # Changed from 'if context and db'
             try:
                 db.failed_payments.insert_one({
                     **context,

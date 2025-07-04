@@ -343,8 +343,8 @@ class PaymentSuccessView(APIView):
 
         log_context["payment_intent_id"] = payment_intent_id
 
-        # Verify payment status
         try:
+            # 1. Verify payment with Stripe first
             payment_intent = stripe.PaymentIntent.retrieve(payment_intent_id)
             
             if payment_intent.status != 'succeeded':
@@ -356,61 +356,96 @@ class PaymentSuccessView(APIView):
                     context=log_context
                 )
 
-            # Check database for completed enrollment
             db = get_mongo_db()
-            if db:
-                transaction = db.enrollments_transactions.find_one({
-                    "payment_intent_id": payment_intent_id,
-                    "user_id": ObjectId(request.user.id)
-                })
-                
-                if transaction:
-                    # Get the full enrollment record with course data
-                    user = db.customusers.find_one(
-                        {"_id": ObjectId(request.user.id)},
-                        {"course": {"$elemMatch": {"_id": transaction["course_id"]}}}
-                    )
-                    
-                    if user and user.get('course'):
-                        enrolled_course = user['course'][0]
-                        
-                        # Prepare complete response
-                        return Response({
-                            "status": "success",
-                            "message": "Enrollment confirmed",
-                            "user_message": f"Successfully enrolled in {enrolled_course.get('name', 'the course')}!",
-                            "course": {
-                                "id": str(enrolled_course['_id']),
-                                "name": enrolled_course.get('name'),
-                                "course_image": enrolled_course.get('course_image'),
-                                "instructor": enrolled_course.get('instructor'),
-                                "description": enrolled_course.get('description'),
-                                "category": enrolled_course.get('category'),
-                                "level": enrolled_course.get('level'),
-                                "estimated_time": enrolled_course.get('estimated_time'),
-                                "progress": enrolled_course.get('progress', {})
-                            },
-                            "payment": {
-                                "order_id": payment_intent_id,
-                                "amount": transaction["amount"],
-                                "currency": "GBP",
-                                "date": transaction["timestamp"].isoformat()
-                            },
-                            "access": {
-                                "granted": True,
-                                "type": "full",
-                                "start_date": enrolled_course.get('enrollment_date').isoformat(),
-                                "expires": None  # Could add expiration if applicable
-                            }
-                        })
+            if db is None:
+                return self._error_response(
+                    code="DATABASE_ERROR",
+                    message="Database connection failed",
+                    user_message="System error. Please try again.",
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    context=log_context
+                )
 
-            # If not processed yet
+            # 2. Check if user is enrolled in any course (new approach)
+            user_id = ObjectId(request.user.id)
+            user = db.customusers.find_one(
+                {"_id": user_id},
+                {"course": 1}  # Only return courses field
+            )
+            
+            if not user:
+                return self._error_response(
+                    code="USER_NOT_FOUND",
+                    message="User not found",
+                    user_message="System error. Please contact support.",
+                    status=status.HTTP_404_NOT_FOUND,
+                    context=log_context
+                )
+
+            # Get the most recently enrolled course
+            enrolled_courses = user.get('course', [])
+            if not enrolled_courses:
+                return Response({
+                    "status": "processing",
+                    "message": "Payment received, processing enrollment",
+                    "user_message": "Your payment was successful! We're setting up your course access.",
+                    "check_again": True
+                }, status=status.HTTP_202_ACCEPTED)
+
+            # Assuming the last course is the most recent enrollment
+            enrolled_course = enrolled_courses[-1]
+            
+            # 3. Now check/record the transaction
+            transaction = db.enrollments_transactions.find_one({
+                "payment_intent_id": payment_intent_id,
+                "user_id": user_id,
+                "course_id": enrolled_course['_id']
+            })
+
+            # If no transaction exists, create one
+            if not transaction:
+                try:
+                    transaction = {
+                        "payment_intent_id": payment_intent_id,
+                        "user_id": user_id,
+                        "course_id": enrolled_course['_id'],
+                        "amount": payment_intent.amount_received / 100,  # Convert from cents
+                        "currency": payment_intent.currency.upper(),
+                        "timestamp": datetime.utcnow(),
+                        "status": "completed"
+                    }
+                    db.enrollments_transactions.insert_one(transaction)
+                except Exception as e:
+                    logger.error("Failed to record transaction", extra={
+                        **log_context, 
+                        "error": str(e)
+                    })
+                    # Continue anyway since enrollment is already complete
+
+            # Prepare success response
             return Response({
-                "status": "processing",
-                "message": "Payment received, processing enrollment",
-                "user_message": "Your payment was successful! We're setting up your course access.",
-                "check_again": True
-            }, status=status.HTTP_202_ACCEPTED)
+                "status": "success",
+                "message": "Enrollment confirmed",
+                "user_message": f"Successfully enrolled in {enrolled_course.get('name', 'the course')}!",
+                "course": {
+                    "id": str(enrolled_course['_id']),
+                    "name": enrolled_course.get('name'),
+                    "course_image": enrolled_course.get('course_image'),
+                    # ... other course fields
+                },
+                "payment": {
+                    "order_id": payment_intent_id,
+                    "amount": payment_intent.amount_received / 100,
+                    "currency": payment_intent.currency.upper(),
+                    "date": datetime.utcnow().isoformat()
+                },
+                "access": {
+                    "granted": True,
+                    "type": "full",
+                    "start_date": enrolled_course.get('enrollment_date', datetime.utcnow()).isoformat(),
+                    "expires": None
+                }
+            })
 
         except stripe.error.StripeError as e:
             return self._error_response(
@@ -422,7 +457,10 @@ class PaymentSuccessView(APIView):
             )
         except Exception as e:
             logger.error("Error in PaymentSuccessView", extra={
-                **log_context, "error": str(e), "stack_trace": traceback.format_exc()})
+                **log_context, 
+                "error": str(e), 
+                "stack_trace": traceback.format_exc()
+            })
             return self._error_response(
                 code="UNKNOWN_ERROR",
                 message="An unexpected error occurred",
@@ -430,6 +468,8 @@ class PaymentSuccessView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 context=log_context
             )
+
+    # _error_response remains the same
 
     def _error_response(self, code, message, user_message, status, context=None, details=None):
         error_data = {

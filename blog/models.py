@@ -204,7 +204,7 @@ class Blog(models.Model):
             "slug": self.slug,
             "author": self.created_by.username if self.created_by else None,
             "authorRole": self.created_by.role if self.created_by else None,
-            "authorImage": self.created_by.profile_pic.url if self.created_by and hasattr(self.created_by, 'profile_image') else None,
+            "authorImage": self.created_by.profile_piczxc5e64.url if self.created_by and hasattr(self.created_by, 'profile_image') else None,
             "date": self.published_at.isoformat() if self.published_at else None,
             "category": self.category.name if self.category else None,
             "tags": self.tags,

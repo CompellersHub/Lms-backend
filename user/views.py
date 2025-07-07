@@ -82,7 +82,7 @@ class GoogleLoginView(APIView):
                 'name': idinfo.get('name', ''),
                 'profile_picture': idinfo.get('picture', ''),
                 'last_login': datetime.utcnow(),
-                'role': 'STUDENT', # Default role for new users
+                'role': 'STUDENT',  # Default role for new users
                 'username': idinfo.get('email', '').split('@')[0],
                 'phone_number': '',
                 'course': [],
@@ -95,17 +95,12 @@ class GoogleLoginView(APIView):
             db = get_mongo_db()
             users_collection = db['customusers']
 
+            # First check if user exists with this Google ID
             user_document = users_collection.find_one({'google_id': idinfo['sub']})
-
-            if not user_document:
-                logger.info(f"Creating new user: {extracted_user_info['email']}")
-                if '_id' in extracted_user_info:
-                    del extracted_user_info['_id']
-
-                inserted_result = users_collection.insert_one(extracted_user_info)
-                user_document = users_collection.find_one({'_id': inserted_result.inserted_id})
-            else:
-                logger.info(f"User already exists: {extracted_user_info['email']}")
+            
+            if user_document:
+                logger.info(f"User found with Google ID: {extracted_user_info['email']}")
+                # Update existing Google user
                 users_collection.update_one(
                     {'google_id': idinfo['sub']},
                     {'$set': {
@@ -118,27 +113,48 @@ class GoogleLoginView(APIView):
                     }}
                 )
                 user_document = users_collection.find_one({'google_id': idinfo['sub']})
+            else:
+                # Check if user exists with this email (from email/password signup)
+                existing_user = users_collection.find_one({'email': extracted_user_info['email']})
+                
+                if existing_user:
+                    logger.info(f"User found with matching email: {extracted_user_info['email']}")
+                    # Update existing user with Google credentials
+                    users_collection.update_one(
+                        {'email': extracted_user_info['email']},
+                        {'$set': {
+                            'google_id': idinfo['sub'],
+                            'last_login': datetime.utcnow(),
+                            'first_name': extracted_user_info['first_name'] or existing_user.get('first_name', ''),
+                            'last_name': extracted_user_info['last_name'] or existing_user.get('last_name', ''),
+                            'name': extracted_user_info['name'] or existing_user.get('name', ''),
+                            'profile_picture': extracted_user_info['profile_picture'] or existing_user.get('profile_picture', ''),
+                        }}
+                    )
+                    user_document = users_collection.find_one({'email': extracted_user_info['email']})
+                else:
+                    # Create new user
+                    logger.info(f"Creating new user: {extracted_user_info['email']}")
+                    if '_id' in extracted_user_info:
+                        del extracted_user_info['_id']
 
+                    inserted_result = users_collection.insert_one(extracted_user_info)
+                    user_document = users_collection.find_one({'_id': inserted_result.inserted_id})
 
-            # --- Session Handling (with added logging) ---
-            logger.debug(f"Before session assignment. Session ID: {request.session.session_key}, Session data: {request.session.items()}")
-
-            request.session['user_id'] = str(user_document['_id'])
-            request.session.modified = True
-
-            logger.info(f"Session 'user_id' set to: {request.session['user_id']}")
-            logger.info(f"Session marked as modified. New Session ID (if generated/updated): {request.session.session_key}")
-            logger.debug(f"After session assignment. Full Session data: {request.session.items()}")
-            # --- End Session Handling ---
-
+            # Create a Django user instance from the MongoDB document
+            user = CustomUser.from_mongo(user_document)
+            
+            # Generate JWT tokens
+            tokens = create_jwt_tokens(user)
+            
             logger.info(f"Successfully logged in user: {user_document['email']}")
-
             serializer = CustomUserSerializer(user_document)
 
             return Response({
                 'message': 'Login successful',
                 'user': serializer.data,
-                'session_key': request.session.session_key # Include session key in response
+                'access': tokens['access'],
+                'refresh': tokens['refresh'],
             }, status=status.HTTP_200_OK)
 
         except ValueError as e:

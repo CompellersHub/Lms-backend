@@ -183,6 +183,7 @@ class Course(models.Model):
     created_at = models.DateTimeField(auto_now_add=True) # Auto-set
     updated_at = models.DateTimeField(auto_now=True) # Auto-set
     price = models.FloatField() # REQUIRED, removed default
+    original_price = models.FloatField(default=1500) # REQUIRED, removed default
     instructor = models.ForeignKey('user.TeacherProfile', on_delete=models.CASCADE) # Required
     curriculum = models.ForeignKey('Curriculum', on_delete=models.CASCADE) # Required
     required_materials = models.ForeignKey('RequiredMaterial', on_delete=models.CASCADE) # Required

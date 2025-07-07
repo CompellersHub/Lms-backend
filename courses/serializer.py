@@ -183,6 +183,7 @@ class CourseSerializer(serializers.Serializer):
     curriculum = ModuleInCourseSerializer(many=True, required=False) # Use the new serializer and many=True
     category = CategorySerializer()
     price = serializers.FloatField()
+    original_price = serializers.FloatField()
     target_audience = TargetAudienceSerializer(required=False)
     learning_outcomes = LearningOutcomeSerializer(required=False)
     instructor = 'user.serializer.TeacherProfileSerializer'

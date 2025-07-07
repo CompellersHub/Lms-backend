@@ -210,6 +210,7 @@ class Course(models.Model):
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
             "price": self.price,
+            "original_price": self.original_price,
             "learning_outcomes": self.learning_outcomes.to_dict(),
             "target_audience": self.target_audience.to_dict(),
             "curriculum": [module.to_dict() for module in self.curriculum.module.all()],

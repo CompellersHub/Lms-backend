@@ -74,6 +74,7 @@ class GoogleLoginView(APIView):
             if idinfo['iss'] not in ['accounts.google.com', 'https://accounts.google.com']:
                 raise ValueError('Wrong issuer.')
 
+            # Prepare user data
             extracted_user_info = {
                 'google_id': idinfo['sub'],
                 'email': idinfo['email'],
@@ -82,7 +83,7 @@ class GoogleLoginView(APIView):
                 'name': idinfo.get('name', ''),
                 'profile_picture': idinfo.get('picture', ''),
                 'last_login': datetime.utcnow(),
-                'role': 'STUDENT',  # Default role for new users
+                'role': 'STUDENT',
                 'username': idinfo.get('email', '').split('@')[0],
                 'phone_number': '',
                 'course': [],
@@ -95,59 +96,40 @@ class GoogleLoginView(APIView):
             db = get_mongo_db()
             users_collection = db['customusers']
 
-            # First check if user exists with this Google ID
+            # Check for existing user
             user_document = users_collection.find_one({'google_id': idinfo['sub']})
             
-            if user_document:
-                logger.info(f"User found with Google ID: {extracted_user_info['email']}")
-                # Update existing Google user
-                users_collection.update_one(
-                    {'google_id': idinfo['sub']},
-                    {'$set': {
-                        'last_login': datetime.utcnow(),
-                        'email': extracted_user_info['email'],
-                        'first_name': extracted_user_info['first_name'],
-                        'last_name': extracted_user_info['last_name'],
-                        'name': extracted_user_info['name'],
-                        'profile_picture': extracted_user_info['profile_picture'],
-                    }}
-                )
-                user_document = users_collection.find_one({'google_id': idinfo['sub']})
-            else:
-                # Check if user exists with this email (from email/password signup)
-                existing_user = users_collection.find_one({'email': extracted_user_info['email']})
+            if not user_document:
+                # Check by email if no Google user found
+                user_document = users_collection.find_one({'email': extracted_user_info['email']})
                 
-                if existing_user:
-                    logger.info(f"User found with matching email: {extracted_user_info['email']}")
+                if user_document:
                     # Update existing user with Google credentials
                     users_collection.update_one(
                         {'email': extracted_user_info['email']},
                         {'$set': {
                             'google_id': idinfo['sub'],
-                            'last_login': datetime.utcnow(),
-                            'first_name': extracted_user_info['first_name'] or existing_user.get('first_name', ''),
-                            'last_name': extracted_user_info['last_name'] or existing_user.get('last_name', ''),
-                            'name': extracted_user_info['name'] or existing_user.get('name', ''),
-                            'profile_picture': extracted_user_info['profile_picture'] or existing_user.get('profile_picture', ''),
+                            'last_login': extracted_user_info['last_login'],
+                            'first_name': extracted_user_info['first_name'] or user_document.get('first_name', ''),
+                            'last_name': extracted_user_info['last_name'] or user_document.get('last_name', ''),
+                            'profile_picture': extracted_user_info['profile_picture'] or user_document.get('profile_picture', ''),
                         }}
                     )
-                    user_document = users_collection.find_one({'email': extracted_user_info['email']})
                 else:
                     # Create new user
-                    logger.info(f"Creating new user: {extracted_user_info['email']}")
-                    if '_id' in extracted_user_info:
-                        del extracted_user_info['_id']
-
                     inserted_result = users_collection.insert_one(extracted_user_info)
                     user_document = users_collection.find_one({'_id': inserted_result.inserted_id})
 
-            # Create a Django user instance from the MongoDB document
+            # Create Django user instance
             user = CustomUser.from_mongo(user_document)
             
             # Generate JWT tokens
-            tokens = create_jwt_tokens(user)
-            
-            logger.info(f"Successfully logged in user: {user_document['email']}")
+            refresh = RefreshToken.for_user(user)
+            tokens = {
+                'refresh': str(refresh),
+                'access': str(refresh.access_token),
+            }
+
             serializer = CustomUserSerializer(user_document)
 
             return Response({
@@ -161,8 +143,11 @@ class GoogleLoginView(APIView):
             logger.error(f"Error verifying Google token: {e}")
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
-            logger.error(f"Unexpected error: {e}")
-            return Response({'error': 'An unexpected error occurred'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.error(f"Unexpected error: {e}", exc_info=True)
+            return Response(
+                {'error': 'An unexpected error occurred'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 import logging

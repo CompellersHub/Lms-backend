@@ -1,7 +1,9 @@
+from bson import ObjectId
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin, Group, Permission, AbstractUser
 from django.db import models
 from django.utils import timezone
 
+from courses.mongo_utils import get_mongo_db
 from courses.storages_backends import PublicMediaStorage, ProfilePicturesStorage, TeacherPicturesStorage, SubmissionStorage
 
 
@@ -47,6 +49,67 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     date_joined = models.DateTimeField(default=timezone.now)
+
+    @classmethod
+    def from_mongo(cls, data):
+        """
+        Create a Django user instance from MongoDB document
+        """
+        user = cls()
+        
+        # Map MongoDB fields to Django model fields
+        user.id = str(data['_id']) if '_id' in data else None
+        user.email = data.get('email', '')
+        user.username = data.get('username', '')
+        user.first_name = data.get('first_name', '')
+        user.last_name = data.get('last_name', '')
+        user.role = data.get('role', 'STUDENT')
+        user.phone_number = data.get('phone_number', '')
+        user.is_active = data.get('is_active', True)
+        user.is_staff = data.get('is_staff', False)
+        user.is_superuser = data.get('is_superuser', False)
+        user.date_joined = data.get('date_joined', timezone.now())
+        
+        # Store the raw password if exists (needed for authentication)
+        if 'password' in data:
+            user.password = data['password']
+        
+        # Store the complete mongo document for reference
+        user._mongo_doc = data
+        
+        return user
+
+    def save_to_mongo(self):
+        """
+        Optional: Method to save back to MongoDB if needed
+        """
+        db = get_mongo_db()
+        users_collection = db['customusers']
+        
+        user_data = {
+            'email': self.email,
+            'username': self.username,
+            'first_name': self.first_name,
+            'last_name': self.last_name,
+            'role': self.role,
+            'phone_number': self.phone_number,
+            'is_active': self.is_active,
+            'is_staff': self.is_staff,
+            'is_superuser': self.is_superuser,
+            'date_joined': self.date_joined,
+            'last_login': self.last_login if hasattr(self, 'last_login') else None
+        }
+        
+        if hasattr(self, 'password'):
+            user_data['password'] = self.password
+        
+        if hasattr(self, '_id'):
+            users_collection.update_one({'_id': ObjectId(self._id)}, {'$set': user_data})
+        else:
+            result = users_collection.insert_one(user_data)
+            self._id = str(result.inserted_id)
+        
+        return self
 
     groups = models.ManyToManyField(
         Group,

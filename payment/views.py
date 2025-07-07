@@ -19,7 +19,7 @@ from bson.errors import InvalidId
 from datetime import datetime, timedelta, timezone
 import os
 from django.views.decorators.csrf import csrf_exempt
-stripe.api_key = os.getenv('STRIPE_TEST_kEY')
+stripe.api_key = os.getenv('STRIPE_SECRET_KEY')
 
 
 

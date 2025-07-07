@@ -73,7 +73,8 @@ class GoogleLoginView(APIView):
                 raise ValueError('Wrong issuer.')
 
             # Convert timezone-aware datetime to naive datetime for MongoDB storage
-            current_time = datetime.now(timezone.utc).replace(tzinfo=None)
+            current_time = timezone.now()  # Using Django's timezone utility
+
             
             extracted_user_info = {
                 'google_id': idinfo['sub'],

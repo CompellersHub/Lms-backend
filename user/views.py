@@ -74,7 +74,6 @@ class GoogleLoginView(APIView):
             if idinfo['iss'] not in ['accounts.google.com', 'https://accounts.google.com']:
                 raise ValueError('Wrong issuer.')
 
-            # Prepare user data
             extracted_user_info = {
                 'google_id': idinfo['sub'],
                 'email': idinfo['email'],
@@ -82,7 +81,7 @@ class GoogleLoginView(APIView):
                 'last_name': idinfo.get('family_name', ''),
                 'name': idinfo.get('name', ''),
                 'profile_picture': idinfo.get('picture', ''),
-                'last_login': datetime.utcnow(),
+                'last_login': datetime.now(timezone.utc),  # FIXED: Using timezone-aware datetime
                 'role': 'STUDENT',
                 'username': idinfo.get('email', '').split('@')[0],
                 'phone_number': '',
@@ -90,8 +89,9 @@ class GoogleLoginView(APIView):
                 'is_active': True,
                 'is_staff': False,
                 'is_superuser': False,
-                'date_joined': datetime.utcnow(),
+                'date_joined': datetime.now(timezone.utc),  # FIXED: Using timezone-aware datetime
             }
+
 
             db = get_mongo_db()
             users_collection = db['customusers']

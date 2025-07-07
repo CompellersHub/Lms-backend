@@ -27,7 +27,7 @@ from google.auth.transport import requests
 from allauth.socialaccount.providers.google.views import GoogleOAuth2Adapter
 from allauth.socialaccount.providers.oauth2.client import OAuth2Error
 import jwt
-from datetime import datetime, timedelta
+from datetime import datetime
 import datetime
 from django.conf import settings
 import os
@@ -55,8 +55,6 @@ users_collection = db['customusers']
 
 logger = logging.getLogger(__name__)
 
-logger = logging.getLogger(__name__)
-
 class GoogleLoginView(APIView):
     permission_classes = [AllowAny]
 
@@ -74,6 +72,9 @@ class GoogleLoginView(APIView):
             if idinfo['iss'] not in ['accounts.google.com', 'https://accounts.google.com']:
                 raise ValueError('Wrong issuer.')
 
+            # Convert timezone-aware datetime to naive datetime for MongoDB storage
+            current_time = datetime.now(timezone.utc).replace(tzinfo=None)
+            
             extracted_user_info = {
                 'google_id': idinfo['sub'],
                 'email': idinfo['email'],
@@ -81,7 +82,7 @@ class GoogleLoginView(APIView):
                 'last_name': idinfo.get('family_name', ''),
                 'name': idinfo.get('name', ''),
                 'profile_picture': idinfo.get('picture', ''),
-                'last_login': datetime.now(timezone.utc),  # FIXED: Using timezone-aware datetime
+                'last_login': current_time,
                 'role': 'STUDENT',
                 'username': idinfo.get('email', '').split('@')[0],
                 'phone_number': '',
@@ -89,49 +90,63 @@ class GoogleLoginView(APIView):
                 'is_active': True,
                 'is_staff': False,
                 'is_superuser': False,
-                'date_joined': datetime.now(timezone.utc),  # FIXED: Using timezone-aware datetime
+                'date_joined': current_time,
             }
-
 
             db = get_mongo_db()
             users_collection = db['customusers']
 
-            # Check for existing user
+            # Check for existing user by Google ID first
             user_document = users_collection.find_one({'google_id': idinfo['sub']})
             
             if not user_document:
-                # Check by email if no Google user found
+                # Check for existing user by email if no Google user found
                 user_document = users_collection.find_one({'email': extracted_user_info['email']})
                 
                 if user_document:
+                    logger.info(f"Linking Google credentials to existing user: {extracted_user_info['email']}")
                     # Update existing user with Google credentials
+                    update_data = {
+                        'google_id': idinfo['sub'],
+                        'last_login': current_time,
+                    }
+                    # Only update name fields if they're not already set
+                    if not user_document.get('first_name'):
+                        update_data['first_name'] = extracted_user_info['first_name']
+                    if not user_document.get('last_name'):
+                        update_data['last_name'] = extracted_user_info['last_name']
+                    if not user_document.get('profile_picture'):
+                        update_data['profile_picture'] = extracted_user_info['profile_picture']
+
                     users_collection.update_one(
                         {'email': extracted_user_info['email']},
-                        {'$set': {
-                            'google_id': idinfo['sub'],
-                            'last_login': extracted_user_info['last_login'],
-                            'first_name': extracted_user_info['first_name'] or user_document.get('first_name', ''),
-                            'last_name': extracted_user_info['last_name'] or user_document.get('last_name', ''),
-                            'profile_picture': extracted_user_info['profile_picture'] or user_document.get('profile_picture', ''),
-                        }}
+                        {'$set': update_data}
                     )
+                    user_document = users_collection.find_one({'email': extracted_user_info['email']})
                 else:
                     # Create new user
+                    logger.info(f"Creating new user with Google credentials: {extracted_user_info['email']}")
                     inserted_result = users_collection.insert_one(extracted_user_info)
                     user_document = users_collection.find_one({'_id': inserted_result.inserted_id})
 
-            # Create Django user instance
-            user = CustomUser.from_mongo(user_document)
-            
-            # Generate JWT tokens
-            refresh = RefreshToken.for_user(user)
-            tokens = {
-                'refresh': str(refresh),
-                'access': str(refresh.access_token),
-            }
+            # Create Django user instance for JWT token generation
+            try:
+                user = CustomUser.from_mongo(user_document)
+                refresh = RefreshToken.for_user(user)
+                tokens = {
+                    'refresh': str(refresh),
+                    'access': str(refresh.access_token),
+                }
+            except Exception as e:
+                logger.error(f"Failed to generate JWT tokens: {str(e)}", exc_info=True)
+                return Response(
+                    {'error': 'Authentication failed - could not generate tokens'},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
 
             serializer = CustomUserSerializer(user_document)
 
+            logger.info(f"Successful Google login for user: {user_document['email']}")
             return Response({
                 'message': 'Login successful',
                 'user': serializer.data,
@@ -140,12 +155,12 @@ class GoogleLoginView(APIView):
             }, status=status.HTTP_200_OK)
 
         except ValueError as e:
-            logger.error(f"Error verifying Google token: {e}")
+            logger.error(f"Error verifying Google token: {str(e)}")
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
-            logger.error(f"Unexpected error: {e}", exc_info=True)
+            logger.error(f"Unexpected error in Google login: {str(e)}", exc_info=True)
             return Response(
-                {'error': 'An unexpected error occurred'},
+                {'error': 'An unexpected error occurred during authentication'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 

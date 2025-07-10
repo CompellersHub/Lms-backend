@@ -275,146 +275,228 @@
 
 
 
-import pytest
-from unittest.mock import Mock, patch
-from bson import ObjectId
-from rest_framework.test import APIClient
+# payment/tests.py
+from django.test import TestCase, Client
+from django.urls import reverse
+from rest_framework.test import APITestCase
 from rest_framework import status
-from rest_framework.authtoken.models import Token
-from django.contrib.auth import get_user_model
+from bson import ObjectId
+from datetime import datetime, timedelta
+import json
+from unittest.mock import patch
+import hmac
+import hashlib
 
-User = get_user_model()
+# Fix imports to point to correct locations
+from payment.views import BankTransferEnrollmentView, EnrollmentStatusView, bank_webhook
+from payment.services.validation import validate_course
+from payment.services.enrollment import enroll_student
 
-# --------------------------
-# FIXTURES
-# --------------------------
+from rest_framework.test import APIClient, force_authenticate
+from user.models import CustomUser
 
-@pytest.fixture
-def mock_auth_client():
-    """Authenticated test client with mock user"""
-    user = Mock(
-        id=str(ObjectId()),
-        is_authenticated=True,
-        email='test@example.com'
-    )
-    client = APIClient()
-    client.force_authenticate(user=user)
-    return client
+class BankTransferEnrollmentTests(APITestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.user = CustomUser.objects.create_user(
+            email='test@example.com',
+            password='testpass',
+            first_name='Test',
+            last_name='User',
+            username='user'
+        )
+        self.client.force_authenticate(user=self.user)
+        self.enroll_url = reverse('payment:bank-enrollment')
+        self.test_course = {
+            '_id': ObjectId(),
+            'name': 'Test Course',
+            'price': 99.99,
+            'is_active': True,
+            'enrollment_open': True
+        }
+        
+    @patch('payment.services.validation.db.courses.find_one')
+    def test_successful_enrollment_initiation(self, mock_find):
+        mock_find.return_value = self.test_course
+        
+        response = self.client.post(
+            self.enroll_url,
+            {'course_id': str(self.test_course['_id'])},
+            HTTP_AUTHORIZATION='Bearer validtoken'
+        )
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('payment_instructions', response.data)
+        self.assertEqual(response.data['status'], 'pending')
+        
+    def test_missing_course_id(self):
+        response = self.client.post(
+            self.enroll_url,
+            {},
+            HTTP_AUTHORIZATION='Bearer validtoken'
+        )
+        
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        
+    @patch('payment.services.validation.db.courses.find_one')
+    def test_inactive_course(self, mock_find):
+        self.test_course['is_active'] = False
+        mock_find.return_value = self.test_course
+        
+        response = self.client.post(
+            self.enroll_url,
+            {'course_id': str(self.test_course['_id'])},
+            HTTP_AUTHORIZATION='Bearer validtoken'
+        )
+        
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
-@pytest.fixture
-def mock_db():
-    """Mock MongoDB database"""
-    db = Mock()
-    
-    # Configure default mock responses
-    db.customusers.find_one.return_value = {
-        '_id': ObjectId(),
-        'course': []
-    }
-    db.courses.find_one.return_value = {
-        '_id': ObjectId(),
-        'name': 'Test Course',
-        'price': 99.99
-    }
-    db.enrollments_transactions.insert_one.return_value = Mock(inserted_id=ObjectId())
-    
-    return db
 
-# --------------------------
-# TESTS
-# --------------------------
+class BankWebhookTests(APITestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.webhook_url = reverse('payment:bank-webhook')
+        self.test_transfer = {
+            '_id': ObjectId(),
+            'user_id': ObjectId(),
+            'course_id': ObjectId(),
+            'amount': 99.99,
+            'status': 'PENDING',
+            'reference': 'ENROLL-TEST123',
+            'virtual_account': '12345678'
+        }
+        
+    def generate_webhook_signature(self, payload):
+        secret = b'testsecret'
+        return hmac.new(secret, payload, hashlib.sha256).hexdigest()
+        
+    @patch('payment.views.db.bank_transfers.find_one')
+    @patch('payment.services.enrollment.db.courses.find_one')
+    @patch('payment.services.enrollment.enroll_student')
+    def test_successful_payment_webhook(self, mock_enroll, mock_course_find, mock_transfer_find):
+        # Ensure the mock returns a transaction matching the reference
+        test_transfer = self.test_transfer.copy()
+        test_transfer['reference'] = 'ENROLL-TEST123'
+        mock_transfer_find.return_value = test_transfer
+        
+        payload = {
+            'event': 'payment.received',
+            'data': {
+                'account': '12345678',
+                'reference': 'ENROLL-TEST123',
+                'amount': 99.99,
+                'transaction_id': 'BANKTX123'
+            }
+        }
+        json_payload = json.dumps(payload).encode('utf-8')
+        signature = self.generate_webhook_signature(json_payload)
+        
+        response = self.client.post(
+            self.webhook_url,
+            data=json_payload,
+            content_type='application/json',
+            HTTP_X_BANK_SIGNATURE=signature
+        )
+        
+        self.assertEqual(response.status_code, 200)
 
-@patch('payment.views.paypal_client')  # Update to your actual PayPal client path
-@patch('payment.views.get_mongo_db')    # Update to your actual DB getter path
-def test_successful_enrollment(mock_get_db, mock_paypal, mock_auth_client, mock_db):
-    # Setup mocks
-    mock_get_db.return_value = mock_db
-    test_course_id = str(ObjectId())
-    
-    mock_paypal.return_value = {
-        'purchase_units': [{
-            'custom_id': f"{mock_auth_client.user.id}|{test_course_id}"
-        }]
-    }
 
-    # Make request
-    response = mock_auth_client.post(
-        '/api/verify-paypal-order/',
-        {'orderID': 'TEST_ORDER_123'},
-        format='json'
-    )
+class EnrollmentStatusTests(APITestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.user = CustomUser.objects.create_user(
+            username='testuser',
+            password='testpass',
+            email='test@example.com'
+        )
+        self.client.force_authenticate(user=self.user)
+        
+        self.test_reference = 'ENROLL-TEST123'
+        self.status_url = reverse('payment:enrollment-status', args=[self.test_reference])
+        self.test_transfer = {
+            'user_id': ObjectId(self.user.id),  # Use _id instead of id for MongoDB
+            'course_id': ObjectId(),
+            'status': 'COMPLETED',
+            'reference': self.test_reference,
+            'amount': 99.99,
+            'created_at': datetime.utcnow(),
+            'completed_at': datetime.utcnow()
+        }
+        
+    @patch('payment.services.validation.db.courses.find_one')
+    def test_successful_enrollment_initiation(self, mock_find):
+        mock_find.return_value = self.test_course
 
-    # Assertions
-    assert response.status_code == status.HTTP_200_OK
-    assert 'Successfully enrolled' in response.data['message']
-    mock_db.customusers.update_one.assert_called_once()
+        response = self.client.post(
+            self.enroll_url,
+            {
+                'course_id': str(self.test_course['_id']),
+                'payment_method': 'bank_transfer'  # Add required field
+            },
+            format='json',
+            HTTP_AUTHORIZATION='Bearer validtoken'
+        )
 
-@patch('payment.views.paypal_client')
-def test_missing_order_id(mock_paypal, mock_auth_client):
-    response = mock_auth_client.post(
-        '/api/verify-paypal-order/',
-        {},  # Missing orderID
-        format='json'
-    )
-    assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert 'orderID is required' in response.data['error']
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        
+    @patch('payment.views.db.bank_transfers.find_one')
+    def test_not_found(self, mock_find):
+        mock_find.return_value = None
+        
+        response = self.client.get(self.status_url)
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
-@patch('your_app.paypal._make_request')
-@patch('your_app.views.get_mongo_db')
-def test_user_id_mismatch(mock_get_db, mock_paypal, mock_auth_client, mock_db):
-    mock_get_db.return_value = mock_db
-    # Simulate PayPal returning wrong user ID
-    mock_paypal.return_value = {
-        'purchase_units': [{
-            'custom_id': f"WRONG_USER_ID|{ObjectId()}"
-        }]
-    }
 
-    response = mock_auth_client.post(
-        '/api/verify-paypal-order/',
-        {'orderID': 'TEST_ORDER_123'},
-        format='json'
-    )
-    
-    assert response.status_code == status.HTTP_403_FORBIDDEN
-    assert "Security check failed" in response.data['error']
+class CourseValidationTests(TestCase):
+    @patch('payment.services.validation.db.courses.find_one')
+    def test_validate_course(self, mock_find):
+        test_course = {
+            '_id': ObjectId("507f1f77bcf86cd799439011"),  # Fixed specific ID
+            'name': 'Test Course',
+            'price': 99.99,
+            'is_active': True,
+            'enrollment_open': True
+        }
+        mock_find.return_value = test_course
+        
+        # Use the same ID as in the test_course
+        result = validate_course("507f1f77bcf86cd799439011")
+        self.assertIsNotNone(result)
+        self.assertEqual(str(result['_id']), "507f1f77bcf86cd799439011")
+            
+    def test_invalid_course_id(self):
+        result = validate_course('invalidid')
+        self.assertIsNone(result)
 
-@patch('your_app.paypal._make_request')
-@patch('your_app.views.get_mongo_db')
-def test_already_enrolled(mock_get_db, mock_paypal, mock_auth_client, mock_db):
-    mock_get_db.return_value = mock_db
-    test_course_id = ObjectId()
-    
-    # Mock user already enrolled
-    mock_db.customusers.find_one.return_value = {
-        '_id': ObjectId(mock_auth_client.user.id),
-        'course': [{'_id': test_course_id}]
-    }
-    
-    mock_paypal.return_value = {
-        'purchase_units': [{
-            'custom_id': f"{mock_auth_client.user.id}|{test_course_id}"
-        }]
-    }
 
-    response = mock_auth_client.post(
-        '/api/verify-paypal-order/',
-        {'orderID': 'TEST_ORDER_123'},
-        format='json'
-    )
-    
-    assert response.status_code == status.HTTP_200_OK
-    assert 'already enrolled' in response.data['message']
+class EnrollmentServiceTests(TestCase):
+    @patch('payment.services.enrollment.db.users.update_one')
+    @patch('payment.services.enrollment.db.courses.find_one')
+    @patch('payment.services.enrollment.db.transactions.insert_one')
+    def test_enroll_student(self, mock_insert, mock_find, mock_update):
+        test_course = {
+            '_id': ObjectId("607f1f77bcf86cd799439011"),
+            'name': 'Test Course',
+            'price': 99.99,
+            'instructor': {'name': 'Test Instructor'},
+            'curriculum': [{
+                '_id': ObjectId("707f1f77bcf86cd799439011"),
+                'title': 'Module 1',
+                'lessons': [{'_id': ObjectId("807f1f77bcf86cd799439011"), 'title': 'Lesson 1'}]
+            }]
+        }
 
-@patch('your_app.views.get_mongo_db')
-def test_database_error(mock_get_db, mock_auth_client):
-    mock_get_db.return_value = None  # Simulate DB failure
-    
-    response = mock_auth_client.post(
-        '/api/verify-paypal-order/',
-        {'orderID': 'TEST_ORDER_123'},
-        format='json'
-    )
-    
-    assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
-    assert 'Database connection error' in response.data['error']
+        mock_find.return_value = test_course
+        mock_update.return_value.modified_count = 1
+        mock_insert.return_value.inserted_id = ObjectId()
+
+        enrollment_data = {
+            'user_id': ObjectId("907f1f77bcf86cd799439011"),
+            'course_id': ObjectId("607f1f77bcf86cd799439011"),  # Match the test_course ID
+            'payment_method': 'bank_transfer',
+            'amount': 99.99,
+            'bank_reference': 'TESTREF123'
+        }
+
+        result = enroll_student(enrollment_data)
+        self.assertIsNotNone(result)

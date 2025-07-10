@@ -169,6 +169,34 @@ CORS_ALLOWED_ORIGINS = [
     
 ]
 
+# settings.py
+# Bank Transfer Configuration
+BARCLAYS_BANK_CONFIG = {
+    'BANK_NAME': 'Barclays Bank UK',
+    'ACCOUNT_NAME': 'YOUR_COMPANY_NAME',  # e.g., "EDUHUB LTD"
+    'ACCOUNT_NUMBER': 'YOUR_ACCOUNT_NUMBER',  # 8-digit account number
+    'SORT_CODE': '20-11-43',  # Barclays sort code
+    'IBAN': 'GBXXBARC201143XXXXXXXX',  # Your full IBAN
+    'SWIFT_BIC': 'BARCGB22',  # Barclays SWIFT code
+    'BANK_ADDRESS': '1 Churchill Place, London E14 5HP, UK',
+    'PAYMENT_REF_PREFIX': 'EDU',  # Prefix for payment references
+    'SUPPORT_EMAIL': 'finance@yourdomain.com',
+    'SUPPORT_PHONE': '+44 20 XXXX XXXX'
+}
+
+
+# settings.py
+STRIPE_CONFIG = {
+    'SECRET_KEY': os.getenv('STRIPE_SECRET_KEY'),
+    'WEBHOOK_SECRET': os.getenv('STRIPE_WEBHOOK_SECRET'),
+    'BANK_TRANSFER_ENABLED': True,  # Enable Stripe bank transfers
+    'BANK_TRANSFER_TYPES': ['gb_bank_transfer'],  # For UK banks
+    'BARCLAYS_SORT_CODE': '20-11-43'  # Your Barclays details
+}
+
+# For testing webhook signatures
+BANK_WEBHOOK_SECRET = 'testsecret'
+
 
 CORS_ALLOW_CREDENTIALS = True
 

@@ -1,16 +1,21 @@
 # payment/views.py
+import hashlib
+import hmac
 import json
 import traceback
 from django.http import HttpResponse
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from django.conf import settings # To access Stripe keys and MongoDB URI
 from bson import ObjectId
 import stripe
 import logging
 import datetime
+import time
+from django.urls import reverse
+from .services import generate_virtual_account
 from .paypal_api_client import paypal_client 
 import uuid
 from rest_framework.decorators import authentication_classes, permission_classes
@@ -19,6 +24,10 @@ from bson.errors import InvalidId
 from datetime import datetime, timedelta, timezone
 import os
 from django.views.decorators.csrf import csrf_exempt
+from payment.services.validation import validate_course
+from payment.services.enrollment import enroll_student
+from payment.services.generate_virtual_account import generate_virtual_account
+
 stripe.api_key = os.getenv('STRIPE_SECRET_KEY')
 
 
@@ -908,3 +917,375 @@ class VerifyPayPalOrderAndEnrollView(APIView):
                 logger.error(f"Failed to log payment failure: {str(e)}")
 
         return Response(error_data, status=status)
+    
+# views.py
+class BarclaysBankTransferEnrollmentView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        """
+        Provides Barclays bank details for manual transfer
+        Returns:
+        - Bank account details
+        - Unique payment reference
+        - Payment instructions
+        """
+        try:
+            # Validate course
+            course_id = request.data['course_id']
+            if not ObjectId.is_valid(course_id):
+                return Response(
+                    {"status": "error", "message": "Invalid course ID format"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+                
+            course = validate_course(course_id)
+            if not course:
+                return Response(
+                    {"status": "error", "message": "Invalid course ID"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Generate unique reference (GB date format)
+            ref_date = datetime.now().strftime('%d%m%y')
+            reference = f"{settings.BARCLAYS_BANK_CONFIG['PAYMENT_REF_PREFIX']}-{ref_date}-{request.user.id[:6]}"
+
+            # Record the transaction
+            transfer_data = {
+                "user_id": ObjectId(request.user.id),
+                "course_id": ObjectId(course_id),
+                "amount": float(course['price']),
+                "currency": course.get('currency', 'GBP'),
+                "status": "AWAITING_PAYMENT",
+                "reference": reference,
+                "bank_details": {
+                    "bank_name": "Barclays",
+                    "sort_code": "20-11-43"
+                },
+                "created_at": datetime.utcnow(),
+                "expires_at": datetime.utcnow() + timedelta(days=7),
+                "metadata": {
+                    "course_name": course['name'],
+                    "user_email": request.user.email,
+                }
+            }
+            
+            db.bank_transfers.insert_one(transfer_data)
+
+            # Prepare payment instructions
+            return Response({
+                "status": "awaiting_payment",
+                "payment_instructions": {
+                    "for_uk_payments": {
+                        "account_name": settings.BARCLAYS_BANK_CONFIG['ACCOUNT_NAME'],
+                        "account_number": settings.BARCLAYS_BANK_CONFIG['ACCOUNT_NUMBER'],
+                        "sort_code": settings.BARCLAYS_BANK_CONFIG['SORT_CODE'],
+                        "reference": reference,
+                        "amount": f"£{course['price']:.2f}",
+                        "payment_note": f"Course: {course['name']}"
+                    },
+                    "for_international_payments": {
+                        "beneficiary_name": settings.BARCLAYS_BANK_CONFIG['ACCOUNT_NAME'],
+                        "iban": settings.BARCLAYS_BANK_CONFIG['IBAN'],
+                        "swift_bic": settings.BARCLAYS_BANK_CONFIG['SWIFT_BIC'],
+                        "bank_address": settings.BARCLAYS_BANK_CONFIG['BANK_ADDRESS'],
+                        "reference": reference,
+                        "amount": f"{course['price']:.2f} {course.get('currency', 'GBP')}",
+                        "payment_note": f"Education Payment - {course['name']}"
+                    },
+                    "important_notes": [
+                        "Include the reference in your payment",
+                        "Payments may take 1-3 business days to clear",
+                        "Send payment proof to finance@yourdomain.com",
+                        "Contact support for any payment issues"
+                    ]
+                },
+                "verification_options": {
+                    "upload_receipt_url": reverse('upload-payment-proof'),
+                    "email_receipt_to": settings.BARCLAYS_BANK_CONFIG['SUPPORT_EMAIL'],
+                    "contact_support": settings.BARCLAYS_BANK_CONFIG['SUPPORT_PHONE']
+                },
+                "reference": reference,
+                "expires_at": (datetime.utcnow() + timedelta(days=7)).strftime('%Y-%m-%d')
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            logger.error(f"Barclays transfer setup failed: {str(e)}", exc_info=True)
+            return Response(
+                {"status": "error", "message": "Payment setup failed"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+db = get_mongo_db()
+
+# views.py
+
+
+# webhooks.py
+class BarclaysPaymentVerificationView(APIView):
+    permission_classes = [IsAdminUser]
+
+    def post(self, request):
+        """
+        Special verification for Barclays payments with:
+        - Sort code validation
+        - Reference format checking
+        - GBP amount validation
+        """
+        try:
+            reference = request.data['reference']
+            action = request.data['action']
+            admin_notes = request.data.get('notes', '')
+
+            transfer = db.bank_transfers.find_one({"reference": reference})
+            if not transfer:
+                return Response(
+                    {"status": "error", "message": "Transaction not found"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            # Barclays-specific validation
+            if transfer['bank_details']['sort_code'] != '20-11-43':
+                return Response(
+                    {"status": "error", "message": "Invalid sort code for Barclays"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            if action == 'approve':
+                # Verify GBP amount
+                if transfer['currency'] != 'GBP':
+                    return Response(
+                        {"status": "warning", "message": "Non-GBP payment requires manual review"},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+                # Process enrollment
+                enrollment_data = {
+                    "user_id": transfer['user_id'],
+                    "course_id": transfer['course_id'],
+                    "payment_method": "barclays_transfer",
+                    "amount": transfer['amount'],
+                    "currency": "GBP",
+                    "reference": reference,
+                    "verified_by": request.user.email
+                }
+
+                enroll_student(enrollment_data)
+
+                db.bank_transfers.update_one(
+                    {"_id": transfer['_id']},
+                    {
+                        "$set": {
+                            "status": "COMPLETED",
+                            "verified_at": datetime.utcnow(),
+                            "admin_notes": admin_notes,
+                            "bank_verified": True
+                        }
+                    }
+                )
+
+                return Response({
+                    "status": "success",
+                    "message": "Barclays payment verified and enrollment processed"
+                })
+
+            elif action == 'reject':
+                db.bank_transfers.update_one(
+                    {"_id": transfer['_id']},
+                    {
+                        "$set": {
+                            "status": "REJECTED",
+                            "rejected_at": datetime.utcnow(),
+                            "rejection_reason": admin_notes
+                        }
+                    }
+                )
+                return Response({
+                    "status": "success",
+                    "message": "Payment rejected"
+                })
+
+        except Exception as e:
+            logger.error(f"Barclays verification failed: {str(e)}", exc_info=True)
+            return Response(
+                {"status": "error", "message": "Verification failed"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+
+# views.py
+from stripe.error import StripeError
+
+class StripeBankTransferView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        """
+        Creates a Stripe-hosted bank transfer payment
+        """
+        try:
+            # 1. Validate course
+            course_id = request.data['course_id']
+            course = validate_course(course_id)
+            if not course:
+                return Response(
+                    {"error": "Invalid course"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # 2. Create Stripe PaymentIntent
+            payment_intent = stripe.PaymentIntent.create(
+                amount=int(course['price'] * 100),  # In pennies
+                currency='gbp',
+                payment_method_types=['customer_balance'],
+                payment_method_data={
+                    'type': 'customer_balance',
+                },
+                payment_method_options={
+                    'customer_balance': {
+                        'funding_type': 'bank_transfer',
+                        'bank_transfer': {
+                            'type': 'gb_bank_transfer',  # For UK banks
+                            'requested_address_types': ['sort_code'],
+                        }
+                    }
+                },
+                metadata={
+                    'course_id': str(course['_id']),
+                    'user_id': str(request.user.id),
+                    'payment_type': 'bank_transfer'
+                }
+            )
+
+            # 3. Get bank transfer details
+            bank_transfer_details = payment_intent.next_action['display_bank_transfer_instructions']
+            
+            # 4. Save to database
+            db.stripe_bank_transfers.insert_one({
+                'user_id': ObjectId(request.user.id),
+                'course_id': ObjectId(course_id),
+                'payment_intent_id': payment_intent.id,
+                'amount': course['price'],
+                'currency': 'GBP',
+                'status': 'requires_payment_method',
+                'bank_details': {
+                    'sort_code': bank_transfer_details['sort_code'],
+                    'account_number': bank_transfer_details['account_number'],
+                    'bank_name': bank_transfer_details['bank_name'],
+                    'reference': bank_transfer_details['reference']
+                },
+                'created_at': datetime.utcnow()
+            })
+
+            return Response({
+                'status': 'requires_bank_transfer',
+                'bank_instructions': {
+                    'amount': f"£{course['price']:.2f}",
+                    'sort_code': bank_transfer_details['sort_code'],
+                    'account_number': bank_transfer_details['account_number'],
+                    'bank_name': bank_transfer_details['bank_name'],
+                    'reference': bank_transfer_details['reference'],
+                    'due_by': payment_intent.next_action['display_bank_transfer_instructions']['expires_at']
+                },
+                'payment_intent_id': payment_intent.id
+            })
+
+        except StripeError as e:
+            return Response(
+                {'error': str(e.user_message)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+# webhooks.py
+@csrf_exempt
+def stripe_webhook(request):
+    payload = request.body
+    sig_header = request.META['HTTP_STRIPE_SIGNATURE']
+    event = None
+
+    try:
+        event = stripe.Webhook.construct_event(
+            payload, sig_header, settings.STRIPE_CONFIG['WEBHOOK_SECRET']
+        )
+    except ValueError as e:
+        return HttpResponse(status=400)
+    except stripe.error.SignatureVerificationError as e:
+        return HttpResponse(status=400)
+
+    # Handle bank transfer completion
+    if event['type'] == 'payment_intent.succeeded':
+        payment_intent = event['data']['object']
+        
+        if payment_intent.metadata.get('payment_type') == 'bank_transfer':
+            handle_stripe_bank_transfer(payment_intent)
+
+    return HttpResponse(status=200)
+
+def handle_stripe_bank_transfer(payment_intent):
+    """Process completed Stripe bank transfer"""
+    # 1. Update Stripe transfer record
+    transfer = db.stripe_bank_transfers.find_one_and_update(
+        {'payment_intent_id': payment_intent.id},
+        {'$set': {
+            'status': 'succeeded',
+            'completed_at': datetime.utcnow()
+        }},
+        return_document=True
+    )
+
+    if not transfer:
+        logger.error(f"Stripe transfer not found: {payment_intent.id}")
+        return
+
+    # 2. Enroll student
+    enroll_student({
+        'user_id': transfer['user_id'],
+        'course_id': transfer['course_id'],
+        'payment_method': 'stripe_bank_transfer',
+        'amount': transfer['amount'],
+        'transaction_id': payment_intent.id
+    })
+
+
+class StripeTransferStatusView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, payment_intent_id):
+        try:
+            # 1. Get from Stripe
+            pi = stripe.PaymentIntent.retrieve(payment_intent_id)
+            
+            # 2. Get from our DB
+            transfer = db.stripe_bank_transfers.find_one({
+                'payment_intent_id': payment_intent_id,
+                'user_id': ObjectId(request.user.id)
+            })
+
+            if not transfer:
+                return Response(
+                    {'error': 'Transfer not found'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            # 3. Prepare response
+            response = {
+                'status': pi.status,
+                'amount': transfer['amount'],
+                'currency': transfer['currency'],
+                'bank_details': transfer.get('bank_details', {}),
+                'last_updated': transfer.get('updated_at', transfer['created_at']).isoformat()
+            }
+
+            if pi.status == 'succeeded':
+                response['course_access'] = True
+            elif pi.status == 'processing':
+                response['estimated_completion'] = (datetime.utcnow() + timedelta(hours=24)).isoformat()
+
+            return Response(response)
+
+        except StripeError as e:
+            return Response(
+                {'error': str(e.user_message)},
+                status=status.HTTP_400_BAD_REQUEST
+            )

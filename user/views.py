@@ -48,6 +48,8 @@ from sib_api_v3_sdk.rest import ApiException
 import sib_api_v3_sdk as brevo_sdk
 from rest_framework import serializers
 from rest_framework import permissions
+from django.core.validators import validate_email
+from django.core.exceptions import ValidationError
 
 
 db = get_mongo_db()
@@ -288,12 +290,67 @@ class Login(APIView): # This view will now handle student login with JWT
 
 
 class Logout(APIView):
-    authentication_classes = [SessionAuthentication]
+    
     permission_classes = [IsAuthenticated]
 
     def post(self, request, format=None):
         logout(request)
         return Response({"message": "User logged out successfully"}, status=status.HTTP_200_OK)
+    
+
+class TeacherSignupView(APIView):
+    permission_classes = [AllowAny]
+    def post(self, request):
+        required_fields = ['email', 'first_name', 'last_name', 'bio', 'password']
+        data = request.data.copy()
+        
+        # Check for missing required fields
+        missing_fields = [field for field in required_fields if field not in data]
+        if missing_fields:
+            return Response(
+                {"error": f"Missing required fields: {', '.join(missing_fields)}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Validate email format
+        try:
+            validate_email(data['email'])
+        except ValidationError:
+            return Response(
+                {"error": "Invalid email format"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Check if username or email already exists
+        
+            
+        if db.teacherprofiles.find_one({"email": data['email']}):
+            return Response(
+                {"error": "Email already registered"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Validate password length
+        if len(data['password']) < 8:
+            return Response(
+                {"error": "Password must be at least 8 characters"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Hash password and set role
+        data['password'] = make_password(data['password'])
+        data['role'] = 'TEACHER'
+        
+        serializer = TeacherProfileSerializer(data=data)
+        
+        if serializer.is_valid():
+            teacher = serializer.save()
+            # Remove sensitive data from response
+            response_data = serializer.data
+            response_data.pop('password', None)
+            return Response(response_data, status=status.HTTP_201_CREATED)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class TeacherLoginView(TokenObtainPairView):

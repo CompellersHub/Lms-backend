@@ -353,114 +353,64 @@ class TeacherSignupView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-class TeacherLoginView(TokenObtainPairView):
-    """
-    Custom login view for teachers.
-    Handles authentication and custom data fetching/validation.
-    """
-    serializer_class = CustomTokenObtainPairSerializer
+class TeacherLoginView(APIView):
+    permission_classes = [AllowAny]
 
-    def post(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
+    def post(self, request):
+        email = request.data.get("email")  # or user_id if teachers login with that
+        password = request.data.get("password")
 
-        try:
-            # This calls CustomTokenObtainPairSerializer.validate(),
-            # which in turn calls super().validate() to authenticate the user
-            # and generate tokens. It also populates serializer.user.
-            serializer.is_valid(raise_exception=True)
-        except Exception as e:
-            logger.warning(f"Login failed during serializer validation: {e.detail if hasattr(e, 'detail') else e}")
-            # Re-raise or return a specific error response
-            return Response(e.detail if hasattr(e, 'detail') else {"detail": "Authentication failed."}, status=status.HTTP_401_UNAUTHORIZED)
-            # You might want to customize the error messages here
-
-        user = serializer.user # This is your CustomUser instance, should have _mongo_doc
-
-        # --- DEBUG LOGGING for _mongo_doc state in View ---
-        logger.debug(
-            f"DEBUG (TeacherLoginView.post): Authenticated user: {user.email}, "
-            f"hasattr(_mongo_doc): {hasattr(user, '_mongo_doc')}, "
-            f"_mongo_doc is None: {user._mongo_doc is None if hasattr(user, '_mongo_doc') else 'N/A'}, "
-            f"keys: {list(user._mongo_doc.keys()) if hasattr(user, '_mongo_doc') and user._mongo_doc else 'N/A'}"
-        )
-        # --- END DEBUG LOGGING ---
-
-
-        if not hasattr(user, '_mongo_doc') or not user._mongo_doc:
-            logger.error(f"User {user.email} authenticated but _mongo_doc is missing or empty. Internal error.")
+        if not email or not password:
             return Response(
-                {"non_field_errors": [_('User data not found in MongoDB after authentication. (Internal error)')]},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {"error": "Email and password are required"}, 
+                status=status.HTTP_400_BAD_REQUEST
             )
 
-        teacher_mongo_doc = user._mongo_doc
+        # Authenticate using your MongoAuthBackend
+        user = authenticate(request=request, email=email, password=password)
 
-        # --- Role Check (now in the view) ---
-        if teacher_mongo_doc.get('role') != 'TEACHER':
-            logger.warning(f"User {user.email} attempted teacher login but is not a TEACHER. Role: {teacher_mongo_doc.get('role')}")
+        if user is not None:
+            if user.is_active:
+                db = get_mongo_db()
+                
+                # Check if this is a teacher (you might need to adjust this based on your user model)
+                if not hasattr(user, 'role') or user.role != 'TEACHER':
+                    return Response(
+                        {"error": "Only teachers can login here"}, 
+                        status=status.HTTP_403_FORBIDDEN
+                    )
+
+                # Update last_login in MongoDB
+                db.teacherprofiles.update_one(
+                    {"_id": user._mongo_doc['_id']},
+                    {"$set": {"last_login": timezone.now()}}
+                )
+                
+                # Re-fetch the updated document
+                updated_teacher = db.teacherprofiles.find_one({"_id": user._mongo_doc['_id']})
+                
+                # Serialize the teacher data
+                serializer = TeacherProfileSerializer(updated_teacher)
+                
+                # Create JWT tokens (using your existing function)
+                tokens = create_jwt_tokens(user)
+
+                return Response({
+                    "access": tokens['access'],
+                    "refresh": tokens['refresh'],
+                    "teacher_info": serializer.data,
+                    "message": "Teacher logged in successfully"
+                }, status=status.HTTP_200_OK)
+            else:
+                return Response(
+                    {"error": "Teacher account is inactive."}, 
+                    status=status.HTTP_401_UNAUTHORIZED
+                )
+        else:
             return Response(
-                {"detail": _('Only teachers can log in via this endpoint.')},
-                status=status.HTTP_403_FORBIDDEN
-    )
-
-
-        # teacher_profile_data = {}
-        # teacher_profiles_collection = db['teacherprofiles']
-
-        # if teacher_profiles_collection:
-        #     try:
-        #         # Use the _id from the customusers document to link to teacherprofiles
-        #         teacher_profile_data = teacher_profiles_collection.find_one({'user_id': mongo_doc.get('_id')})
-
-        #         if not teacher_profile_data:
-        #             logger.warning(f"Teacher profile not found in 'teacherprofiles' for user {user.email} (ID: {mongo_doc.get('_id')}).")
-        #             # Decide if a missing profile is a hard error or just omit data
-        #             # return Response({"detail": _('Teacher profile not found.')}, status=status.HTTP_404_NOT_FOUND)
-        #         else:
-        #             logger.debug(f"Fetched teacher profile for {user.email}.")
-
-        #     except Exception as e:
-        #         logger.error(f"Error fetching teacher profile for user {user.email}: {e}", exc_info=True)
-        #         return Response(
-        #             {"detail": _('Failed to load profile data due to an internal error.')},
-        #             status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        #         )
-
-        # # --- Combine data for user_info ---
-        # user_info_combined = {
-        #     'id': str(mongo_doc.get('_id')),
-        #     'email': mongo_doc.get('email'),
-        #     'first_name': mongo_doc.get('first_name'),
-        #     'last_name': mongo_doc.get('last_name'),
-        #     'role': mongo_doc.get('role'),
-        #     'bio': mongo_doc.get('bio'),
-        #     'profile_picture': mongo_doc.get('profile_picture'),
-        #     'phone_number': mongo_doc.get('phone_number'),
-        #     # Add any other core user fields from customusers
-        # }
-
-        # # Add/override with data from teacherprofiles
-        # if teacher_profile_data:
-        #     user_info_combined['special_certifications'] = teacher_profile_data.get('special_certifications', [])
-        #     user_info_combined['availability_schedule'] = teacher_profile_data.get('availability_schedule', {})
-        #     user_info_combined['years_experience'] = teacher_profile_data.get('years_experience')
-        #     # Add more fields from teacherprofiles as needed
-
-        # # Validate the combined user_info using UserInfoSerializer
-        # user_info_serializer = TeacherProfileSerializer(user_info_combined)
-        
-        # Prepare the final response data
-        teacher_info_serializer = TeacherProfileSerializer(teacher_mongo_doc)
-
-# Prepare the final response data
-        response_data = {
-            'access': serializer.validated_data['access'],
-            'refresh': serializer.validated_data['refresh'],
-            'user_info': teacher_info_serializer.data, # Directly use the serialized teacher data
-        }
-        
-        logger.info(f"Teacher {user.email} successfully logged in.")
-        return Response(response_data, status=status.HTTP_200_OK)
+                {"error": "Invalid credentials. Please check your email and password."}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
 class Teacher(APIView):
     def post(self, request):

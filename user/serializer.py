@@ -233,6 +233,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 
 class TeacherProfileSerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)
+    email = serializers.EmailField()
     first_name = serializers.CharField(max_length=150, allow_blank=True, required=False)
     last_name = serializers.CharField(max_length=150, allow_blank=True, required=False)
     password = serializers.CharField(write_only=True)

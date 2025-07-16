@@ -6,6 +6,50 @@ from django.utils import timezone
 from courses.mongo_utils import get_mongo_db
 from courses.storages_backends import PublicMediaStorage, ProfilePicturesStorage, TeacherPicturesStorage, SubmissionStorage
 
+from django.utils import timezone
+from datetime import timedelta
+import random
+
+
+
+
+class OTP(models.Model):
+    email = models.EmailField()
+    code = models.CharField(max_length=6)
+    created_at = models.DateTimeField(auto_now_add=True)
+    is_verified = models.BooleanField(default=False)
+    purpose = models.CharField(max_length=20, default='SIGNUP')  # Added purpose field with default
+
+    @classmethod
+    def generate_otp(cls, email, purpose='SIGNUP'):  # Made purpose optional with default
+        """Generate and save a new OTP"""
+        # Delete existing OTPs for this email/purpose
+        cls.objects.filter(email=email, purpose=purpose).delete()
+        
+        # Generate 6-digit numeric code
+        code = str(random.randint(100000, 999999))
+        
+        return cls.objects.create(
+            email=email,
+            code=code,
+            purpose=purpose
+        )
+
+    def is_expired(self):
+        """Check if OTP has expired"""
+        expiry_time = self.created_at + timedelta(
+            minutes=15  # Fixed expiration to 15 minutes
+        )
+        return timezone.now() > expiry_time
+
+    def verify(self, entered_code):
+        """Verify the OTP code"""
+        if not self.is_expired() and self.code == entered_code:
+            self.is_verified = True
+            self.save()
+            return True
+        return False
+
 
 
 class CustomUserManager(BaseUserManager):

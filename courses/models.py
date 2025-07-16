@@ -25,7 +25,7 @@ class Video(models.Model):
     description = models.TextField(blank=True, null=True    ) # REQUIRED
     video_file = models.FileField(storage=VideoMediaStorage(), blank=True, null=True)
     duration = models.CharField(max_length=50, help_text="Duration of the video (e.g., '15 minutes', '30:45')") # REQUIRED
-    order = models.IntegerField() # REQUIRED, removed default
+    order = models.IntegerField(default=1) # REQUIRED, removed default
     created_at = models.DateTimeField(auto_now_add=True) # Auto-set
     updated_at = models.DateTimeField(auto_now=True) # Auto-set
 
@@ -71,9 +71,9 @@ class CourseNote(models.Model):
 class Module(models.Model):
     id = models.AutoField(primary_key=True, editable=False)
     title = models.CharField(max_length=200) # Required
-    video = models.ManyToManyField('Video') # REQUIRED (removed blank=True, null=True)
-    course_note = models.ForeignKey('CourseNote', on_delete=models.CASCADE) # Required
-    order = models.IntegerField() # REQUIRED, removed default
+    video = models.ManyToManyField('Video', blank=True, null=True) # REQUIRED (removed blank=True, null=True)
+    course_note = models.ForeignKey('CourseNote', on_delete=models.CASCADE, blank=True, null=True) # Required
+    order = models.IntegerField(default=1) # REQUIRED, removed default
     created_at = models.DateTimeField(auto_now_add=True) # Auto-set
     updated_at = models.DateTimeField(auto_now=True) # Auto-set
 
@@ -89,7 +89,7 @@ class Module(models.Model):
             "title": self.title,
             "order": self.order,
             "video": [video.to_dict() for video in self.video.all()],
-            "course_note": self.course_note.to_dict(),
+            "course_note": self.course_note,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
         }
@@ -97,7 +97,7 @@ class Module(models.Model):
 class Curriculum(models.Model):
     id = models.AutoField(primary_key=True, editable=False)
     title = models.CharField(max_length=200) # Required
-    module = models.ManyToManyField('Module') # REQUIRED (removed blank=True, null=True)
+    module = models.ManyToManyField('Module', blank=True, null=True) # REQUIRED (removed blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True) # Auto-set
     updated_at = models.DateTimeField(auto_now=True) # Auto-set
 

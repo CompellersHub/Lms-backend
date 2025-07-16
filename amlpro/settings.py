@@ -329,13 +329,32 @@ EMAIL_HOST_PASSWORD = os.getenv('BREVO_SMTP_KEY') # Your Brevo SMTP key (the aut
 
 # brevo email 
 
-# settings.py
+CELERY_BROKER_URL = 'amqp://localhost'  # or your broker URL
+CELERY_RESULT_BACKEND = 'rpc://'
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TIMEZONE = 'UTC'
+
+# Task specific settings
+CELERY_TASK_ANNOTATIONS = {
+    'send_welcome_otp': {
+        'rate_limit': '10/m'  # 10 emails per minute max
+    }
+}
 
 
 
 BREVO_API_KEY = os.getenv('Brevo_API')
 DEFAULT_FROM_EMAIL = 'marketing@titanscareers.com' # Required for Django's mail functions
+DEFAULT_FROM_NAME = 'Titans Careers' # Default name for emails sent by Django
 SERVER_EMAIL = DEFAULT_FROM_EMAIL # Default from-email for Django errors
+OTP_TEMPLATE_ID = 4  # Your template ID
+
+# OTP Settings
+OTP_EXPIRY_MINUTES = 15
+PROJECT_NAME = 'Titans Careers'
+
 
 AUTH_USER_MODEL = 'user.CustomUser'
 

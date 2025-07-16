@@ -5,6 +5,7 @@ from rest_framework import status
 
 from blog.models import BlogUser
 from blog.serializer import BlogUserSerializer
+from user.utils.email_service import send_brevo_email
 from .serializer import CourseProgressSerializer, CustomUserSerializer, TeacherProfileSerializer, NotificationSerializer, CourseProgressRecordSerializer, CourseProgressResponseSerializer
 from rest_framework_simplejwt.views import TokenObtainPairView # Use this for base JWT view
 from django.utils.translation import gettext_lazy as _
@@ -50,6 +51,8 @@ from rest_framework import serializers
 from rest_framework import permissions
 from django.core.validators import validate_email
 from django.core.exceptions import ValidationError
+from .models import OTP
+from .tasks import send_welcome_otp
 
 
 db = get_mongo_db()
@@ -300,117 +303,344 @@ class Logout(APIView):
 
 class TeacherSignupView(APIView):
     permission_classes = [AllowAny]
+
     def post(self, request):
-        required_fields = ['email', 'first_name', 'last_name', 'bio', 'password']
+        # Required fields with validation
+        required_fields = {
+            'email': str,
+            'first_name': str,
+            'last_name': str,
+            'bio': str,
+            'password': str,
+            'course_taken': str,
+        }
+
+        # Optional fields with defaults
+        optional_fields = {
+            'profile_picture': 'https://titanscareers.s3.amazonaws.com/Teacher_profile/placeholder.png',
+            'phone_number': '',
+            'past_experience': '',
+            'django_id': None,
+            'username': ''
+        }
+
         data = request.data.copy()
         
-        # Check for missing required fields
-        missing_fields = [field for field in required_fields if field not in data]
+        # Validate required fields
+        missing_fields = []
+        for field, field_type in required_fields.items():
+            if field not in data:
+                missing_fields.append(field)
+            elif not isinstance(data[field], field_type):
+                try:
+                    data[field] = field_type(data[field])
+                except (ValueError, TypeError):
+                    return Response(
+                        {"error": f"Invalid format for {field}. Expected {field_type.__name__}"},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
         if missing_fields:
             return Response(
                 {"error": f"Missing required fields: {', '.join(missing_fields)}"},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
-        # Validate email format
-        try:
-            validate_email(data['email'])
-        except ValidationError:
+
+        # Set default values for optional fields
+        for field, default_value in optional_fields.items():
+            if field not in data:
+                data[field] = default_value
+
+        # Email validation
+        if not data['email'].endswith('@gmail.com'):
             return Response(
-                {"error": "Invalid email format"},
+                {"error": "Only Gmail addresses are currently supported"},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
-        # Check if username or email already exists
-        
-            
+
+        # Check if user already exists
+        db = get_mongo_db()
         if db.teacherprofiles.find_one({"email": data['email']}):
             return Response(
-                {"error": "Email already registered"}, 
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "Teacher with this email already exists"},
+                status=status.HTTP_409_CONFLICT
             )
+
+        # Prepare the teacher document
+        teacher_data = {
+            '_id': ObjectId(),
+            'first_name': data['first_name'],
+            'last_name': data['last_name'],
+            'role': 'TEACHER',
+            'bio': data['bio'],
+            'profile_picture': data['profile_picture'],
+            'phone_number': data['phone_number'],
+            'past_experience': data['past_experience'],
+            'course_taken': data['course_taken'],
+            'created_at': timezone.now(),
+            'email': data['email'],
+            'password': make_password(data['password']),
+            'username': data['username'],
+            'last_login': None,
+            'is_verified': False
+        }
+
+        # Generate and send OTP
+        otp = OTP.generate_otp(data['email'])  
         
-        # Validate password length
-        if len(data['password']) < 8:
-            return Response(
-                {"error": "Password must be at least 8 characters"}, 
-                status=status.HTTP_400_BAD_REQUEST
+        try:
+            # Queue the email task with correct parameters
+            send_welcome_otp.delay(
+                to_email=data['email'],
+                otp_code=otp.code,  # Using otp.code
+                first_name=data['first_name']
             )
+        except Exception as e:
+            logger.error(f"Failed to queue OTP email task: {str(e)}")
+            # Fallback to synchronous sending
+            send_brevo_email(
+                to_email=data['email'],
+                otp_code=otp.code,
+                first_name=data['first_name']
+            )
+
+        # Store unverified teacher
+        db.unverified_teachers.insert_one(teacher_data)
+
+        return Response({
+            "message": "OTP sent to your email. Please verify to complete registration.",
+            "teacher_id": str(teacher_data['_id']),
+            "email": data['email'],
+            "next_step": "verify_otp"
+        }, status=status.HTTP_201_CREATED)
+
+
+
+
+
+class TestEmailView(APIView):
+    def get(self, request):
+        test_email = "olomoshuaomozafen@gmail.com"  # CHANGE THIS
+        try:
+            # Test direct sending (bypass Celery)
+            from .utils.email_service import send_brevo_email
+            response = send_brevo_email(
+                to_email=test_email,
+                template_id=4,
+                params={'OTP_CODE': '123456', 'FIRST_NAME': 'Test'}
+            )
+            
+            # Test Celery task
+            send_welcome_otp.delay(
+                email=test_email,
+                otp_code='654321',
+                first_name='Celery Test'
+            )
+            
+            return Response({
+                "direct_api": "Attempted" if response else "Failed",
+                "celery_task": "Queued",
+                "message": "Check your email and server logs"
+            })
+        except Exception as e:
+            return Response({"error": str(e)}, status=500)
         
-        # Hash password and set role
-        data['password'] = make_password(data['password'])
-        data['role'] = 'TEACHER'
-        
-        serializer = TeacherProfileSerializer(data=data)
-        
-        if serializer.is_valid():
-            teacher = serializer.save()
-            # Remove sensitive data from response
-            response_data = serializer.data
-            response_data.pop('password', None)
-            return Response(response_data, status=status.HTTP_201_CREATED)
-        
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class TeacherLoginView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
-        email = request.data.get("email")  # or user_id if teachers login with that
+        # Extract credentials from request
+        email = request.data.get("email")
         password = request.data.get("password")
+        otp_code = request.data.get("otp_code")
 
+        # Validate required fields
         if not email or not password:
             return Response(
-                {"error": "Email and password are required"}, 
+                {"error": "Both email and password are required"},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Authenticate using your MongoAuthBackend
-        user = authenticate(request=request, email=email, password=password)
+        # Step 1: Initial authentication check
+        db = get_mongo_db()
+        teacher = db.teacherprofiles.find_one({"email": email})
 
-        if user is not None:
-            if user.is_active:
-                db = get_mongo_db()
-                
-                # Check if this is a teacher (you might need to adjust this based on your user model)
-                if not hasattr(user, 'role') or user.role != 'TEACHER':
-                    return Response(
-                        {"error": "Only teachers can login here"}, 
-                        status=status.HTTP_403_FORBIDDEN
-                    )
+        if not teacher:
+            return Response(
+                {"error": "Teacher account not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
 
-                # Update last_login in MongoDB
-                db.teacherprofiles.update_one(
-                    {"_id": user._mongo_doc['_id']},
-                    {"$set": {"last_login": timezone.now()}}
-                )
-                
-                # Re-fetch the updated document
-                updated_teacher = db.teacherprofiles.find_one({"_id": user._mongo_doc['_id']})
-                
-                # Serialize the teacher data
-                serializer = TeacherProfileSerializer(updated_teacher)
-                
-                # Create JWT tokens (using your existing function)
-                tokens = create_jwt_tokens(user)
+        if not check_password(password, teacher['password']):
+            return Response(
+                {"error": "Invalid credentials"},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
 
-                return Response({
-                    "access": tokens['access'],
-                    "refresh": tokens['refresh'],
-                    "teacher_info": serializer.data,
-                    "message": "Teacher logged in successfully"
-                }, status=status.HTTP_200_OK)
-            else:
+        # Step 2: OTP Verification Flow
+        if not otp_code:
+            # Generate and send OTP if not provided
+            otp = OTP.generate_otp(email)
+            send_welcome_otp.delay(
+                email=email,
+                otp_code=otp.otp_code,
+                first_name=teacher.get('first_name')
+            )
+            return Response(
+                {
+                    "message": "OTP sent to your registered email",
+                    "otp_required": True,
+                    "email": email
+                },
+                status=status.HTTP_200_OK
+            )
+
+        # Verify OTP if provided
+        try:
+            otp = OTP.objects.filter(email=email, is_verified=False).latest('created_at')
+            if not otp.verify(otp_code):
                 return Response(
-                    {"error": "Teacher account is inactive."}, 
+                    {"error": "Invalid or expired OTP code"},
                     status=status.HTTP_401_UNAUTHORIZED
                 )
-        else:
+        except OTP.DoesNotExist:
             return Response(
-                {"error": "Invalid credentials. Please check your email and password."}, 
+                {"error": "OTP not found or already used. Please request a new one."},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+        # Step 3: Final Authentication
+        user = authenticate(request=request, email=email, password=password)
+        
+        if not user or not hasattr(user, 'role') or user.role != 'TEACHER':
+            return Response(
+                {"error": "Authentication failed or invalid user role"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        if not user.is_active:
+            return Response(
+                {"error": "Teacher account is inactive"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # Update last login and prepare response
+        db.teacherprofiles.update_one(
+            {"_id": user._mongo_doc['_id']},
+            {"$set": {"last_login": timezone.now()}}
+        )
+
+        updated_teacher = db.teacherprofiles.find_one({"_id": user._mongo_doc['_id']})
+        serializer = TeacherProfileSerializer(updated_teacher)
+        tokens = create_jwt_tokens(user)
+
+        return Response({
+            "access": tokens['access'],
+            "refresh": tokens['refresh'],
+            "teacher": serializer.data,
+            "message": "Login successful"
+        }, status=status.HTTP_200_OK)
+
+
+class ProfileUpdateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request):
+        user = request.user
+        data = request.data.copy()
+        
+        # Define restricted fields that shouldn't be updated via this endpoint
+        base_restricted_fields = ['role', 'created_at', 'last_login', 'password']
+        
+        # Role-specific restricted fields
+        role_restricted_fields = {
+            'TEACHER': ['course_taken', '_id', 'user_id', 'email'],
+            'STUDENT': ['courses_enrolled', '_id', 'username', 'email']
+        }
+        
+        # Get all restricted fields for the user's role
+        restricted_fields = base_restricted_fields + role_restricted_fields.get(user.role, [])
+
+        # Remove all restricted fields from update data
+        for field in restricted_fields:
+            data.pop(field, None)
+
+        db = get_mongo_db()
+        
+        try:
+            # Determine user type and collection
+            if hasattr(user, 'role'):
+                if user.role == 'TEACHER':
+                    collection = 'teacherprofiles'
+                    serializer_class = TeacherProfileSerializer
+                elif user.role == 'STUDENT':
+                    collection = 'customusers'
+                    serializer_class = CustomUserSerializer
+                else:
+                    return Response(
+                        {"error": "Unsupported user role for update"},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            else:
+                return Response(
+                    {"error": "User role not defined"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Get the current document
+            current_doc = db[collection].find_one({"_id": ObjectId(str(user.id))})
+            if not current_doc:
+                return Response(
+                    {"error": "User profile not found"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            # Validate fields against serializer and remove any invalid fields
+            serializer_fields = serializer_class().get_fields()
+            update_data = {
+                field: data[field] 
+                for field in data 
+                if field in serializer_fields and field not in restricted_fields
+            }
+
+            if not update_data:
+                return Response(
+                    {"error": "No valid fields provided for update"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Add updated_at timestamp
+            update_data['updated_at'] = timezone.now()
+
+            # Perform the update
+            result = db[collection].update_one(
+                {"_id": ObjectId(str(user.id))},
+                {"$set": update_data}
+            )
+
+            if result.modified_count == 0:
+                return Response(
+                    {"error": "No changes were made"},
+                    status=status.HTTP_304_NOT_MODIFIED
+                )
+
+            # Fetch the updated document
+            updated_doc = db[collection].find_one({"_id": ObjectId(str(user.id))})
+            serializer = serializer_class(updated_doc)
+
+            return Response({
+                "message": "Profile updated successfully",
+                "user_info": serializer.data
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
 
 class Teacher(APIView):
     def post(self, request):
@@ -427,6 +657,62 @@ class Teacher(APIView):
         teachers = db.teacherprofiles.find()
         serializer = TeacherProfileSerializer([teacher for teacher in teachers], many=True)
         return Response(serializer.data)
+
+
+class VerifyOTPView(APIView):
+    def post(self, request):
+        email = request.data.get('email')
+        otp_code = request.data.get('otp_code')
+        
+        if not email or not otp_code:
+            return Response(
+                {"error": "Email and OTP code are required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            otp = OTP.objects.filter(email=email, is_verified=False).latest('created_at')
+        except OTP.DoesNotExist:
+            return Response(
+                {"error": "No pending OTP verification found for this email"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        if otp.is_expired():
+            return Response(
+                {"error": "OTP has expired. Please request a new one."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if otp.verify(otp_code):
+            # Move from temporary storage to actual collection
+            db = get_mongo_db()
+            temp_user = db.unverified_teachers.find_one({"email": email})
+            
+            if not temp_user:
+                return Response(
+                    {"error": "User data not found. Please register again."},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Create the actual teacher profile
+            temp_user['is_verified'] = True
+            temp_user['created_at'] = timezone.now()
+            result = db.teacherprofiles.insert_one(temp_user)
+            
+            # Clean up
+            db.unverified_teachers.delete_one({"_id": temp_user['_id']})
+            
+            return Response({
+                "message": "Account verified successfully",
+                "user_id": str(result.inserted_id)
+            }, status=status.HTTP_200_OK)
+        
+        return Response(
+            {"error": "Invalid OTP code"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
     
 class Student(APIView):
     def get(self, request):

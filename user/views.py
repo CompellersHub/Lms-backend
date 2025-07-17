@@ -405,7 +405,7 @@ class TeacherSignupView(APIView):
             )
 
         # Store unverified teacher
-        db.unverified_teachers.insert_one(teacher_data)
+        db.teacherprofiles.insert_one(teacher_data)
 
         return Response({
             "message": "OTP sent to your email. Please verify to complete registration.",
@@ -454,7 +454,6 @@ class TeacherLoginView(APIView):
         # Extract credentials from request
         email = request.data.get("email")
         password = request.data.get("password")
-        otp_code = request.data.get("otp_code")
 
         # Validate required fields
         if not email or not password:
@@ -463,70 +462,38 @@ class TeacherLoginView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Step 1: Initial authentication check
+        # Step 1: Check teacher exists in MongoDB
         db = get_mongo_db()
         teacher = db.teacherprofiles.find_one({"email": email})
-
+        
         if not teacher:
             return Response(
                 {"error": "Teacher account not found"},
                 status=status.HTTP_404_NOT_FOUND
             )
 
+        # Step 2: Verify password
         if not check_password(password, teacher['password']):
             return Response(
                 {"error": "Invalid credentials"},
                 status=status.HTTP_401_UNAUTHORIZED
             )
 
-        # Step 2: OTP Verification Flow
-        if not otp_code:
-            # Generate and send OTP if not provided
-            otp = OTP.generate_otp(email)
-            send_welcome_otp.delay(
-                email=email,
-                otp_code=otp.otp_code,
-                first_name=teacher.get('first_name')
-            )
-            return Response(
-                {
-                    "message": "OTP sent to your registered email",
-                    "otp_required": True,
-                    "email": email
-                },
-                status=status.HTTP_200_OK
-            )
-
-        # Verify OTP if provided
-        try:
-            otp = OTP.objects.filter(email=email, is_verified=False).latest('created_at')
-            if not otp.verify(otp_code):
-                return Response(
-                    {"error": "Invalid or expired OTP code"},
-                    status=status.HTTP_401_UNAUTHORIZED
-                )
-        except OTP.DoesNotExist:
-            return Response(
-                {"error": "OTP not found or already used. Please request a new one."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        # Step 3: Final Authentication
+        # Step 3: Authenticate user
         user = authenticate(request=request, email=email, password=password)
-        
         if not user or not hasattr(user, 'role') or user.role != 'TEACHER':
             return Response(
                 {"error": "Authentication failed or invalid user role"},
                 status=status.HTTP_403_FORBIDDEN
             )
 
-        if not user.is_active:
-            return Response(
-                {"error": "Teacher account is inactive"},
-                status=status.HTTP_403_FORBIDDEN
-            )
+        # if not user.is_active:
+        #     return Response(
+        #         {"error": "Teacher account is inactive"},
+        #         status=status.HTTP_403_FORBIDDEN
+        #     )
 
-        # Update last login and prepare response
+        # Step 4: Update last login and prepare response
         db.teacherprofiles.update_one(
             {"_id": user._mongo_doc['_id']},
             {"$set": {"last_login": timezone.now()}}

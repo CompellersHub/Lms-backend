@@ -89,7 +89,7 @@ class Module(models.Model):
             "title": self.title,
             "order": self.order,
             "video": [video.to_dict() for video in self.video.all()],
-            "course_note": self.course_note,
+            "course_note": self.course_note ,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
         }

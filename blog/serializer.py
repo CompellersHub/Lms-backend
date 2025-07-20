@@ -1,4 +1,5 @@
 from datetime import datetime
+from django.utils import timezone 
 from rest_framework import serializers
 from bson.objectid import ObjectId
 from blog.models import Blog
@@ -166,13 +167,68 @@ class BlogSerializer(serializers.Serializer):
     updatedAt = serializers.SerializerMethodField()
     publishedAt = serializers.SerializerMethodField()
 
+    def to_representation(self, instance):
+        """Convert MongoDB document to API-friendly format"""
+        representation = super().to_representation(instance)
+        
+        # Handle MongoDB _id field
+        if '_id' in instance and isinstance(instance['_id'], ObjectId):
+            representation['id'] = str(instance['_id'])
+        elif '_id' in representation:
+            representation['id'] = str(representation.pop('_id'))
+            
+        # Convert ObjectId references to strings
+        if 'created_by' in representation and isinstance(representation['created_by'], ObjectId):
+            representation['created_by'] = str(representation['created_by'])
+            
+        return representation
+
+    def create(self, validated_data):
+        db = get_mongo_db()
+        
+        # Set timestamps
+        validated_data['created_at'] = timezone.now()
+        validated_data['updated_at'] = timezone.now()
+        
+        # Set default status if not provided
+        if 'status' not in validated_data:
+            validated_data['status'] = 'draft'
+            
+        # Ensure content exists (required field)
+        if 'content' not in validated_data:
+            validated_data['content'] = []
+            
+        # Insert into MongoDB
+        result = db.blogs.insert_one(validated_data)
+        
+        # Return the full created document
+        return db.blogs.find_one({"_id": result.inserted_id})
+
+    def update(self, instance, validated_data):
+        db = get_mongo_db()
+        blog_id = ObjectId(instance['id'])
+        
+        # Update timestamp
+        validated_data['updated_at'] = datetime.now()
+        
+        # Perform the update
+        db.blogs.update_one(
+            {"_id": blog_id},
+            {"$set": validated_data}
+        )
+        
+        # Return the updated document
+        return db.blogs.find_one({"_id": blog_id})
+
+    # Keep all your existing get_* methods...
     def get_author(self, obj):
         """Get author username with fallback"""
         created_by = self._get_created_by(obj)
-        if isinstance(created_by, dict):
+        if isinstance(created_by, ObjectId):
+            # You might want to fetch the actual user document here
+            return str(created_by)
+        elif isinstance(created_by, dict):
             return created_by.get('username', '')
-        elif hasattr(created_by, 'username'):
-            return created_by.username
         return ''
 
     def get_authorRole(self, obj):

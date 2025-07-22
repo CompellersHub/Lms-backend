@@ -68,6 +68,29 @@ class CourseNote(models.Model):
             "updated_at": self.updated_at.isoformat(),
         }
 
+class  Course_include(models.Model):
+    include = models.TextField()
+    include2 = models.TextField()
+    include3 = models.TextField()
+    include4 = models.TextField()
+    include5 = models.TextField()
+    include6 = models.TextField()
+    include7 = models.TextField()
+
+    def __str__(self):
+        return f"{self.include}"
+
+    def to_dict(self):
+        return {
+            "include": self.include,
+            "include2": self.include2,
+            "include3": self.include3,
+            "include4": self.include4,
+            "include5": self.include5,
+            "include6": self.include6,
+            "include7": self.include7,
+        }
+
 class Module(models.Model):
     id = models.AutoField(primary_key=True, editable=False)
     title = models.CharField(max_length=200) # Required
@@ -180,6 +203,7 @@ class Course(models.Model):
     preview_description = models.CharField(max_length=255, null=True, blank=True) # REQUIRED (removed null=True, blank=True)
     description = models.TextField() # Required
     category = models.ForeignKey('Category', on_delete=models.CASCADE) # Required
+    course_include = models.ForeignKey('Course_include', on_delete=models.CASCADE, null=True, blank=True) # Required
     created_at = models.DateTimeField(auto_now_add=True) # Auto-set
     updated_at = models.DateTimeField(auto_now=True) # Auto-set
     price = models.FloatField() # REQUIRED, removed default
@@ -211,6 +235,7 @@ class Course(models.Model):
             "updated_at": self.updated_at.isoformat(),
             "price": self.price,
             "original_price": self.original_price,
+            "course_include": self.course_include.to_dict() if self.course_include else None,
             "learning_outcomes": self.learning_outcomes.to_dict(),
             "target_audience": self.target_audience.to_dict(),
             "curriculum": [module.to_dict() for module in self.curriculum.module.all()],

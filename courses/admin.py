@@ -64,6 +64,13 @@ class CurriculumAdmin(ModelAdmin):
     def mongo_id(self, obj): return get_mongo_id('Curriculum', obj)
     mongo_id.short_description = 'MongoDB ID'
 
+@admin.register(Course_include)
+class Course_include(ModelAdmin):
+    list_display = ['include', 'mongo_id']
+    search_fields = ['include']
+    readonly_fields = ['mongo_id']
+    def mongo_id(self, obj): return get_mongo_id('Course_include', obj)
+    mongo_id.short_description = 'MongoDB ID'
 
 @admin.register(Make_Assignment)
 class AssignmentAdmin(ModelAdmin):

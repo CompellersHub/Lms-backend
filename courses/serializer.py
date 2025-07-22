@@ -170,6 +170,35 @@ class TargetAudienceSerializer(serializers.Serializer):
         audience_id = ObjectId(instance['id'])
         db.target_audience.update_one({"_id": audience_id}, {"$set": validated_data})
         return db.target_audience.find_one({"_id": audience_id})
+    
+class CourseIncludeSerializer(serializers.Serializer):
+    include = serializers.CharField(max_length=500)
+    include2 = serializers.CharField(max_length=500)
+    include3 = serializers.CharField(max_length=500)
+    include4 = serializers.CharField(max_length=500)
+    include5 = serializers.CharField(max_length=500)
+    include6 = serializers.CharField(max_length=500)
+    include7 = serializers.CharField(max_length=500)
+
+    def to_representation(self, instance):
+        if '_id' in instance:
+            instance['id'] = str(instance['_id'])
+            del instance['_id']
+        return super().to_representation(instance)
+
+    def create(self, validated_data):
+        db = get_mongo_db()
+        result = db.course_includes.insert_one(validated_data)
+        return db.course_includes.find_one({"_id": result.inserted_id})
+
+    def update(self, instance, validated_data):
+        db = get_mongo_db()
+        include_id = ObjectId(instance['id'])
+        db.course_includes.update_one(
+            {"_id": include_id},
+            {"$set": validated_data}
+        )
+        return db.course_includes.find_one({"_id": include_id})
 
  
 
@@ -178,6 +207,7 @@ class CourseSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=200)
     course_image = serializers.URLField(allow_blank=True, required=False)
     preview_id = serializers.URLField(allow_blank=True, required=False)
+    course_include = CourseIncludeSerializer(required=False)  # Use the new serializer
     preview_description = serializers.CharField(max_length=255, allow_blank=True, required=False)
     description = serializers.CharField()
     curriculum = ModuleInCourseSerializer(many=True, required=False) # Use the new serializer and many=True
@@ -243,6 +273,8 @@ class CourseSerializer(serializers.Serializer):
             representation['learning_outcomes'] = LearningOutcomeSerializer().to_representation(instance['learning_outcomes'])        
         if 'required_materials' in instance and isinstance(instance['required_materials'], dict):
             representation['required_materials'] = RequiredMaterialSerializer().to_representation(instance['required_materials'])
+        if 'course_include' in instance and isinstance(instance['course_include'], dict):
+            representation['course_include'] = CourseIncludeSerializer().to_representation(instance['course_include'])
 
         return representation
 

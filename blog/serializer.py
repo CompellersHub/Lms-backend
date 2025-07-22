@@ -206,10 +206,10 @@ class BlogSerializer(serializers.Serializer):
 
     def update(self, instance, validated_data):
         db = get_mongo_db()
-        blog_id = ObjectId(instance['id'])
+        blog_id = ObjectId(instance['_id'])
         
         # Update timestamp
-        validated_data['updated_at'] = datetime.now()
+        validated_data['updated_at'] = timezone.now()
         
         # Perform the update
         db.blogs.update_one(

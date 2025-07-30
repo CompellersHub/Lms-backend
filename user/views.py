@@ -61,7 +61,7 @@ users_collection = db['customusers']
 logger = logging.getLogger(__name__)
 
 class GoogleLoginView(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [AllowAny] 
 
     def post(self, request):
         logger.info("Received Google login request")

@@ -1,4 +1,5 @@
 from datetime import datetime
+import uuid
 from django.utils import timezone 
 from rest_framework import serializers
 from bson.objectid import ObjectId
@@ -9,6 +10,8 @@ from django.contrib.auth.hashers import make_password
 from django.core.files.storage import default_storage
 import re
 import datetime
+
+from courses.storages_backends import BlogMediaStorage, ProfilePicturesStorage
 
 class CategorySerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)
@@ -47,43 +50,58 @@ class BlogUserSerializer(serializers.Serializer):
     username = serializers.CharField(max_length=150)
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True, validators=[validate_password])
+    profile_pic = serializers.FileField(
+        required=False, 
+        allow_null=True,
+        write_only=True  # We'll return URL via profile_pic_url
+    )
+    profile_pic_url = serializers.SerializerMethodField(read_only=True)
     first_name = serializers.CharField(max_length=150, allow_blank=True, required=False)
     last_name = serializers.CharField(max_length=150, allow_blank=True, required=False)
     phone_number = serializers.CharField(max_length=15, allow_blank=True, required=False)
     created_at = serializers.DateTimeField(read_only=True)
-    
-    # Add the 'role' field. It should be read-only if it's set internally upon creation.
-    role = serializers.CharField(read_only=True) 
+    role = serializers.CharField(read_only=True)
+
+    def get_profile_pic_url(self, obj):
+        if obj.get('profile_pic'):
+            return obj['profile_pic']
+        return None
 
     def validate_username(self, value):
         db = get_mongo_db()
-        # Query the MongoDB 'bloguser' collection for uniqueness
         if db.bloguser.find_one({"username": value}):
             raise serializers.ValidationError("A user with this username already exists.")
         return value
 
     def validate_email(self, value):
         db = get_mongo_db()
-        # Query the MongoDB 'bloguser' collection for uniqueness
         if db.bloguser.find_one({"email": value}):
             raise serializers.ValidationError("A user with this email already exists.")
         return value
 
+    def validate_profile_pic(self, value):
+        if value:
+            # File size validation (5MB max)
+            max_size = 5 * 1024 * 1024
+            if value.size > max_size:
+                raise ValidationError(f'Max file size is {max_size/1024/1024}MB')
+            
+            # File type validation
+            valid_types = ['image/jpeg', 'image/png', 'image/webp']
+            if value.content_type not in valid_types:
+                raise ValidationError('Only JPEG, PNG, and WebP images are allowed')
+        return value
+
     def to_representation(self, instance):
-        # Create a mutable copy to modify, as 'instance' might be an immutable MongoDB result
         representation = super().to_representation(instance)
         
-        # Convert MongoDB's _id to 'id' string for the response
         if '_id' in instance and isinstance(instance['_id'], ObjectId):
             representation['id'] = str(instance['_id'])
-        elif '_id' in representation: # In case super().to_representation already included _id
+        elif '_id' in representation:
             representation['id'] = str(representation['_id'])
             
-        # Ensure '_id' is removed from the final representation if 'id' is preferred
         if '_id' in representation:
             del representation['_id']
-            
-        # Ensure password is never included in the response
         if 'password' in representation:
             del representation['password']
             
@@ -91,37 +109,60 @@ class BlogUserSerializer(serializers.Serializer):
 
     def create(self, validated_data):
         db = get_mongo_db()
+        profile_pic = validated_data.pop('profile_pic', None)
         
-        # Hash the password before saving
-        validated_data['password'] = make_password(validated_data['password'])
-        
-        # Set creation timestamp
-        validated_data['created_at'] = datetime.now() # Using local time, consider .utcnow() if server is UTC
-        
-        # --- IMPORTANT CHANGE: Set the role to 'blogger' ---
-        validated_data['role'] = 'BLOGGER'  # Set the default role for new BlogUsers
-        # --- End of IMPORTANT CHANGE ---
+        if profile_pic:
+            try:
+                storage = ProfilePicturesStorage()
+                ext = profile_pic.name.split('.')[-1].lower()
+                filename = f"user_{uuid.uuid4()}.{ext}"
+                saved_name = storage.save(filename, profile_pic)
+                validated_data['profile_pic'] = storage.url(saved_name)
+            except Exception as e:
+                raise serializers.ValidationError(f"Profile picture upload failed: {str(e)}")
 
-        result = db.bloguser.insert_one(validated_data)
-        
-        # Fetch the newly created document from MongoDB to return a complete representation
-        return db.bloguser.find_one({"_id": result.inserted_id})
+        validated_data.update({
+            'password': make_password(validated_data['password']),
+            'created_at': timezone.now(),
+            'role': 'BLOGGER',
+            '_id': ObjectId()  # Generate new ObjectId
+        })
+
+        try:
+            result = db.bloguser.insert_one(validated_data)
+            return db.bloguser.find_one({"_id": result.inserted_id})
+        except Exception as e:
+            if 'profile_pic' in validated_data:
+                storage.delete(filename)
+            raise serializers.ValidationError(f"Database error: {str(e)}")
 
     def update(self, instance, validated_data):
         db = get_mongo_db()
-        
-        # Get the user's MongoDB _id from the instance's 'id' field (which holds the string representation)
         user_id = ObjectId(instance['id'])
+        old_profile_pic = instance.get('profile_pic')
+        new_profile_pic = validated_data.pop('profile_pic', None)
         
-        # Re-hash password if it's being updated
+        if new_profile_pic:
+            storage = ProfilePicturesStorage()
+            
+            # Delete old picture if exists
+            if old_profile_pic:
+                try:
+                    old_filename = old_profile_pic.split('/')[-1]
+                    storage.delete(old_filename)
+                except Exception:
+                    pass  # Log this error in production
+            
+            # Upload new picture
+            ext = new_profile_pic.name.split('.')[-1].lower()
+            filename = f"user_{uuid.uuid4()}.{ext}"
+            saved_name = storage.save(filename, new_profile_pic)
+            validated_data['profile_pic'] = storage.url(saved_name)
+        
         if 'password' in validated_data:
             validated_data['password'] = make_password(validated_data['password'])
         
-        # --- IMPORTANT FIX: Corrected collection name from 'blogusers' to 'bloguser' ---
         db.bloguser.update_one({"_id": user_id}, {"$set": validated_data})
-        # --- End of IMPORTANT FIX ---
-        
-        # Fetch the updated document from MongoDB to return a complete representation
         return db.bloguser.find_one({"_id": user_id})
     
 class ContentBlockSerializer(serializers.Serializer):
@@ -159,7 +200,12 @@ class BlogSerializer(serializers.Serializer):
     date = serializers.SerializerMethodField()
     category = serializers.SerializerMethodField()
     tags = serializers.ListField(child=serializers.CharField())
-    image = serializers.SerializerMethodField()
+    image = serializers.FileField(
+        required=False,
+        allow_null=True,
+        write_only=True,
+        
+    )
     excerpt = serializers.CharField(max_length=300, required=False)
     content = serializers.ListField(child=serializers.DictField())
     status = serializers.CharField()
@@ -177,15 +223,91 @@ class BlogSerializer(serializers.Serializer):
         elif '_id' in representation:
             representation['id'] = str(representation.pop('_id'))
             
-        # Convert ObjectId references to strings
-        if 'created_by' in representation and isinstance(representation['created_by'], ObjectId):
-            representation['created_by'] = str(representation['created_by'])
-            
         return representation
+
+    def get_author_data(self, obj):
+        """Helper method to get complete author data"""
+        created_by = self._get_created_by(obj)
+        
+        if not created_by:
+            return None
+            
+        if isinstance(created_by, ObjectId):
+            # Fetch the complete user document from MongoDB
+            db = get_mongo_db()
+            user = db.bloguser.find_one({"_id": created_by})
+            if user:
+                # Use BlogUserSerializer to format the user data
+                from .serializer import BlogUserSerializer  # Avoid circular import
+                return BlogUserSerializer(user).data
+            return None
+            
+        elif isinstance(created_by, dict):
+            # If created_by is already embedded, just serialize it
+            from .serializer import BlogUserSerializer
+            return BlogUserSerializer(created_by).data
+            
+        return None
+
+    def get_author(self, obj):
+        author_data = self.get_author_data(obj)
+        return author_data.get('username') if author_data else ''
+
+    def get_authorRole(self, obj):
+        author_data = self.get_author_data(obj)
+        return author_data.get('role') if author_data else ''
+
+    def get_authorImage(self, obj):
+        author_data = self.get_author_data(obj)
+        return author_data.get('profile_pic_url') if author_data else ''
+
+    def validate_image(self, value):
+        if value:
+            # File size validation (5MB max)
+            max_size = 5 * 1024 * 1024
+            if value.size > max_size:
+                raise ValidationError(f'Max image size is {max_size/1024/1024}MB')
+            
+            # File type validation
+            valid_types = ['image/jpeg', 'image/png', 'image/webp']
+            if value.content_type not in valid_types:
+                raise ValidationError('Only JPEG, PNG, and WebP images are allowed')
+            
+            # Filename validation
+            if not value.name.lower().endswith(('.jpg', '.jpeg', '.png', '.webp')):
+                raise ValidationError('Invalid file extension')
+        return value
+
+    def get_image_url(self, obj):
+        """Get image URL from S3 storage"""
+        if 'image' not in obj:
+            return None
+        
+        if isinstance(obj['image'], str):
+            return obj['image']
+        
+        if isinstance(obj['image'], dict):
+            return obj['image'].get('url')
+        
+        storage = BlogMediaStorage()
+        return storage.url(obj['image']) if obj['image'] else None
 
     def create(self, validated_data):
         db = get_mongo_db()
+        image_file = validated_data.pop('image', None)
         
+        # Handle image upload
+        if image_file:
+            try:
+                storage = BlogMediaStorage()
+                # Generate unique filename
+                ext = image_file.name.split('.')[-1].lower()
+                filename = f"{uuid.uuid4()}.{ext}"
+                saved_name = storage.save(filename, image_file)
+                validated_data['image'] = storage.url(saved_name)
+            except Exception as e:
+                raise serializers.ValidationError(f"Image upload failed: {str(e)}")
+
         # Set timestamps
         validated_data['created_at'] = timezone.now()
         validated_data['updated_at'] = timezone.now()
@@ -194,20 +316,41 @@ class BlogSerializer(serializers.Serializer):
         if 'status' not in validated_data:
             validated_data['status'] = 'draft'
             
-        # Ensure content exists (required field)
+        # Ensure content exists
         if 'content' not in validated_data:
             validated_data['content'] = []
             
         # Insert into MongoDB
         result = db.blogs.insert_one(validated_data)
-        
-        # Return the full created document
         return db.blogs.find_one({"_id": result.inserted_id})
 
     def update(self, instance, validated_data):
         db = get_mongo_db()
         blog_id = ObjectId(instance['_id'])
+        new_image = validated_data.pop('image', None)
         
+        # Handle image update
+        if new_image:
+            storage = BlogMediaStorage()
+            
+            # Delete old image if exists
+            old_image = instance.get('image')
+            if old_image and isinstance(old_image, str):
+                try:
+                    old_filename = old_image.split('/')[-1]  # Extract filename from URL
+                    storage.delete(old_filename)
+                except Exception:
+                    pass  # Log this error in production
+            
+            # Upload new image
+            try:
+                ext = new_image.name.split('.')[-1].lower()
+                filename = f"{uuid.uuid4()}.{ext}"
+                saved_name = storage.save(filename, new_image)
+                validated_data['image'] = storage.url(saved_name)
+            except Exception as e:
+                raise serializers.ValidationError(f"Image upload failed: {str(e)}")
+
         # Update timestamp
         validated_data['updated_at'] = timezone.now()
         
@@ -217,7 +360,6 @@ class BlogSerializer(serializers.Serializer):
             {"$set": validated_data}
         )
         
-        # Return the updated document
         return db.blogs.find_one({"_id": blog_id})
 
     # Keep all your existing get_* methods...

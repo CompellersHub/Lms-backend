@@ -58,11 +58,10 @@ STRIPE_TEST_KEY = os.getenv('STRIPE_TEST_kEY')
 
 INSTALLED_APPS = [
     
-    'jazzmin',
-    "unfold.contrib.import_export",
-    "import_export",
-    'unfold',
-    "unfold.contrib.forms",
+    # 'jazzmin',
+    'unfold',  # must be before django.contrib.admin
+    'unfold.contrib.filters',  # optional, for enhanced filters
+    'unfold.contrib.forms',  # optional, for better form styling
     # default apps
     'django.contrib.admin',
     'django.contrib.auth',
@@ -454,19 +453,187 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
 
-JAZZMIN_SETTINGS = {
-     "site_title": "Titans career",
-     "site_header": "Titans career",
-     "site_logo": "/amlpro/staticfiles/logo/logo.jpg",
-     "login_logo": "/amlpro/staticfiles/logo/logo.jpg",
-     "copyright": "Titans career site",
-     "topmenu_links":[
-          {"app": "Titans career"},
-          {"name": "Support", "url": "https://chowdeck.com/store/alimosho-1/restaurants/mb-shawarma-bite", "new_window": True},
-     ],
-     "use_google_fonts_cdn": True,
-      "show_ui_builder": True,
+# Unfold Admin Configuration
+UNFOLD = {
+    "SITE_TITLE": "Course Admin",
+    "SITE_HEADER": "Course Management System",
+    "SITE_URL": "/",
+    
+    "SIDEBAR": {
+        "show_search": True,
+        "show_all_applications": True,
+        "navigation": [
+            {
+                "title": "Navigation",
+                "separator": True,
+                "items": [
+                    {
+                        "title": "Dashboard",
+                        "icon": "dashboard",
+                        "link": "/admin/",
+                    },
+                ],
+            },
+            {
+                "title": "Courses",
+                "separator": True,
+                "items": [
+                    {
+                        "title": "All Courses",
+                        "icon": "school",
+                        "link": "/admin/courses/course/",
+                    },
+                    {
+                        "title": "Categories",
+                        "icon": "category",
+                        "link": "/admin/courses/category/",
+                    },
+                    {
+                        "title": "Curriculums",
+                        "icon": "library_books",
+                        "link": "/admin/courses/curriculum/",
+                    },
+                    {
+                        "title": "Modules",
+                        "icon": "view_module",
+                        "link": "/admin/courses/module/",
+                    },
+                ],
+            },
+            {
+                "title": "Content",
+                "separator": True,
+                "items": [
+                    {
+                        "title": "Videos",
+                        "icon": "video_library",
+                        "link": "/admin/courses/video/",
+                    },
+                    {
+                        "title": "Course Notes",
+                        "icon": "note",
+                        "link": "/admin/courses/coursenote/",
+                    },
+                    {
+                        "title": "Course Libraries",
+                        "icon": "local_library",
+                        "link": "/admin/courses/courselibrary/",
+                    },
+                    {
+                        "title": "Library Videos",
+                        "icon": "video_file",
+                        "link": "/admin/courses/courselibraryvideo/",
+                    },
+                ],
+            },
+            {
+                "title": "Assignments",
+                "separator": True,
+                "items": [
+                    {
+                        "title": "Assignments",
+                        "icon": "assignment",
+                        "link": "/admin/courses/make_assignment/",
+                    },
+                    {
+                        "title": "Submissions",
+                        "icon": "assignment_turned_in",
+                        "link": "/admin/courses/submission/",
+                    },
+                ],
+            },
+            {
+                "title": "Live Sessions",
+                "separator": True,
+                "items": [
+                    {
+                        "title": "Live Classes",
+                        "icon": "live_tv",
+                        "link": "/admin/courses/liveclass/",
+                    },
+                ],
+            },
+            {
+                "title": "Course Components",
+                "separator": True,
+                "items": [
+                    {
+                        "title": "Course Includes",
+                        "icon": "checklist",
+                        "link": "/admin/courses/course_include/",
+                    },
+                    {
+                        "title": "Required Materials",
+                        "icon": "construction",
+                        "link": "/admin/courses/requiredmaterial/",
+                    },
+                    {
+                        "title": "Learning Outcomes",
+                        "icon": "outcome",
+                        "link": "/admin/courses/learningoutcome/",
+                    },
+                    {
+                        "title": "Target Audience",
+                        "icon": "people",
+                        "link": "/admin/courses/targetaudience/",
+                    },
+                ],
+            },
+            {
+                "title": "Users",
+                "separator": True,
+                "items": [
+                    {
+                        "title": "Users",
+                        "icon": "person",
+                        "link": "/admin/user/customuser/",
+                    },
+                    {
+                        "title": "Teachers",
+                        "icon": "person_outline",
+                        "link": "/admin/user/teacherprofile/",
+                    },
+                ],
+            },
+            # {
+            #     "title": "Orders",
+            #     "separator": True,
+            #     "items": [
+            #         {
+            #             "title": "Course Orders",
+            #             "icon": "shopping_cart",
+            #             "link": "/admin/courses/courseorder/",
+            #         },
+            #         {
+            #             "title": "Order Items",
+            #             "icon": "list_alt",
+            #             "link": "/admin/courses/courseorderitem/",
+            #         },
+            #     ],
+            # },
+        ],
+    },
+    
+    "COLORS": {
+        "primary": {
+            "50": "250 245 255",
+            "100": "243 232 255",
+            "200": "233 213 255",
+            "300": "216 180 254",
+            "400": "192 132 252",
+            "500": "168 85 247",
+            "600": "147 51 234",
+            "700": "126 34 206",
+            "800": "107 33 168",
+            "900": "88 28 135",
+            "950": "59 7 100",
+        },
+    },
 }
+
+# For your MongoDB integration
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
+DATABASE_NAME = os.getenv("DATABASE_NAME", "course_management")
 
 LOGGING = {
     'version': 1,

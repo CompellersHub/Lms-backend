@@ -5,7 +5,7 @@ from rest_framework import status
 from django.utils.translation import gettext_lazy as _
 from django.contrib.auth import authenticate, login
 from user.utils.token_utils import create_jwt_tokens
-from .serializer import CategorySerializer, BlogSerializer, BlogUserSerializer
+from .serializer import BlogImageUploadSerializer, CategorySerializer, BlogSerializer, BlogUserSerializer
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.authentication import SessionAuthentication
 from django.contrib.auth.hashers import check_password
@@ -185,3 +185,16 @@ class Logout(APIView):
     def post(self, request, format=None):
         logout(request)
         return Response({"message": "User logged out successfully"}, status=status.HTTP_200_OK)
+    
+
+class BlogImageUploadView(APIView):
+    def post(self, request):
+        serializer = BlogImageUploadSerializer(data=request.data)
+        if serializer.is_valid():
+            result = serializer.save()
+            return Response({
+                'status': 'success',
+                'image_url': result['url'],
+                'filename': result['filename']
+            }, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

@@ -10,4 +10,5 @@ urlpatterns = [
     # path('blogusers/<str:pk>/', BlogUserDetailView.as_view(), name='bloguser-detail'),
     path('blogusers/login/', Login.as_view(), name='bloguser-login'),
     path('blogusers/logout/', Logout.as_view(), name='bloguser-logout'),
+    path('api/upload/image/', BlogImageUploadView.as_view(), name='blog-image-upload'),
 ]

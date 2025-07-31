@@ -468,3 +468,40 @@ class BlogSerializer(serializers.Serializer):
                 return None
         
         return dt.isoformat() if dt else None
+
+
+class BlogImageUploadSerializer(serializers.Serializer):
+    image = serializers.FileField(
+        
+        max_length=100,
+        allow_empty_file=False
+    )
+
+    def validate_image(self, value):
+        # File size validation (5MB max)
+        max_size = 5 * 1024 * 1024
+        if value.size > max_size:
+            raise ValidationError(f'Max image size is {max_size/1024/1024}MB')
+        
+        # File type validation
+        valid_types = ['image/jpeg', 'image/png', 'image/webp']
+        if value.content_type not in valid_types:
+            raise ValidationError('Only JPEG, PNG, and WebP images are allowed')
+        
+        return value
+
+    def create(self, validated_data):
+        storage = BlogMediaStorage()
+        image_file = validated_data['image']
+        
+        # Generate unique filename
+        ext = image_file.name.split('.')[-1].lower()
+        filename = f"{uuid.uuid4()}.{ext}"
+        
+        # Save to S3
+        saved_name = storage.save(filename, image_file)
+        
+        return {
+            'url': storage.url(saved_name),
+            'filename': filename
+        }

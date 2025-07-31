@@ -25,5 +25,6 @@ urlpatterns = [
     path('send-template-1/', views.SendTemplate1View.as_view(), name='send-template-1'),
 
     path('teacher/dashboard/', views.TeacherDashboardView.as_view(), name='teacher-dashboard'),
-    path('test-otp/', views.TestEmailView.as_view(), name='test-otp'),
+    path('admin/verify-teachers/', views.AdminTeacherVerificationView.as_view(), name='admin-verify-teachers'),
+    path('admin/verify-teachers/<str:teacher_id>/', views.AdminTeacherVerificationView.as_view(), name='admin-verify-teacher'),
 ]

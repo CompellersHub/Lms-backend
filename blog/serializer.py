@@ -206,8 +206,13 @@ class BlogSerializer(serializers.Serializer):
         write_only=True,
         
     )
+    image_url = serializers.SerializerMethodField(read_only=True)
     excerpt = serializers.CharField(max_length=300, required=False)
-    content = serializers.ListField(child=serializers.DictField())
+    content = serializers.ListField(
+    child=serializers.DictField(),
+    required=False,
+    default=list  # Ensure empty list if not provided
+    )
     status = serializers.CharField()
     createdAt = serializers.SerializerMethodField()
     updatedAt = serializers.SerializerMethodField()

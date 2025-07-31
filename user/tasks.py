@@ -33,3 +33,22 @@ def send_welcome_otp(self, to_email, otp_code, first_name=None):
     except Exception as e:
         logger.error(f"Failed to send to {to_email}: {str(e)}")
         raise self.retry(exc=e, countdown=60)
+    
+@shared_task
+def send_teacher_approval_email(to_email, first_name):
+    send_brevo_email(
+        to_email=to_email,
+        template_id=5,  # Approval template
+        params={'FIRST_NAME': first_name}
+    )
+
+@shared_task
+def send_teacher_rejection_email(to_email, first_name, feedback):
+    send_brevo_email(
+        to_email=to_email,
+        template_id=6,  # Rejection template
+        params={
+            'FIRST_NAME': first_name,
+            'FEEDBACK': feedback
+        }
+    )

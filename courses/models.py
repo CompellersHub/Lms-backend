@@ -285,8 +285,8 @@ class CourseLibrary(models.Model):
             "title": self.title,
             "courselibraryvideo": [video.to_dict() for video in self.courselibraryvideo.all()],
             "course": self.course.to_dict(),
-            "file": self.file.url,
-            "url": self.url,
+            "file": self.file.url if self.file else None,
+            "url": self.url if self.url else None,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
         }
@@ -300,7 +300,7 @@ class Make_Assignment(models.Model):
     due_date = models.DateTimeField() # Required
     course = models.ForeignKey('Course', on_delete=models.CASCADE, related_name='course_assignments') # Required
     total_marks = models.IntegerField() # REQUIRED, removed default
-    video_file = models.FileField(storage=AssignmentStorage(), blank=True, null=True)
+    file = models.FileField(storage=AssignmentStorage(), blank=True, null=True)
 
     def __str__(self):
         return f"{self.title} - {self.course.name}"
@@ -315,7 +315,7 @@ class Make_Assignment(models.Model):
             "due_date": self.due_date.isoformat(),
             "course": self.course.to_dict(),
             "total_marks": self.total_marks,
-            "file": self.file.url,
+            "file": self.file.url if self.file else None,
         }
 
 class LiveClass(models.Model):

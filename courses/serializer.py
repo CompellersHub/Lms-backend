@@ -60,7 +60,7 @@ class CourseNoteSerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)
     title = serializers.CharField(max_length=200)
     description = serializers.DictField(allow_null=True, required=False)
-    note_file = serializers.FileField(allow_null=True, required=False)
+    note_file = serializers.URLField(allow_null=True, required=False)
 
     def to_representation(self, instance):
         if '_id' in instance:
@@ -481,7 +481,7 @@ class AssignmentSerializer(serializers.Serializer):
     total_marks = serializers.IntegerField(default=100)
     description = serializers.CharField()
     due_date = serializers.DateTimeField()
-    file = serializers.FileField()
+    file = serializers.FileField(allow_null=True, required=False)
 
     def to_representation(self, instance):
         representation = super().to_representation(instance)

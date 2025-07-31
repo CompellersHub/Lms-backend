@@ -52,7 +52,7 @@ from rest_framework import permissions
 from django.core.validators import validate_email
 from django.core.exceptions import ValidationError
 from .models import OTP
-from .tasks import send_welcome_otp
+from .tasks import send_teacher_approval_email, send_teacher_rejection_email, send_welcome_otp
 
 
 db = get_mongo_db()
@@ -418,32 +418,128 @@ class TeacherSignupView(APIView):
 
 
 
-class TestEmailView(APIView):
+class AdminTeacherVerificationView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def get(self, request):
-        test_email = "olomoshuaomozafen@gmail.com"  # CHANGE THIS
-        try:
-            # Test direct sending (bypass Celery)
-            from .utils.email_service import send_brevo_email
-            response = send_brevo_email(
-                to_email=test_email,
-                template_id=4,
-                params={'OTP_CODE': '123456', 'FIRST_NAME': 'Test'}
-            )
-            
-            # Test Celery task
-            send_welcome_otp.delay(
-                email=test_email,
-                otp_code='654321',
-                first_name='Celery Test'
-            )
-            
-            return Response({
-                "direct_api": "Attempted" if response else "Failed",
-                "celery_task": "Queued",
-                "message": "Check your email and server logs"
+        """
+        Get list of unverified teachers for admin review
+        """
+        db = get_mongo_db()
+        unverified_teachers = list(db.teacherprofiles.find({"is_verified": False}))
+        
+        # Serialize the data
+        teachers_data = []
+        for teacher in unverified_teachers:
+            teachers_data.append({
+                "teacher_id": str(teacher['_id']),
+                "first_name": teacher['first_name'],
+                "last_name": teacher['last_name'],
+                "email": teacher['email'],
+                "bio": teacher['bio'],
+                "course_taken": teacher['course_taken'],
+                "past_experience": teacher['past_experience'],
+                "created_at": teacher['created_at'],
+                "profile_picture": teacher['profile_picture']
             })
-        except Exception as e:
-            return Response({"error": str(e)}, status=500)
+        
+        return Response({"unverified_teachers": teachers_data}, status=status.HTTP_200_OK)
+
+    def patch(self, request, teacher_id):
+        """
+        Approve or reject a teacher's verification request
+        """
+        action = request.data.get('action')  # 'approve' or 'reject'
+        feedback = request.data.get('feedback', '')  # Optional feedback for rejection
+
+        if not action or action not in ['approve', 'reject']:
+            return Response(
+                {"error": "Invalid action. Must be 'approve' or 'reject'"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            teacher_oid = ObjectId(teacher_id)
+        except:
+            return Response(
+                {"error": "Invalid teacher ID format"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        db = get_mongo_db()
+        teacher = db.teacherprofiles.find_one({"_id": teacher_oid})
+
+        if not teacher:
+            return Response(
+                {"error": "Teacher not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        if teacher.get('is_verified', False):
+            return Response(
+                {"error": "Teacher is already verified"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if action == 'approve':
+            # Update teacher as verified
+            db.teacherprofiles.update_one(
+                {"_id": teacher_oid},
+                {"$set": {"is_verified": True, "verification_feedback": None}}
+            )
+
+            # Send approval email
+            try:
+                send_teacher_approval_email.delay(
+                    to_email=teacher['email'],
+                    first_name=teacher['first_name']
+                )
+            except Exception as e:
+                logger.error(f"Failed to queue approval email: {str(e)}")
+                # Fallback to synchronous sending
+                send_brevo_email(
+                    to_email=teacher['email'],
+                    template_id=5,  # Assuming template 5 is for approval
+                    params={'FIRST_NAME': teacher['first_name']}
+                )
+
+            return Response(
+                {"message": "Teacher approved successfully"},
+                status=status.HTTP_200_OK
+            )
+        else:
+            # Reject the teacher and optionally delete their record
+            db.teacherprofiles.update_one(
+                {"_id": teacher_oid},
+                {"$set": {"verification_feedback": feedback}}
+            )
+
+            # Optionally delete the record (uncomment if you want to delete rejected teachers)
+            # db.teacherprofiles.delete_one({"_id": teacher_oid})
+
+            # Send rejection email
+            try:
+                send_teacher_rejection_email.delay(
+                    to_email=teacher['email'],
+                    first_name=teacher['first_name'],
+                    feedback=feedback
+                )
+            except Exception as e:
+                logger.error(f"Failed to queue rejection email: {str(e)}")
+                # Fallback to synchronous sending
+                send_brevo_email(
+                    to_email=teacher['email'],
+                    template_id=6,  # Assuming template 6 is for rejection
+                    params={
+                        'FIRST_NAME': teacher['first_name'],
+                        'FEEDBACK': feedback
+                    }
+                )
+
+            return Response(
+                {"message": "Teacher rejected successfully"},
+                status=status.HTTP_200_OK
+            )
         
 
 

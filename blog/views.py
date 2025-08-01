@@ -1,9 +1,11 @@
 import datetime
+import uuid
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from django.utils.translation import gettext_lazy as _
 from django.contrib.auth import authenticate, login
+from courses.storages_backends import BlogMediaStorage
 from user.utils.token_utils import create_jwt_tokens
 from .serializer import BlogImageUploadSerializer, CategorySerializer, BlogSerializer, BlogUserSerializer
 from rest_framework.permissions import IsAuthenticated, AllowAny
@@ -189,12 +191,35 @@ class Logout(APIView):
 
 class BlogImageUploadView(APIView):
     def post(self, request):
-        serializer = BlogImageUploadSerializer(data=request.data)
-        if serializer.is_valid():
-            result = serializer.save()
-            return Response({
-                'status': 'success',
-                'image_url': result['url'],
-                'filename': result['filename']
-            }, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        if 'image' not in request.FILES:
+            return Response({"error": "No image provided"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        image_file = request.FILES['image']
+        
+        # Validate image
+        max_size = 5 * 1024 * 1024  # 5MB
+        if image_file.size > max_size:
+            return Response({"error": f"Image size cannot exceed {max_size/1024/1024}MB"}, 
+                          status=status.HTTP_400_BAD_REQUEST)
+        
+        valid_types = ['image/jpeg', 'image/png', 'image/webp']
+        if image_file.content_type not in valid_types:
+            return Response({"error": "Only JPEG, PNG, and WebP images are allowed"},
+                          status=status.HTTP_400_BAD_REQUEST)
+        
+        # Upload to S3
+        storage = BlogMediaStorage()
+        ext = image_file.name.split('.')[-1].lower()
+        filename = f"content/{uuid.uuid4()}.{ext}"
+        saved_name = storage.save(filename, image_file)
+        
+        return Response({
+            "url": storage.url(saved_name),
+            "filename": filename,
+            "content_block": {
+                "type": "image",
+                "src": storage.url(saved_name),
+                "alt": request.data.get('alt', ''),
+                "caption": request.data.get('caption', '')
+            }
+        }, status=status.HTTP_201_CREATED)

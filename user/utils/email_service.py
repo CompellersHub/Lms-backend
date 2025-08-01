@@ -38,3 +38,4 @@ def send_brevo_email(to_email, otp_code, first_name=None):
     except Exception as e:
         logger.error(f"Email sending failed to {to_email}: {str(e)}")
         return False
+    

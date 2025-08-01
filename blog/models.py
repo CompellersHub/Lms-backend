@@ -94,6 +94,18 @@ class Blog(models.Model):
         ('embed', 'Embed'),
     ]
 
+    IMAGE_CONTENT_SCHEMA = {
+        "type": "object",
+        "properties": {
+            "src": {"type": "string", "format": "uri"},
+            "alt": {"type": "string"},
+            "caption": {"type": "string"},
+            "width": {"type": "number"},
+            "height": {"type": "number"}
+        },
+        "required": ["src", "alt"]
+    }
+
     STYLE_CHOICES = [
         ('normal', 'Normal'),
         ('highlight', 'Highlight'),

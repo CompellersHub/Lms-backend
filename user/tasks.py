@@ -36,17 +36,21 @@ def send_welcome_otp(self, to_email, otp_code, first_name=None):
     
 @shared_task
 def send_teacher_approval_email(to_email, first_name):
+    login_url = 'https://facilitatorshub.titanscareers.com/login'
     send_brevo_email(
         to_email=to_email,
-        template_id=5,  # Approval template
-        params={'FIRST_NAME': first_name}
+        template_id=5,  # Approval template ID
+        params={
+            'FIRST_NAME': first_name,
+            'LOGIN_LINK': login_url
+        }
     )
 
 @shared_task
 def send_teacher_rejection_email(to_email, first_name, feedback):
     send_brevo_email(
         to_email=to_email,
-        template_id=6,  # Rejection template
+        template_id=6,  # Rejection template ID
         params={
             'FIRST_NAME': first_name,
             'FEEDBACK': feedback

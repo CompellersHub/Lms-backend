@@ -194,9 +194,9 @@ class BlogSerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)
     title = serializers.CharField(max_length=150)
     slug = serializers.SlugField(max_length=150, required=False)
-    author = serializers.SerializerMethodField()
-    authorRole = serializers.SerializerMethodField()
-    authorImage = serializers.SerializerMethodField()
+    author = serializers.CharField(default="Titans Careers Editorial Team")
+    authorRole = serializers.CharField(default="AML/KYC Compliance Experts")
+    authorImage = serializers.URLField(default="https://titanscareers.s3.amazonaws.com/profile_pictures/user_e9a513d2-1e98-48e8-9780-3b3693fc042e.png")
     date = serializers.SerializerMethodField()
     category = serializers.SerializerMethodField()
     tags = serializers.ListField(child=serializers.CharField())
@@ -230,88 +230,38 @@ class BlogSerializer(serializers.Serializer):
             
         return representation
 
-    def get_author_data(self, obj):
-        """Helper method to get complete author data"""
-        created_by = self._get_created_by(obj)
-        
-        if not created_by:
-            return None
-            
-        if isinstance(created_by, ObjectId):
-            # Fetch the complete user document from MongoDB
-            db = get_mongo_db()
-            user = db.bloguser.find_one({"_id": created_by})
-            if user:
-                # Use BlogUserSerializer to format the user data
-                from .serializer import BlogUserSerializer  # Avoid circular import
-                return BlogUserSerializer(user).data
-            return None
-            
-        elif isinstance(created_by, dict):
-            # If created_by is already embedded, just serialize it
-            from .serializer import BlogUserSerializer
-            return BlogUserSerializer(created_by).data
-            
-        return None
-
-    def get_author(self, obj):
-        author_data = self.get_author_data(obj)
-        return author_data.get('username') if author_data else ''
-
-    def get_authorRole(self, obj):
-        author_data = self.get_author_data(obj)
-        return author_data.get('role') if author_data else ''
-
-    def get_authorImage(self, obj):
-        author_data = self.get_author_data(obj)
-        return author_data.get('profile_pic_url') if author_data else ''
-
-    def validate_image(self, value):
-        if value:
-            # File size validation (5MB max)
-            max_size = 5 * 1024 * 1024
-            if value.size > max_size:
-                raise ValidationError(f'Max image size is {max_size/1024/1024}MB')
-            
-            # File type validation
-            valid_types = ['image/jpeg', 'image/png', 'image/webp']
-            if value.content_type not in valid_types:
-                raise ValidationError('Only JPEG, PNG, and WebP images are allowed')
-            
-            # Filename validation
-            if not value.name.lower().endswith(('.jpg', '.jpeg', '.png', '.webp')):
-                raise ValidationError('Invalid file extension')
-        return value
+    
 
     def get_image_url(self, obj):
-        """Get image URL from S3 storage"""
-        if 'image' not in obj:
-            return None
-        
-        if isinstance(obj['image'], str):
-            return obj['image']
-        
-        if isinstance(obj['image'], dict):
-            return obj['image'].get('url')
-        
-        storage = BlogMediaStorage()
-        return storage.url(obj['image']) if obj['image'] else None
+        if 'image' in obj and obj['image']:
+            if isinstance(obj['image'], str):
+                return obj['image']
+            return BlogMediaStorage().url(obj['image'])
+        return None
+
+    def get_date(self, obj):
+        if 'publishedAt' in obj:
+            return obj['publishedAt'].strftime("%B %d, %Y")
+        return timezone.now().strftime("%B %d, %Y")
+
+    def validate_image(self, value):
+        max_size = 5 * 1024 * 1024  # 5MB
+        if value.size > max_size:
+            raise serializers.ValidationError(f"Image size cannot exceed {max_size/1024/1024}MB")
+        return value
+
 
     def create(self, validated_data):
         db = get_mongo_db()
-        image_file = validated_data.pop('image', None)
+        
         
         # Handle image upload
-        if image_file:
-            try:
-                storage = BlogMediaStorage()
-                # Generate unique filename
-                ext = image_file.name.split('.')[-1].lower()
-                filename = f"{uuid.uuid4()}.{ext}"
-                saved_name = storage.save(filename, image_file)
-                validated_data['image'] = storage.url(saved_name)
-            except Exception as e:
-                raise serializers.ValidationError(f"Image upload failed: {str(e)}")
+        if 'image' in validated_data:
+            storage = BlogMediaStorage()
+            ext = validated_data['image'].name.split('.')[-1]
+            filename = f"{uuid.uuid4()}.{ext}"
+            saved_name = storage.save(filename, validated_data['image'])
+            validated_data['image'] = storage.url(saved_name)
 
         # Set timestamps
         validated_data['created_at'] = timezone.now()

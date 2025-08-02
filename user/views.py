@@ -52,7 +52,7 @@ from rest_framework import permissions
 from django.core.validators import validate_email
 from django.core.exceptions import ValidationError
 from .models import OTP
-from .tasks import send_teacher_approval_email, send_teacher_rejection_email, send_welcome_otp
+from .tasks import send_application_received_email, send_teacher_approval_email, send_teacher_rejection_email, send_welcome_otp
 
 
 db = get_mongo_db()
@@ -382,37 +382,47 @@ class TeacherSignupView(APIView):
             'password': make_password(data['password']),
             'username': data['username'],
             'last_login': None,
-            'is_verified': False
+            'is_verified': False,
+            'verification_status': 'pending',  # New field
+            'application_date': timezone.now()  # New field
         }
 
-        # Generate and send OTP
-        otp = OTP.generate_otp(data['email'])  
-        
         try:
-            # Queue the email task with correct parameters
-            send_welcome_otp.delay(
-                to_email=data['email'],
-                otp_code=otp.code,  # Using otp.code
-                first_name=data['first_name']
-            )
+            # Store unverified teacher
+            db.teacherprofiles.insert_one(teacher_data)
+            logger.info(f"Teacher created: {teacher_data['email']}")
+
+            # Send application received email
+            try:
+                task = send_application_received_email.delay(
+                    to_email=data['email'],
+                    first_name=data['first_name']
+                )
+                logger.info(f"Celery task created with ID: {task.id}")
+            except Exception as e:
+                logger.error(f"Failed to queue email task: {str(e)}")
+                # Immediate fallback
+                try:
+                    send_brevo_email(
+                        to_email=data['email'],
+                        template_id=7,
+                        params={'FIRST_NAME': data['first_name']}
+                    )
+                except Exception as email_error:
+                    logger.error(f"Failed to send email directly: {str(email_error)}")
+    
+            return Response({
+                "message": "Application submitted for review",
+                "teacher_id": str(teacher_data['_id']),
+                "email": data['email']
+            }, status=201)
+
         except Exception as e:
-            logger.error(f"Failed to queue OTP email task: {str(e)}")
-            # Fallback to synchronous sending
-            send_brevo_email(
-                to_email=data['email'],
-                otp_code=otp.code,
-                first_name=data['first_name']
+            logger.error(f"Signup failed: {str(e)}")
+            return Response(
+                {"error": "Registration failed. Please try again."},
+                status=500
             )
-
-        # Store unverified teacher
-        db.teacherprofiles.insert_one(teacher_data)
-
-        return Response({
-            "message": "OTP sent to your email. Please verify to complete registration.",
-            "teacher_id": str(teacher_data['_id']),
-            "email": data['email'],
-            "next_step": "verify_otp"
-        }, status=status.HTTP_201_CREATED)
 
 
 
@@ -445,12 +455,15 @@ class AdminTeacherVerificationView(APIView):
         
         return Response({"unverified_teachers": teachers_data}, status=status.HTTP_200_OK)
 
+class AdminTeacherVerificationDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def patch(self, request, teacher_id):
         """
-        Approve or reject a teacher's verification request
+        Approve or reject a specific teacher application
         """
         action = request.data.get('action')  # 'approve' or 'reject'
-        feedback = request.data.get('feedback', '')  # Optional feedback for rejection
+        feedback = request.data.get('feedback', '')
 
         if not action or action not in ['approve', 'reject']:
             return Response(
@@ -475,9 +488,9 @@ class AdminTeacherVerificationView(APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        if teacher.get('is_verified', False):
+        if teacher.get('verification_status') != 'pending':
             return Response(
-                {"error": "Teacher is already verified"},
+                {"error": "This application has already been processed"},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -485,7 +498,14 @@ class AdminTeacherVerificationView(APIView):
             # Update teacher as verified
             db.teacherprofiles.update_one(
                 {"_id": teacher_oid},
-                {"$set": {"is_verified": True, "verification_feedback": None}}
+                {
+                    "$set": {
+                        "is_verified": True,
+                        "verification_status": "approved",
+                        "verified_at": timezone.now(),
+                        "verification_feedback": None
+                    }
+                }
             )
 
             # Send approval email
@@ -496,26 +516,28 @@ class AdminTeacherVerificationView(APIView):
                 )
             except Exception as e:
                 logger.error(f"Failed to queue approval email: {str(e)}")
-                # Fallback to synchronous sending
-                send_brevo_email(
+                send_teacher_approval_email(
                     to_email=teacher['email'],
-                    template_id=5,  # Assuming template 5 is for approval
-                    params={'FIRST_NAME': teacher['first_name']}
+                    first_name=teacher['first_name']
                 )
 
             return Response(
-                {"message": "Teacher approved successfully"},
+                {"message": "Teacher approved and notification sent"},
                 status=status.HTTP_200_OK
             )
-        else:
-            # Reject the teacher and optionally delete their record
+        
+        else:  # reject
+            # Update teacher with feedback
             db.teacherprofiles.update_one(
                 {"_id": teacher_oid},
-                {"$set": {"verification_feedback": feedback}}
+                {
+                    "$set": {
+                        "verification_status": "rejected",
+                        "verification_feedback": feedback,
+                        "rejected_at": timezone.now()
+                    }
+                }
             )
-
-            # Optionally delete the record (uncomment if you want to delete rejected teachers)
-            # db.teacherprofiles.delete_one({"_id": teacher_oid})
 
             # Send rejection email
             try:
@@ -526,18 +548,14 @@ class AdminTeacherVerificationView(APIView):
                 )
             except Exception as e:
                 logger.error(f"Failed to queue rejection email: {str(e)}")
-                # Fallback to synchronous sending
-                send_brevo_email(
+                send_teacher_rejection_email(
                     to_email=teacher['email'],
-                    template_id=6,  # Assuming template 6 is for rejection
-                    params={
-                        'FIRST_NAME': teacher['first_name'],
-                        'FEEDBACK': feedback
-                    }
+                    first_name=teacher['first_name'],
+                    feedback=feedback
                 )
 
             return Response(
-                {"message": "Teacher rejected successfully"},
+                {"message": "Teacher rejected and notification sent"},
                 status=status.HTTP_200_OK
             )
         
@@ -573,6 +591,17 @@ class TeacherLoginView(APIView):
             return Response(
                 {"error": "Invalid credentials"},
                 status=status.HTTP_401_UNAUTHORIZED
+            )
+        
+
+        # Check if teacher is verified
+        if not teacher.get('is_verified', False):
+            return Response(
+                {
+                    "error": "Your account is pending verification",
+                    "detail": "Please wait for admin approval before logging in"
+                },
+                status=status.HTTP_403_FORBIDDEN
             )
 
         # Step 3: Authenticate user

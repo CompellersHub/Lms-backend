@@ -244,6 +244,10 @@ class TeacherProfileSerializer(serializers.Serializer):
     past_experience = serializers.CharField(allow_blank=True, required=False)
     course_taken = serializers.CharField(allow_blank=True, required=False)
     created_at = serializers.DateTimeField(read_only=True)
+    is_verified = serializers.BooleanField(default=False)
+    verified_at = serializers.DateTimeField(required=False)
+    rejected_at = serializers.DateTimeField(required=False)
+    verification_feedback = serializers.CharField(required=False, allow_null=True)
 
     def to_representation(self, instance):
         if '_id' in instance:

@@ -6,9 +6,14 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-def send_brevo_email(to_email, otp_code, first_name=None):
+def send_brevo_email(to_email, template_id, params=None, subject=None):
     """
-    Email sending function - parameters MUST match task call exactly
+    Universal email sending function for Brevo API
+    Args:
+        to_email: Recipient email address
+        template_id: Brevo template ID
+        params: Dictionary of template parameters
+        subject: Email subject (optional, may be defined in template)
     """
     config = Configuration()
     config.api_key['api-key'] = settings.BREVO_API_KEY
@@ -18,19 +23,17 @@ def send_brevo_email(to_email, otp_code, first_name=None):
         
         send_smtp_email = {
             'sender': {
-                'email': settings.DEFAULT_FROM_EMAIL,
+                'email': 'marketing@titanscareers.com',
                 'name': settings.DEFAULT_FROM_NAME
             },
             'to': [{'email': to_email}],
-            'templateId': settings.OTP_TEMPLATE_ID,
-            'params': {
-                'OTP_CODE': otp_code,
-                'FIRST_NAME': first_name or 'User',
-                'EXPIRY_MINUTES': settings.OTP_EXPIRY_MINUTES
-            },
-            'subject': f"Your {settings.PROJECT_NAME} Verification Code"
+            'templateId': int(template_id),
+            'params': params or {},
         }
         
+        if subject:
+            send_smtp_email['subject'] = subject
+            
         response = api_instance.send_transac_email(send_smtp_email)
         logger.info(f"Email sent to {to_email}, Brevo ID: {response.message_id}")
         return True
@@ -38,4 +41,3 @@ def send_brevo_email(to_email, otp_code, first_name=None):
     except Exception as e:
         logger.error(f"Email sending failed to {to_email}: {str(e)}")
         return False
-    

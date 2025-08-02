@@ -56,3 +56,20 @@ def send_teacher_rejection_email(to_email, first_name, feedback):
             'FEEDBACK': feedback
         }
     )
+
+@shared_task(bind=True)
+def send_application_received_email(self, to_email, first_name):
+    try:
+        logger.info(f"Sending application received email to {to_email}")
+        result = send_brevo_email(
+            to_email=to_email,
+            template_id=7,  # Your template ID for application received
+            params={
+                'FIRST_NAME': first_name
+            }
+        )
+        logger.info(f"Email sent to {to_email}: {result}")
+        return result
+    except Exception as e:
+        logger.error(f"Failed to send application email: {str(e)}")
+        self.retry(exc=e, countdown=60, max_retries=3)

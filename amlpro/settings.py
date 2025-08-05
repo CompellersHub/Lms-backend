@@ -171,6 +171,7 @@ MIDDLEWARE = [
 ]
 
 CORS_ALLOWED_ORIGINS = [
+    "https://www.titanscareers.com",
     "https://titanscareers.com",
     "https://lms-react-frontend-sand.vercel.app",
     "http://127.0.0.1:5502",

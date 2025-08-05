@@ -239,6 +239,7 @@ class BlogSerializer(serializers.Serializer):
             return BlogMediaStorage().url(obj['image'])
         return None
 
+
     def get_date(self, obj):
         if 'publishedAt' in obj:
             return obj['publishedAt'].strftime("%B %d, %Y")

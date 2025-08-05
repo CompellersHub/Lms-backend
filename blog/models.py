@@ -217,7 +217,7 @@ class Blog(models.Model):
             "author": self.created_by.username if self.created_by else None,
             "authorRole": self.created_by.role if self.created_by else None,
             "authorImage": self.created_by.profile_piczxc5e64.url if self.created_by and hasattr(self.created_by, 'profile_image') else None,
-            "date": self.published_at.isoformat() if self.published_at else None,
+            "date": self.published_at.strftime("%-d %B %Y") if self.published_at else timezone.now().strftime("%-d %B %Y"),
             "category": self.category.name if self.category else None,
             "tags": self.tags,
             "image": self.image.url if self.image.url else None,
@@ -237,6 +237,8 @@ class Blog(models.Model):
         self.content_blocks.append(block_data)
         self.save()
         return block_data
+
+    
 
     def update_content_block(self, block_id, new_data):
         for block in self.content_blocks:

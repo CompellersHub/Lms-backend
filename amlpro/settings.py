@@ -62,6 +62,8 @@ INSTALLED_APPS = [
     'unfold',  # must be before django.contrib.admin
     'unfold.contrib.filters',  # optional, for enhanced filters
     'unfold.contrib.forms',  # optional, for better form styling
+    'channels',
+    'daphne', 
     # default apps
     'django.contrib.admin',
     'django.contrib.auth',
@@ -82,7 +84,7 @@ INSTALLED_APPS = [
     'dj_rest_auth',
     'django.contrib.sites',
     'drf_yasg',
-    'channels',
+    
     # allauth
     'allauth',
     'allauth.account',
@@ -99,6 +101,18 @@ INSTALLED_APPS = [
     # brevo anymail
     'anymail',
 ]
+
+ASGI_APPLICATION = 'amlpro.asgi.application'
+
+# Channel layer configuration (Redis recommended)
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [("127.0.0.1", 6379)],  # Update if your Redis is elsewhere
+        },
+    },
+}
 
 # AWS S3 Settings
 # Get these from your AWS IAM user credentials or instance profile

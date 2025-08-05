@@ -1,3 +1,4 @@
+import pytz
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -646,10 +647,12 @@ class CreateLiveClassView(APIView):
 
         try:
             db = get_mongo_db()
+            channel_layer = get_channel_layer()
             
             # Validate course exists
             course_id = serializer.validated_data['course_id']
-            if not db.courses.find_one({'_id': ObjectId(course_id)}):
+            course = db.courses.find_one({'_id': ObjectId(course_id)})
+            if not course:
                 return Response(
                     {"error": "Course not found"}, 
                     status=status.HTTP_404_NOT_FOUND
@@ -663,28 +666,63 @@ class CreateLiveClassView(APIView):
                     status=status.HTTP_404_NOT_FOUND
                 )
             
-            # Create the live class
-            live_class = serializer.save()
+            # Add additional fields before saving
+            live_class_data = serializer.validated_data
+            live_class_data['created_at'] = datetime.now(pytz.utc)
+            live_class_data['status'] = 'scheduled'
             
-            # Send notifications to enrolled students
-            enrollments = db.CourseEnrollment.find({'course_id': ObjectId(course_id)})
-            channel_layer = get_channel_layer()
+            # Create the live class
+            result = db.liveclasss.insert_one(live_class_data)
+            live_class_id = str(result.inserted_id)
+            
+            # Get enrolled students (paginated for large classes)
+            batch_size = 100
+            skip = 0
+            
+            while True:
+                enrollments = list(db.CourseEnrollment.find(
+                    {'course_id': ObjectId(course_id)}).skip(skip).limit(batch_size))
+                
+                if not enrollments:
+                    break
+                
+                # Send notifications in batches
+                for enrollment in enrollments:
+                    async_to_sync(channel_layer.group_send)(
+                        f"user_{enrollment['student_id']}",
+                        {
+                            "type": "send_notification",
+                            "message": f"New live class: {live_class_data.get('title', '')}",
+                            "live_class_id": live_class_id,
+                            "course_id": course_id,
+                            "timestamp": datetime.now(pytz.utc).isoformat(),
+                            "course_name": course.get('name', ''),
+                            "start_time": live_class_data.get('start_time').isoformat() if live_class_data.get('start_time') else None
+                        }
+                    )
+                
+                skip += batch_size
 
-            for enrollment in enrollments:
-                async_to_sync(channel_layer.group_send)(
-                    f"user_{enrollment['student_id']}",
-                    {
-                        "type": "send_notification",
-                        "message": f"New live class scheduled for course {course_id}",
-                        "live_class_id": str(live_class['_id']),
-                        "course_id": course_id
-                    }
-                )
+            # Also notify the teacher
+            async_to_sync(channel_layer.group_send)(
+                f"user_{teacher_id}",
+                {
+                    "type": "send_notification",
+                    "message": f"You have scheduled a live class for {course.get('name', '')}",
+                    "live_class_id": live_class_id,
+                    "course_id": course_id,
+                    "timestamp": datetime.now(pytz.utc).isoformat()
+                }
+            )
+
+            # Get the created live class to return in response
+            created_class = db.liveclasss.find_one({'_id': ObjectId(live_class_id)})
+            serializer = LiveClassSerializer(created_class)
 
             return Response(
                 {
                     "message": "Live class created successfully",
-                    "data": LiveClassSerializer(live_class).data
+                    "data": serializer.data
                 }, 
                 status=status.HTTP_201_CREATED
             )
@@ -696,10 +734,16 @@ class CreateLiveClassView(APIView):
             )
 
     def get(self, request):
-        db = get_mongo_db()
-        assignments = list(db.liveclasss.find())
-        serializer = LiveClassSerializer(assignments, many=True)
-        return Response(serializer.data)
+        try:
+            db = get_mongo_db()
+            live_classes = list(db.liveclasss.find())
+            serializer = LiveClassSerializer(live_classes, many=True)
+            return Response(serializer.data)
+        except Exception as e:
+            return Response(
+                {"error": f"An error occurred: {str(e)}"}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
     
 
 class LiveClassDetailView(APIView):

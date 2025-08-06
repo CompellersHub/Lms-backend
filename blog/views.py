@@ -190,36 +190,48 @@ class Logout(APIView):
     
 
 class BlogImageUploadView(APIView):
+    """
+    Handles uploads for both:
+    - Main blog images (type=main)
+    - Content block images (type=content)
+    """
     def post(self, request):
         if 'image' not in request.FILES:
             return Response({"error": "No image provided"}, status=status.HTTP_400_BAD_REQUEST)
         
+        image_type = request.data.get('type', 'content')  # Default to content image
         image_file = request.FILES['image']
         
         # Validate image
         max_size = 5 * 1024 * 1024  # 5MB
         if image_file.size > max_size:
-            return Response({"error": f"Image size cannot exceed {max_size/1024/1024}MB"}, 
-                          status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"error": f"Image size cannot exceed {max_size/1024/1024}MB"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
         valid_types = ['image/jpeg', 'image/png', 'image/webp']
         if image_file.content_type not in valid_types:
-            return Response({"error": "Only JPEG, PNG, and WebP images are allowed"},
-                          status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"error": "Only JPEG, PNG, and WebP images are allowed"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
-        # Upload to S3
+        # Upload to S3 with different paths
         storage = BlogMediaStorage()
         ext = image_file.name.split('.')[-1].lower()
-        filename = f"content/{uuid.uuid4()}.{ext}"
+        
+        if image_type == 'main':
+            filename = f"main/{uuid.uuid4()}.{ext}"
+        else:  # content
+            filename = f"content/{uuid.uuid4()}.{ext}"
+            
         saved_name = storage.save(filename, image_file)
+        image_url = storage.url(saved_name)
         
         return Response({
-            "url": storage.url(saved_name),
-            "filename": filename,
-            "content_block": {
-                "type": "image",
-                "src": storage.url(saved_name),
-                "alt": request.data.get('alt', ''),
-                "caption": request.data.get('caption', '')
-            }
+            "success": True,
+            "url": image_url,
+            "type": image_type,
+            "filename": filename
         }, status=status.HTTP_201_CREATED)

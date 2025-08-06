@@ -1,5 +1,6 @@
 from datetime import datetime
 import uuid
+from django.conf import settings
 from django.utils import timezone 
 from rest_framework import serializers
 from bson.objectid import ObjectId
@@ -200,18 +201,16 @@ class BlogSerializer(serializers.Serializer):
     date = serializers.SerializerMethodField()
     category = serializers.SerializerMethodField()
     tags = serializers.ListField(child=serializers.CharField())
-    image = serializers.FileField(
+    image = serializers.URLField(
         required=False,
         allow_null=True,
-        write_only=True,
-        
+        help_text="URL from image upload endpoint"
     )
-    image_url = serializers.SerializerMethodField(read_only=True)
     excerpt = serializers.CharField(max_length=300, required=False)
     content = serializers.ListField(
-    child=serializers.DictField(),
-    required=False,
-    default=list  # Ensure empty list if not provided
+        child=serializers.DictField(),
+        required=False,
+        default=list
     )
     status = serializers.CharField()
     createdAt = serializers.SerializerMethodField()
@@ -219,10 +218,8 @@ class BlogSerializer(serializers.Serializer):
     publishedAt = serializers.SerializerMethodField()
 
     def to_representation(self, instance):
-        """Convert MongoDB document to API-friendly format"""
         representation = super().to_representation(instance)
         
-        # Handle MongoDB _id field
         if '_id' in instance and isinstance(instance['_id'], ObjectId):
             representation['id'] = str(instance['_id'])
         elif '_id' in representation:
@@ -230,52 +227,43 @@ class BlogSerializer(serializers.Serializer):
             
         return representation
 
-    
-
-    def get_image_url(self, obj):
-        if 'image' in obj and obj['image']:
-            if isinstance(obj['image'], str):
-                return obj['image']
-            return BlogMediaStorage().url(obj['image'])
-        return None
-
-
     def get_date(self, obj):
-        if 'publishedAt' in obj:
-            return obj['publishedAt'].strftime("%B %d, %Y")
-        return timezone.now().strftime("%B %d, %Y")
+        """Return formatted date string (e.g., '15 August 2025')"""
+        date_source = obj.get('publishedAt') or obj.get('createdAt') or timezone.now()
+        
+        if isinstance(date_source, str):
+            date_source = datetime.fromisoformat(date_source.replace('Z', '+00:00'))
+        
+        return date_source.strftime("%-d %B %Y")
 
-    def validate_image(self, value):
-        max_size = 5 * 1024 * 1024  # 5MB
-        if value.size > max_size:
-            raise serializers.ValidationError(f"Image size cannot exceed {max_size/1024/1024}MB")
-        return value
-
+    def validate(self, data):
+        """
+        Validate that image URLs point to our S3 bucket without requiring custom domain
+        """
+        if 'image' in data and data['image']:
+            # Check if URL contains your bucket name or known path
+            bucket_name = settings.AWS_STORAGE_BUCKET_NAME
+            if not any([
+                f's3.amazonaws.com/{bucket_name}/blogs/' in data['image'],
+                f'{bucket_name}.s3.amazonaws.com/blogs/' in data['image'],
+                # Add any other valid patterns you use
+            ]):
+                raise serializers.ValidationError({
+                    "image": "Image must be uploaded via our API endpoint"
+                })
+        return data
 
     def create(self, validated_data):
         db = get_mongo_db()
         
-        
-        # Handle image upload
-        if 'image' in validated_data:
-            storage = BlogMediaStorage()
-            ext = validated_data['image'].name.split('.')[-1]
-            filename = f"{uuid.uuid4()}.{ext}"
-            saved_name = storage.save(filename, validated_data['image'])
-            validated_data['image'] = storage.url(saved_name)
-
         # Set timestamps
-        validated_data['created_at'] = timezone.now()
-        validated_data['updated_at'] = timezone.now()
+        validated_data['createdAt'] = timezone.now()
+        validated_data['updatedAt'] = timezone.now()
         
-        # Set default status if not provided
-        if 'status' not in validated_data:
-            validated_data['status'] = 'draft'
-            
-        # Ensure content exists
-        if 'content' not in validated_data:
-            validated_data['content'] = []
-            
+        # Set publishedAt if publishing
+        if validated_data.get('status') == 'published':
+            validated_data['publishedAt'] = timezone.now()
+        
         # Insert into MongoDB
         result = db.blogs.insert_one(validated_data)
         return db.blogs.find_one({"_id": result.inserted_id})
@@ -283,32 +271,9 @@ class BlogSerializer(serializers.Serializer):
     def update(self, instance, validated_data):
         db = get_mongo_db()
         blog_id = ObjectId(instance['_id'])
-        new_image = validated_data.pop('image', None)
         
-        # Handle image update
-        if new_image:
-            storage = BlogMediaStorage()
-            
-            # Delete old image if exists
-            old_image = instance.get('image')
-            if old_image and isinstance(old_image, str):
-                try:
-                    old_filename = old_image.split('/')[-1]  # Extract filename from URL
-                    storage.delete(old_filename)
-                except Exception:
-                    pass  # Log this error in production
-            
-            # Upload new image
-            try:
-                ext = new_image.name.split('.')[-1].lower()
-                filename = f"{uuid.uuid4()}.{ext}"
-                saved_name = storage.save(filename, new_image)
-                validated_data['image'] = storage.url(saved_name)
-            except Exception as e:
-                raise serializers.ValidationError(f"Image upload failed: {str(e)}")
-
         # Update timestamp
-        validated_data['updated_at'] = timezone.now()
+        validated_data['updatedAt'] = timezone.now()
         
         # Perform the update
         db.blogs.update_one(
@@ -318,7 +283,7 @@ class BlogSerializer(serializers.Serializer):
         
         return db.blogs.find_one({"_id": blog_id})
 
-    # Keep all your existing get_* methods...
+    # ... keep all your existing get_* methods ...
     def get_author(self, obj):
         """Get author username with fallback"""
         created_by = self._get_created_by(obj)

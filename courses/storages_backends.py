@@ -36,6 +36,21 @@ class BlogMediaStorage(S3Boto3Storage):
     location = 'blogs'
     file_overwrite = False
 
+    def get_valid_name(self, name):
+        """Preserve folder structure when saving files"""
+        # If already has folder prefix (from upload endpoint)
+        if name.startswith(('main/', 'content/')):
+            return name
+        return super().get_valid_name(name)
+
+    def generate_filename(self, filename):
+        """Ensure unique filenames while preserving folder structure"""
+        if filename.startswith(('main/', 'content/')):
+            folder, name = filename.split('/', 1)
+            name = super().get_valid_name(name)
+            return f"{folder}/{name}"
+        return super().generate_filename(filename)
+
 class SubmissionStorage(S3Boto3Storage):
     location = 'submissions'
     file_overwrite = False

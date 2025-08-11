@@ -1,3 +1,4 @@
+from bson import ObjectId
 from django.db import models
 from django.utils import timezone
 from courses.storages_backends import AssignmentStorage, CourseMediaStorage, CourseNotesStorage, VideoMediaStorage
@@ -136,58 +137,41 @@ class Curriculum(models.Model):
             "updated_at": self.updated_at.isoformat(),
         }
 
-class RequiredMaterial(models.Model):
-    name1 = models.CharField(max_length=200) # Required
-    name2 = models.CharField(max_length=200) # Required
-    name3 = models.CharField(max_length=200) # Required
-    name4 = models.CharField(max_length=200) # REQUIRED (removed null=True, blank=True)
-
-    def __str__(self):
-        return f"{self.name1}, {self.name2}"
+# Represents the RequiredMaterial document in MongoDB
+class RequiredMaterial:
+    def __init__(self, names: list[str], _id: ObjectId = None):
+        self._id = _id
+        self.names = names
 
     def to_dict(self):
-        return {
-            "name1": self.name1,
-            "name2": self.name2,
-            "name3": self.name3,
-            "name4": self.name4,
-        }
+        doc = {"names": self.names}
+        if self._id:
+            doc["_id"] = self._id
+        return doc
 
-class LearningOutcome(models.Model):
-    outcome1 = models.CharField(max_length=200) # Required
-    outcome2 = models.CharField(max_length=200) # Required
-    outcome3 = models.CharField(max_length=200) # Required
-    outcome4 = models.CharField(max_length=200) # REQUIRED (removed null=True, blank=True)
-
-    def __str__(self):
-        return f"{self.outcome1}, {self.outcome2}"
+# Represents the LearningOutcome document in MongoDB
+class LearningOutcome:
+    def __init__(self, outcomes: list[str], _id: ObjectId = None):
+        self._id = _id
+        self.outcomes = outcomes
 
     def to_dict(self):
-        return {
-            "outcome1": self.outcome1,
-            "outcome2": self.outcome2,
-            "outcome3": self.outcome3,
-            "outcome4": self.outcome4,
-        }
+        doc = {"outcomes": self.outcomes}
+        if self._id:
+            doc["_id"] = self._id
+        return doc
 
-class TargetAudience(models.Model):
-    id = models.AutoField(primary_key=True, editable=False)
-    audience1 = models.CharField(max_length=200) # Required
-    audience2 = models.CharField(max_length=200) # Required
-    audience3 = models.CharField(max_length=200) # Required
-    audience4 = models.CharField(max_length=200) # REQUIRED (removed null=True, blank=True)
-
-    def __str__(self):
-        return f"{self.audience1}, {self.audience2}"
+# Represents the TargetAudience document in MongoDB
+class TargetAudience:
+    def __init__(self, audiences: list[str], _id: ObjectId = None):
+        self._id = _id
+        self.audiences = audiences
 
     def to_dict(self):
-        return {
-            "id": self.id,
-            "audience1": self.audience1,
-            "audience2": self.audience2,
-            "audience3": self.audience3,
-            "audience4": self.audience4,
-        }
+        doc = {"audiences": self.audiences}
+        if self._id:
+            doc["_id"] = self._id
+        return doc
 
 class Course(models.Model):
     LEVEL_CHOICES = [
@@ -200,19 +184,19 @@ class Course(models.Model):
     name = models.CharField(max_length=150) # Required
     course_image = models.FileField(storage=CourseMediaStorage(), blank=True, null=True)
     preview_id = models.FileField(storage=VideoMediaStorage(), blank=True, null=True)
-    preview_description = models.CharField(max_length=255, null=True, blank=True) # REQUIRED (removed null=True, blank=True)
+    preview_description = models.CharField(max_length=255, null=True, blank=True) 
     description = models.TextField() # Required
     category = models.ForeignKey('Category', on_delete=models.CASCADE) # Required
-    course_include = models.ForeignKey('Course_include', on_delete=models.CASCADE, null=True, blank=True) # Required
+    course_include = models.ForeignKey('Course_include', on_delete=models.CASCADE, null=True, blank=True) 
     created_at = models.DateTimeField(auto_now_add=True) # Auto-set
     updated_at = models.DateTimeField(auto_now=True) # Auto-set
     price = models.FloatField() # REQUIRED, removed default
     original_price = models.FloatField(default=1500) # REQUIRED, removed default
     instructor = models.ForeignKey('user.TeacherProfile', on_delete=models.CASCADE) # Required
     curriculum = models.ForeignKey('Curriculum', on_delete=models.CASCADE) # Required
-    required_materials = models.ForeignKey('RequiredMaterial', on_delete=models.CASCADE) # Required
-    learning_outcomes = models.ForeignKey('LearningOutcome', on_delete=models.CASCADE) # Required
-    target_audience = models.ForeignKey('TargetAudience', on_delete=models.CASCADE) # Required
+    learning_outcomes = models.JSONField(default=dict, blank=True)
+    required_materials = models.JSONField(default=dict, blank=True)
+    target_audience = models.JSONField(default=dict, blank=True)
     estimated_time = models.CharField(max_length=100) # Required
     level = models.CharField(
         max_length=20,
@@ -223,7 +207,7 @@ class Course(models.Model):
         return self.name
 
     def to_dict(self):
-        return {
+        data = {
             "id": self.id,
             "name": self.name,
             "course_image": self.course_image.url,
@@ -236,14 +220,19 @@ class Course(models.Model):
             "price": self.price,
             "original_price": self.original_price,
             "course_include": self.course_include.to_dict() if self.course_include else None,
-            "learning_outcomes": self.learning_outcomes.to_dict(),
-            "target_audience": self.target_audience.to_dict(),
             "curriculum": [module.to_dict() for module in self.curriculum.module.all()],
             "instructor": self.instructor.to_dict(),
-            "required_materials": self.required_materials.to_dict(),
             "estimated_time": self.estimated_time,
             "level": self.level,
         }
+        if self.learning_outcomes:
+            data["learning_outcomes"] = self.learning_outcomes
+        if self.required_materials:
+            data["required_materials"] = self.required_materials
+        if self.target_audience:
+            data["target_audience"] = self.target_audience
+        return data
+        
 
 class CourseLibraryVideo(models.Model):
     id = models.AutoField(primary_key=True, editable=False)

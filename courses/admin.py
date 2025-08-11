@@ -106,27 +106,6 @@ class CourseLibraryVideoAdmin(ModelAdmin):
     def mongo_id(self, obj): return get_mongo_id('CourseLibraryVideo', obj)
     mongo_id.short_description = 'MongoDB ID'
 
-@admin.register(RequiredMaterial)
-class RequiredMaterialsAdmin(ModelAdmin):
-    list_display = ['name1', 'name2', 'name3', 'mongo_id']
-    readonly_fields = ['mongo_id']
-    def mongo_id(self, obj): return get_mongo_id('RequiredMaterial', obj)
-    mongo_id.short_description = 'MongoDB ID'
-
-@admin.register(LearningOutcome)
-class LearningOutcomesAdmin(ModelAdmin):
-    list_display = ['outcome1', 'outcome2', 'outcome3', 'mongo_id']
-    readonly_fields = ['mongo_id']
-    def mongo_id(self, obj): return get_mongo_id('LearningOutcome', obj)
-    mongo_id.short_description = 'MongoDB ID'
-
-@admin.register(TargetAudience)
-class TargetAudienceAdmin(ModelAdmin):
-    list_display = ['audience1', 'audience2', 'audience3', 'mongo_id']
-    readonly_fields = ['mongo_id']
-    def mongo_id(self, obj): return get_mongo_id('TargetAudience', obj)
-    mongo_id.short_description = 'MongoDB ID'
-
 
 @admin.register(Video)
 class VideoAdmin(ModelAdmin):

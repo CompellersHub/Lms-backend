@@ -101,18 +101,49 @@ class ModuleInCourseSerializer(serializers.Serializer):
         return super().to_representation(instance)
 
 class RequiredMaterialSerializer(serializers.Serializer):
-    name1 = serializers.CharField(max_length=300)
-    name2 = serializers.CharField(max_length=300)
-    name3 = serializers.CharField(max_length=300)
-    name4 = serializers.CharField(max_length=300)
+    names = serializers.ListField(
+        child=serializers.CharField(max_length=300),
+        required=False,
+        help_text="A list of required material names."
+    )
+    name1 = serializers.CharField(max_length=300, required=False)
+    name2 = serializers.CharField(max_length=300, required=False)
+    name3 = serializers.CharField(max_length=300, required=False)
+    name4 = serializers.CharField(max_length=300, required=False)
 
     def to_representation(self, instance):
-        if instance is None:
+        if not instance:
             return {}
+
+        names_list = instance.get('names', [])
+        if not isinstance(names_list, list):
+            names_list = []
+            for i in range(1, 5):
+                name_key = f'name{i}'
+                if name_key in instance and instance[name_key]:
+                    names_list.append(instance[name_key])
+
+        representation = {'names': names_list}
         if '_id' in instance:
-            instance['id'] = str(instance['_id'])
-            del instance['_id']
-        return super().to_representation(instance)
+            representation['id'] = str(instance['_id'])
+
+        return representation
+
+    def validate(self, data):
+        names_list = []
+        if 'names' in data and data['names'] is not None:
+            names_list.extend(data['names'])
+        
+        for i in range(1, 5):
+            name_key = f'name{i}'
+            if name_key in data and data[name_key]:
+                names_list.append(data[name_key])
+        
+        data['names'] = list(set(names_list))
+        for i in range(1, 5):
+            data.pop(f'name{i}', None)
+            
+        return data
 
     def create(self, validated_data):
         db = get_mongo_db()
@@ -125,17 +156,52 @@ class RequiredMaterialSerializer(serializers.Serializer):
         db.required_materials.update_one({"_id": materials_id}, {"$set": validated_data})
         return db.required_materials.find_one({"_id": materials_id})
 
+
+
 class LearningOutcomeSerializer(serializers.Serializer):
-    outcome1 = serializers.CharField(max_length=200)
-    outcome2 = serializers.CharField(max_length=200)
-    outcome3 = serializers.CharField(max_length=200)
-    outcome4 = serializers.CharField(max_length=200)
+    outcomes = serializers.ListField(
+        child=serializers.CharField(max_length=200),
+        required=False,
+        help_text="A list of learning outcomes."
+    )
+    outcome1 = serializers.CharField(max_length=200, required=False)
+    outcome2 = serializers.CharField(max_length=200, required=False)
+    outcome3 = serializers.CharField(max_length=200, required=False)
+    outcome4 = serializers.CharField(max_length=200, required=False)
 
     def to_representation(self, instance):
+        if not instance:
+            return {}
+        
+        outcomes_list = instance.get('outcomes', [])
+        if not isinstance(outcomes_list, list):
+            outcomes_list = []
+            for i in range(1, 5):
+                outcome_key = f'outcome{i}'
+                if outcome_key in instance and instance[outcome_key]:
+                    outcomes_list.append(instance[outcome_key])
+
+        representation = {'outcomes': outcomes_list}
         if '_id' in instance:
-            instance['id'] = str(instance['_id'])
-            del instance['_id']
-        return super().to_representation(instance)
+            representation['id'] = str(instance['_id'])
+
+        return representation
+
+    def validate(self, data):
+        outcomes_list = []
+        if 'outcomes' in data and data['outcomes'] is not None:
+            outcomes_list.extend(data['outcomes'])
+        
+        for i in range(1, 5):
+            outcome_key = f'outcome{i}'
+            if outcome_key in data and data[outcome_key]:
+                outcomes_list.append(data[outcome_key])
+        
+        data['outcomes'] = list(set(outcomes_list))
+        for i in range(1, 5):
+            data.pop(f'outcome{i}', None)
+            
+        return data
 
     def create(self, validated_data):
         db = get_mongo_db()
@@ -149,16 +215,49 @@ class LearningOutcomeSerializer(serializers.Serializer):
         return db.learning_outcomes.find_one({"_id": outcomes_id})
 
 class TargetAudienceSerializer(serializers.Serializer):
-    audience1 = serializers.CharField(max_length=200)
-    audience2 = serializers.CharField(max_length=200)
-    audience3 = serializers.CharField(max_length=200)
-    audience4 = serializers.CharField(max_length=200)
+    audiences = serializers.ListField(
+        child=serializers.CharField(max_length=200),
+        required=False,
+        help_text="A list of target audiences."
+    )
+    audience1 = serializers.CharField(max_length=200, required=False)
+    audience2 = serializers.CharField(max_length=200, required=False)
+    audience3 = serializers.CharField(max_length=200, required=False)
+    audience4 = serializers.CharField(max_length=200, required=False)
 
     def to_representation(self, instance):
+        if not instance:
+            return {}
+
+        audiences_list = instance.get('audiences', [])
+        if not isinstance(audiences_list, list):
+            audiences_list = []
+            for i in range(1, 5):
+                audience_key = f'audience{i}'
+                if audience_key in instance and instance[audience_key]:
+                    audiences_list.append(instance[audience_key])
+
+        representation = {'audiences': audiences_list}
         if '_id' in instance:
-            instance['id'] = str(instance['_id'])
-            del instance['_id']
-        return super().to_representation(instance)
+            representation['id'] = str(instance['_id'])
+
+        return representation
+
+    def validate(self, data):
+        audiences_list = []
+        if 'audiences' in data and data['audiences'] is not None:
+            audiences_list.extend(data['audiences'])
+
+        for i in range(1, 5):
+            audience_key = f'audience{i}'
+            if audience_key in data and data[audience_key]:
+                audiences_list.append(data[audience_key])
+
+        data['audiences'] = list(set(audiences_list))
+        for i in range(1, 5):
+            data.pop(f'audience{i}', None)
+            
+        return data
 
     def create(self, validated_data):
         db = get_mongo_db()

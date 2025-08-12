@@ -201,14 +201,12 @@ class BlogSerializer(serializers.Serializer):
     date = serializers.SerializerMethodField()
     category = serializers.SerializerMethodField()
     tags = serializers.ListField(child=serializers.CharField())
-    image = serializers.URLField(
+    image_url = serializers.URLField(
         required=False,
         allow_null=True,
         help_text="URL from image upload endpoint"
     )
-    image_url = serializers.SerializerMethodField(
-        help_text="Duplicate of image field for backward compatibility"
-    )
+    
     excerpt = serializers.CharField(max_length=300, required=False)
     content = serializers.ListField(
         child=serializers.DictField(),
@@ -220,9 +218,7 @@ class BlogSerializer(serializers.Serializer):
     updatedAt = serializers.SerializerMethodField()
     publishedAt = serializers.SerializerMethodField()
 
-    def get_image_url(self, obj):
-        """Return the same value as the image field"""
-        return obj.get('image') if isinstance(obj, dict) else getattr(obj, 'image', None)
+    
 
     def to_representation(self, instance):
         representation = super().to_representation(instance)

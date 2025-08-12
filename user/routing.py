@@ -1,7 +1,11 @@
-# routing.py
+# user/routing.py
 from django.urls import re_path
 from . import consumers
 
 websocket_urlpatterns = [
-    re_path(r'ws/notifications/(?P<user_id>\w+)/$', consumers.NotificationConsumer.as_asgi()),
+    # Personal notifications
+    re_path(r'ws/notifications/$', consumers.NotificationConsumer.as_asgi()),
+    
+    # Live class notifications
+    re_path(r'ws/liveclass/(?P<course_id>[^/]+)/$', consumers.LiveClassConsumer.as_asgi()),
 ]

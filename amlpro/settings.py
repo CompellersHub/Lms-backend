@@ -58,12 +58,13 @@ STRIPE_TEST_KEY = os.getenv('STRIPE_TEST_kEY')
 
 INSTALLED_APPS = [
     
+    'daphne',
     # 'jazzmin',
     'unfold',  # must be before django.contrib.admin
     'unfold.contrib.filters',  # optional, for enhanced filters
     'unfold.contrib.forms',  # optional, for better form styling
-    'channels',
-    'daphne', 
+    
+     
     # default apps
     'django.contrib.admin',
     'django.contrib.auth',
@@ -71,7 +72,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    
+    'channels',
     'user',
     'courses',
     'blog',
@@ -184,6 +185,8 @@ CORS_ALLOWED_ORIGINS = [
     "https://facilitatorshub.titanscareers.com",
     "https://management.titanscareers.com",
     "https://tools.titanscareers.com",
+    'http://localhost',
+    'http://127.0.0.1',
     
 ]
 

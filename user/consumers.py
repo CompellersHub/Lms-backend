@@ -1,13 +1,101 @@
-# consumers.py
+# user/consumers.py
+import json
 from channels.generic.websocket import AsyncWebsocketConsumer
+from channels.db import database_sync_to_async
+from rest_framework_simplejwt.authentication import JWTAuthentication
+
+class LiveClassConsumer(AsyncWebsocketConsumer):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.room_group_name = None  # Initialize as None
+        self.user = None
+
+    async def connect(self):
+        # Get token from query parameters
+        query_params = self.scope.get('query_string', b'').decode().split('&')
+        token = None
+        for param in query_params:
+            if param.startswith('token='):
+                token = param.split('=')[1]
+                break
+
+        if not token:
+            await self.close(code=4001)  # Unauthorized
+            return
+
+        # Authenticate user
+        try:
+            self.user = await self.authenticate_user(token)
+            if not self.user:
+                await self.close(code=4001)
+                return
+
+            # Set up room group
+            self.course_id = self.scope['url_route']['kwargs']['course_id']
+            self.room_group_name = f'liveclass_{self.course_id}'
+
+            # Join room group
+            await self.channel_layer.group_add(
+                self.room_group_name,
+                self.channel_name
+            )
+            await self.accept()
+
+        except Exception as e:
+            print(f"Connection error: {str(e)}")
+            await self.close(code=4002)  # Internal error
+
+    @database_sync_to_async
+    def authenticate_user(self, token):
+        try:
+            validated_token = JWTAuthentication().get_validated_token(token)
+            return JWTAuthentication().get_user(validated_token)
+        except Exception:
+            return None
+
+    async def disconnect(self, close_code):
+        # Safely disconnect only if room_group_name was set
+        if hasattr(self, 'room_group_name') and self.room_group_name:
+            await self.channel_layer.group_discard(
+                self.room_group_name,
+                self.channel_name
+            )
+
+    async def liveclass_notification(self, event):
+        """Handle live class notifications from the group"""
+        await self.send(text_data=json.dumps({
+            "type": "liveclass",
+            "message": event["message"],
+            "class_id": event["class_id"],
+            "start_time": event["start_time"],
+            "join_url": event["join_url"]
+        }))
 
 class NotificationConsumer(AsyncWebsocketConsumer):
+    """Handles personal user notifications"""
     async def connect(self):
-        self.user_id = str(self.scope["user"].id)  # Ensure string
-        self.group_name = f"notifications_{self.user_id}"  # Consistent format
-        
+        if self.scope["user"].is_anonymous:
+            await self.close()
+            return
+
+        self.user_id = str(self.scope["user"].id)
+        self.user_group_name = f"user_{self.user_id}"
+
         await self.channel_layer.group_add(
-            self.group_name,
+            self.user_group_name,
             self.channel_name
         )
         await self.accept()
+
+    async def disconnect(self, close_code):
+        await self.channel_layer.group_discard(
+            self.user_group_name,
+            self.channel_name
+        )
+
+    async def send_notification(self, event):
+        await self.send(text_data=json.dumps({
+            "type": "notification",
+            "message": event["message"],
+            "timestamp": event.get("timestamp")
+        }))

@@ -381,3 +381,22 @@ class CompletionCertificate(models.Model):
             "completion_date": self.completion_date.isoformat(),
             "signature": self.signature,
         }
+
+
+class Event(models.Model):
+    icon = models.ImageField(upload_to='event_icons/', blank=True, null=True)
+    title = models.CharField(max_length=200)
+    description = models.TextField()
+    date = models.DateField()
+    start_time = models.TimeField()
+    end_time = models.TimeField()
+    timezone = models.CharField(max_length=50, default='EST')
+    is_active = models.BooleanField(default=True)
+    instructor = models.ForeignKey(TeacherProfile, on_delete=models.CASCADE)
+    workshop = models.JSONField(default=dict, blank=True, null=True)
+    who_can_attend = models.TextField(blank=True, null=True, help_text="Comma-separated list of attendees' emails")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.title} on {self.date}"

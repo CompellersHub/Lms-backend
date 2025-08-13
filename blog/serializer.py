@@ -199,7 +199,7 @@ class BlogSerializer(serializers.Serializer):
     authorRole = serializers.CharField(default="AML/KYC Compliance Experts")
     authorImage = serializers.URLField(default="https://titanscareers.s3.amazonaws.com/profile_pictures/user_e9a513d2-1e98-48e8-9780-3b3693fc042e.png")
     date = serializers.SerializerMethodField()
-    category = serializers.SerializerMethodField()
+    category = serializers.CharField()
     tags = serializers.ListField(child=serializers.CharField())
     image_url = serializers.URLField(
         required=False,

@@ -33,6 +33,7 @@ from .serializer import (
     CourseSerializer,
     CourseLibrarySerializer,
     AssignmentSerializer,
+    EventSerializer,
     SubmissionSerializer,
     VideoSerializer,
     ModuleInCourseSerializer,
@@ -889,6 +890,43 @@ class CourseProgressDetailView(APIView):
 
         # Serialize the response (create a specific serializer for this)
         return Response(response_data)
+
+
+
+
+
+class EventAPIView(APIView):
+    def get(self, request, id=None):
+        db = get_mongo_db()
+        if id:
+            event = db.events.find_one({"_id": ObjectId(id)})
+            if not event:
+                return Response({"error": "Event not found"}, status=status.HTTP_404_NOT_FOUND)
+            serializer = EventSerializer(event)
+            return Response(serializer.data)
+        else:
+            events = list(db.events.find())
+            serializer = EventSerializer(events, many=True)
+            return Response(serializer.data)
+
+    def post(self, request):
+        serializer = EventSerializer(data=request.data)
+        if serializer.is_valid():
+            created_event = serializer.save()
+            return Response(EventSerializer(created_event).data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def put(self, request, id):
+        db = get_mongo_db()
+        event = db.events.find_one({"_id": ObjectId(id)})
+        if not event:
+            return Response({"error": "Event not found"}, status=status.HTTP_404_NOT_FOUND)
+        
+        serializer = EventSerializer(event, data=request.data)
+        if serializer.is_valid():
+            updated_event = serializer.save()
+            return Response(EventSerializer(updated_event).data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
         User = get_user_model()

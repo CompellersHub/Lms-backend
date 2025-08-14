@@ -1,7 +1,7 @@
 from bson import ObjectId
 from django.db import models
 from django.utils import timezone
-from courses.storages_backends import AssignmentStorage, CourseMediaStorage, CourseNotesStorage, VideoMediaStorage
+from courses.storages_backends import AssignmentStorage, CourseMediaStorage, CourseNotesStorage, EventStorage, VideoMediaStorage
 from user.models import TeacherProfile
 from django.conf import settings
 from django.utils.translation import gettext_lazy as _
@@ -386,13 +386,15 @@ class CompletionCertificate(models.Model):
 class Event(models.Model):
     icon = models.ImageField(upload_to='event_icons/', blank=True, null=True)
     title = models.CharField(max_length=200)
-    description = models.TextField()
+    image = models.ImageField(storage=EventStorage)
+    event_excerpt = models.TextField()
     date = models.DateField()
     start_time = models.TimeField()
     end_time = models.TimeField()
     timezone = models.CharField(max_length=50, default='EST')
     is_active = models.BooleanField(default=True)
-    instructor = models.ForeignKey(TeacherProfile, on_delete=models.CASCADE)
+    instructor = models.CharField(max_length=100)
+    instructor_info = models.TextField()
     workshop = models.JSONField(default=dict, blank=True, null=True)
     who_can_attend = models.TextField(blank=True, null=True, help_text="Comma-separated list of attendees' emails")
     created_at = models.DateTimeField(auto_now_add=True)
@@ -400,3 +402,23 @@ class Event(models.Model):
 
     def __str__(self):
         return f"{self.title} on {self.date}"
+    
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "icon": self.icon.url if self.icon else None,
+            "title": self.title,
+            "image": self.image.url if self.image else None,
+            "event_excerpt": self.event_excerpt,
+            "date": self.date.isoformat() if self.date else None,
+            "start_time": self.start_time.isoformat() if self.start_time else None,
+            "end_time": self.end_time.isoformat() if self.end_time else None,
+            "timezone": self.timezone,
+            "is_active": self.is_active,
+            "instructor": self.instructor,
+            "instructor_info": self.instructor_info,
+            "workshop": self.workshop,
+            "who_can_attend": self.who_can_attend,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None
+        }

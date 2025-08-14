@@ -125,3 +125,7 @@ class LiveClassAdmin(ModelAdmin):
     mongo_id.short_description = 'MongoDB ID'
 
 # ... (rest of your admin.py - CourseOrder and CourseOrderItem remain unchanged as you didn't ask for them)
+
+@admin.register(Event)
+class EventAdmin(ModelAdmin):
+    list_display = ['title', 'timezone', 'instructor']

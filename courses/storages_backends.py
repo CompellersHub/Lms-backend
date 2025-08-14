@@ -67,3 +67,7 @@ class CourseNotesStorage(S3Boto3Storage):
     location = 'course_notes'
     file_overwrite = False
 
+class EventStorage(S3Boto3Storage):
+    location = 'events'
+    file_overwrite = False
+

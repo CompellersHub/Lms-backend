@@ -315,10 +315,10 @@ class CourseSerializer(serializers.Serializer):
     category = CategorySerializer()
     price = serializers.FloatField()
     original_price = serializers.FloatField()
-    target_audience = TargetAudienceSerializer(required=False)
-    learning_outcomes = LearningOutcomeSerializer(required=False)
+    target_audience = serializers.ListField(child=serializers.CharField())
+    learning_outcomes = serializers.ListField(child=serializers.CharField())
     instructor = 'user.serializer.TeacherProfileSerializer'
-    required_materials = RequiredMaterialSerializer(required=False)
+    required_materials = serializers.ListField(child=serializers.CharField())
     estimated_time = serializers.CharField(allow_blank=True, required=False)
     level = serializers.ChoiceField(choices=[
         ('beginner', 'Beginner'),
@@ -571,6 +571,80 @@ class LiveClassSerializer(serializers.Serializer):
             representation['id'] = str(instance['_id'])
         
         return representation
+
+
+from rest_framework import serializers
+from .models import Event
+from bson import ObjectId
+from django.db import connections
+
+def get_mongo_db():
+    return connections['mongodb'].connection['your_db_name']
+
+class EventSerializer(serializers.Serializer):
+    id = serializers.CharField(required=False)
+    icon = serializers.ImageField(required=False, allow_null=True)
+    title = serializers.CharField(max_length=200)
+    image = serializers.URLField()
+    event_excerpt = serializers.CharField()
+    date = serializers.DateField()
+    start_time = serializers.TimeField()
+    end_time = serializers.TimeField()
+    timezone = serializers.CharField(max_length=50, default='EST')
+    is_active = serializers.BooleanField(default=True)
+    instructor = serializers.CharField(max_length=100)
+    instructor_info = serializers.CharField()
+    workshop = serializers.JSONField(default=dict)
+    who_can_attend = serializers.CharField()
+    created_at = serializers.DateTimeField(required=False)
+    updated_at = serializers.DateTimeField(required=False)
+    django_id = serializers.IntegerField(required=False)
+
+    def to_representation(self, instance):
+        if '_id' in instance:
+            instance['id'] = str(instance['_id']['$oid']) if isinstance(instance['_id'], dict) else str(instance['_id'])
+            del instance['_id']
+        return super().to_representation(instance)
+
+    def create(self, validated_data):
+        db = get_mongo_db()
+        
+        # Convert Django model to MongoDB document if needed
+        mongo_data = {
+            'title': validated_data.get('title'),
+            'image': validated_data.get('image'),
+            'event_excerpt': validated_data.get('event_excerpt'),
+            'date': validated_data.get('date').isoformat(),
+            'start_time': validated_data.get('start_time').isoformat(),
+            'end_time': validated_data.get('end_time').isoformat(),
+            'timezone': validated_data.get('timezone', 'EST'),
+            'is_active': validated_data.get('is_active', True),
+            'instructor': validated_data.get('instructor'),
+            'instructor_info': validated_data.get('instructor_info'),
+            'workshop': validated_data.get('workshop', {}),
+            'who_can_attend': validated_data.get('who_can_attend'),
+            'django_id': validated_data.get('id')
+        }
+        
+        result = db.events.insert_one(mongo_data)
+        return db.events.find_one({"_id": result.inserted_id})
+
+    def update(self, instance, validated_data):
+        db = get_mongo_db()
+        event_id = ObjectId(instance['id'])
+        
+        update_data = {
+            'title': validated_data.get('title', instance.get('title')),
+            'image': validated_data.get('image', instance.get('image')),
+            # Include all other fields similarly
+            'updated_at': datetime.now().isoformat()
+        }
+        
+        db.events.update_one(
+            {"_id": event_id},
+            {"$set": update_data}
+        )
+        return db.events.find_one({"_id": event_id})
 
 logger = logging.getLogger(__name__)
 

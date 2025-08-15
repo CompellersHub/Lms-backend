@@ -595,35 +595,69 @@ class EventSerializer(serializers.Serializer):
     instructor = serializers.CharField(max_length=100)
     instructor_info = serializers.CharField()
     workshop = serializers.JSONField(default=dict)
+    course = CourseSerializer(required=False, allow_null=True)
     who_can_attend = serializers.CharField()
     created_at = serializers.DateTimeField(required=False)
     updated_at = serializers.DateTimeField(required=False)
     django_id = serializers.IntegerField(required=False)
 
     def to_representation(self, instance):
+        # Handle MongoDB _id field
         if '_id' in instance:
-            instance['id'] = str(instance['_id']['$oid']) if isinstance(instance['_id'], dict) else str(instance['_id'])
+            if isinstance(instance['_id'], dict) and '$oid' in instance['_id']:
+                instance['id'] = instance['_id']['$oid']
+            else:
+                instance['id'] = str(instance['_id'])
             del instance['_id']
+        
+        # Convert course data if it exists
+        if 'course' in instance and isinstance(instance['course'], dict):
+            if '_id' in instance['course']:
+                instance['course']['id'] = str(instance['course']['_id'])
+                del instance['course']['_id']
+        
         return super().to_representation(instance)
+
+    # def to_internal_value(self, data):
+    #     """
+    #     Convert API data to MongoDB document format
+    #     """
+    #     validated_data = super().to_internal_value(data)
+        
+    #     # Handle course ID conversion
+    #     if 'course' in validated_data and validated_data['course']:
+    #         if isinstance(validated_data['course'], dict) and 'id' in validated_data['course']:
+    #             try:
+    #                 validated_data['course']['_id'] = ObjectId(validated_data['course']['id'])
+    #                 del validated_data['course']['id']
+    #             except:
+    #                 pass
+    #         elif isinstance(validated_data['course'], str):
+    #             try:
+    #                 validated_data['course'] = ObjectId(validated_data['course'])
+    #             except:
+    #                 pass
+        
+    
+        
+    #     return super().to_internal_value(data)
 
     def create(self, validated_data):
         db = get_mongo_db()
         
-        # Convert Django model to MongoDB document if needed
+        # Handle course data
+        course_data = validated_data.pop('course', None)
+        if course_data:
+            validated_data['course'] = course_data
+        
+        # Prepare MongoDB document
         mongo_data = {
-            'title': validated_data.get('title'),
-            'image': validated_data.get('image'),
-            'event_excerpt': validated_data.get('event_excerpt'),
+            **validated_data,
             'date': validated_data.get('date').isoformat(),
             'start_time': validated_data.get('start_time').isoformat(),
             'end_time': validated_data.get('end_time').isoformat(),
-            'timezone': validated_data.get('timezone', 'EST'),
-            'is_active': validated_data.get('is_active', True),
-            'instructor': validated_data.get('instructor'),
-            'instructor_info': validated_data.get('instructor_info'),
-            'workshop': validated_data.get('workshop', {}),
-            'who_can_attend': validated_data.get('who_can_attend'),
-            'django_id': validated_data.get('id')
+            'created_at': datetime.now().isoformat(),
+            'updated_at': datetime.now().isoformat()
         }
         
         result = db.events.insert_one(mongo_data)
@@ -631,19 +665,38 @@ class EventSerializer(serializers.Serializer):
 
     def update(self, instance, validated_data):
         db = get_mongo_db()
-        event_id = ObjectId(instance['id'])
+        event_id = ObjectId(instance.get('id', instance.get('_id')))
         
+        # Handle course update
+        if 'course' in validated_data:
+            if validated_data['course'] is None:
+                # Remove course reference
+                db.events.update_one(
+                    {"_id": event_id},
+                    {"$unset": {"course": ""}}
+                )
+            else:
+                # Update course data
+                db.events.update_one(
+                    {"_id": event_id},
+                    {"$set": {"course": validated_data['course']}}
+                )
+        
+        # Update other fields
         update_data = {
-            'title': validated_data.get('title', instance.get('title')),
-            'image': validated_data.get('image', instance.get('image')),
-            # Include all other fields similarly
-            'updated_at': datetime.now().isoformat()
+            k: v for k, v in validated_data.items()
+            if k != 'course'
         }
         
-        db.events.update_one(
-            {"_id": event_id},
-            {"$set": update_data}
-        )
+        if update_data:
+            db.events.update_one(
+                {"_id": event_id},
+                {"$set": {
+                    **update_data,
+                    'updated_at': datetime.now().isoformat()
+                }}
+            )
+        
         return db.events.find_one({"_id": event_id})
 
 logger = logging.getLogger(__name__)

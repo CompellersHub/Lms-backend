@@ -396,6 +396,7 @@ class Event(models.Model):
     instructor = models.CharField(max_length=100)
     instructor_info = models.TextField()
     workshop = models.JSONField(default=dict, blank=True, null=True)
+    Course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name='events', blank=True, null=True)
     who_can_attend = models.TextField(blank=True, null=True, help_text="Comma-separated list of attendees' emails")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -418,6 +419,7 @@ class Event(models.Model):
             "instructor": self.instructor,
             "instructor_info": self.instructor_info,
             "workshop": self.workshop,
+            "course": self.Course.to_dict() if self.Course else None,
             "who_can_attend": self.who_can_attend,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None

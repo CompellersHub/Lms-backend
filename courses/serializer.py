@@ -315,10 +315,10 @@ class CourseSerializer(serializers.Serializer):
     category = CategorySerializer()
     price = serializers.FloatField()
     original_price = serializers.FloatField()
-    target_audience = serializers.ListField(child=serializers.CharField())
-    learning_outcomes = serializers.ListField(child=serializers.CharField())
+    target_audience = serializers.JSONField(default=dict)
+    learning_outcomes = serializers.JSONField(default=dict)
     instructor = 'user.serializer.TeacherProfileSerializer'
-    required_materials = serializers.ListField(child=serializers.CharField())
+    required_materials = serializers.JSONField(default=dict)
     estimated_time = serializers.CharField(allow_blank=True, required=False)
     level = serializers.ChoiceField(choices=[
         ('beginner', 'Beginner'),
@@ -368,12 +368,12 @@ class CourseSerializer(serializers.Serializer):
             representation['curriculum'] = [ModuleInCourseSerializer().to_representation(item) for item in instance['curriculum']]
         elif 'curriculum' in instance and isinstance(instance['curriculum'], dict):
             representation['curriculum'] = [ModuleInCourseSerializer().to_representation(instance['curriculum'])]
-        if 'target_audience' in instance and isinstance(instance['target_audience'], dict):
-            representation['target_audience'] = TargetAudienceSerializer().to_representation(instance['target_audience'])
-        if 'learning_outcomes' in instance and isinstance(instance['learning_outcomes'], dict):
-            representation['learning_outcomes'] = LearningOutcomeSerializer().to_representation(instance['learning_outcomes'])        
-        if 'required_materials' in instance and isinstance(instance['required_materials'], dict):
-            representation['required_materials'] = RequiredMaterialSerializer().to_representation(instance['required_materials'])
+        # if 'target_audience' in instance and isinstance(instance['target_audience'], dict):
+        #     representation['target_audience'] = TargetAudienceSerializer().to_representation(instance['target_audience'])
+        # if 'learning_outcomes' in instance and isinstance(instance['learning_outcomes'], dict):
+        #     representation['learning_outcomes'] = LearningOutcomeSerializer().to_representation(instance['learning_outcomes'])        
+        # if 'required_materials' in instance and isinstance(instance['required_materials'], dict):
+        #     representation['required_materials'] = RequiredMaterialSerializer().to_representation(instance['required_materials'])
         if 'course_include' in instance and isinstance(instance['course_include'], dict):
             representation['course_include'] = CourseIncludeSerializer().to_representation(instance['course_include'])
 

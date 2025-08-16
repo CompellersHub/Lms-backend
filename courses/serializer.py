@@ -930,8 +930,8 @@ class EventRegistrationSerializer(serializers.Serializer):
     )
     email = serializers.CharField(required=True)
     first_name = serializers.CharField(required=True, max_length=100)
-    last_name = serializers.CharField(required=True, max_length=100)
-    phone_number = serializers.CharField(required=True)
+    last_name = serializers.CharField(required=False, max_length=100)
+    phone_number = serializers.CharField(required=False)
     whatsapp_number = serializers.CharField(required=False)
     message = serializers.CharField(required=False, allow_blank=True)
 

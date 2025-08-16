@@ -33,6 +33,7 @@ from .serializer import (
     CourseSerializer,
     CourseLibrarySerializer,
     AssignmentSerializer,
+    EventRegistrationSerializer,
     EventSerializer,
     SubmissionSerializer,
     VideoSerializer,
@@ -1062,3 +1063,58 @@ class GenerateCertificatePDF(APIView):
         except Exception as e:
             logger.error(f"Error generating certificate: {str(e)}")
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class EventRegistrationView(APIView):
+    def post(self, request):
+        """Handle course registration with just course name"""
+        serializer = EventRegistrationSerializer(data=request.data)
+        
+        if not serializer.is_valid():
+            return Response({
+                "success": False,
+                "errors": serializer.errors
+            }, status=status.HTTP_400_BAD_REQUEST)
+            
+        try:
+            db = get_mongo_db()
+            data = serializer.validated_data
+            
+            # Check if course exists (by name only)
+            if not db.courses.find_one({"name": data['course']}):
+                return Response({
+                    "success": False,
+                    "error": "Course not found"
+                }, status=status.HTTP_404_NOT_NOT_FOUND)
+            
+            # Check for existing registration
+            if db.registrations.find_one({
+                "course": data['course'],
+                "email": data['email']
+            }):
+                return Response({
+                    "success": False,
+                    "error": "Already registered for this course"
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Create minimal registration record
+            db.registrations.insert_one({
+                "course": data['course'],
+                "email": data['email'],
+                "first_name": data['first_name'],
+                "last_name": data['last_name'],
+                "phone": data['phone_number'],
+                "registered_at": datetime.now()
+            })
+            
+            return Response({
+                "success": True,
+                "message": f"Registered for {data['course']}",
+                "course": data['course']
+            }, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            logger.error(f"Registration error: {str(e)}")
+            return Response({
+                "success": False,
+                "error": "Registration failed"
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

@@ -40,6 +40,32 @@ def model_to_dict(instance):
 @receiver(post_save, sender=Make_Assignment)
 @receiver(post_save, sender=Course_include)
 @receiver(post_save, sender=Event)
+def sync_event_to_mongodb(sender, instance, **kwargs):
+    db = get_mongo_db()
+    collection_name = 'events'
+    data = model_to_dict(instance)
+    
+    # Ensure we have the latest course reference
+    if hasattr(instance, 'course') and instance.course:
+        # Double-check MongoDB for course reference
+        course_in_mongo = db['courses'].find_one({'django_id': instance.course.pk})
+        
+        if course_in_mongo:
+            data['course'] = course_in_mongo['_id']
+        else:
+            # If course not in MongoDB yet, store just the Django ID
+            data['course_django_id'] = instance.course.pk
+            data['course'] = None
+    
+    # Update or insert the document
+    existing = db[collection_name].find_one({'django_id': instance.pk})
+    if existing:
+        db[collection_name].update_one(
+            {'_id': existing['_id']},
+            {'$set': data}
+        )
+    else:
+        db[collection_name].insert_one(data)
 # @receiver(post_save, sender=CourseOrder)
 # @receiver(post_save, sender=CourseOrderItem)
 @receiver(post_save, sender=LiveClass)
@@ -73,14 +99,7 @@ def sync_to_mongodb(sender, instance, **kwargs):
         if 'course_id' in data:
             del data['course_id']
 
-    if sender == Event and hasattr(instance, 'course') and instance.course and hasattr(instance.course, 'pk'):
-        # Query MongoDB to get the _id of the related Course document
-        courses_collection = db['courses']
-        related_course_doc = courses_collection.find_one({'django_id': instance.course.pk})
-        if related_course_doc and '_id' in related_course_doc:
-            data['course'] = related_course_doc['_id']
-        if 'course_id' in data:
-            del data['course_id']    
+       
 
     if sender == LiveClass and hasattr(instance, 'course') and instance.course and hasattr(instance.course, 'pk'):
         # Query MongoDB to get the _id of the related Course document

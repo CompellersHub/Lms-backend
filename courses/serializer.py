@@ -4,6 +4,8 @@ from rest_framework import serializers
 from bson.objectid import ObjectId
 
 from user.serializer import TeacherProfileSerializer
+from django.core.validators import validate_email
+from django.core.exceptions import ValidationError
 from .mongo_utils import get_mongo_db
 # from user.serializer import TeacherProfileSerializer, CustomUserSerializer
 import logging
@@ -574,7 +576,7 @@ class LiveClassSerializer(serializers.Serializer):
 
 
 from rest_framework import serializers
-from .models import Event
+from .models import Course, Event
 from bson import ObjectId
 from django.db import connections
 
@@ -618,29 +620,23 @@ class EventSerializer(serializers.Serializer):
         
         return super().to_representation(instance)
 
-    # def to_internal_value(self, data):
-    #     """
-    #     Convert API data to MongoDB document format
-    #     """
-    #     validated_data = super().to_internal_value(data)
+    def to_internal_value(self, data):
+        data = data.copy()
         
-    #     # Handle course ID conversion
-    #     if 'course' in validated_data and validated_data['course']:
-    #         if isinstance(validated_data['course'], dict) and 'id' in validated_data['course']:
-    #             try:
-    #                 validated_data['course']['_id'] = ObjectId(validated_data['course']['id'])
-    #                 del validated_data['course']['id']
-    #             except:
-    #                 pass
-    #         elif isinstance(validated_data['course'], str):
-    #             try:
-    #                 validated_data['course'] = ObjectId(validated_data['course'])
-    #             except:
-    #                 pass
+        # Handle event ID
+        if 'id' in data:
+            if isinstance(data['id'], dict) and '$oid' in data['id']:
+                data['_id'] = ObjectId(data['id']['$oid'])
+                del data['id']
         
-    
+        # Handle course ID
+        if 'course' in data and data['course']:
+            if isinstance(data['course'], dict) and 'id' in data['course']:
+                if isinstance(data['course']['id'], dict) and '$oid' in data['course']['id']:
+                    data['course']['_id'] = ObjectId(data['course']['id']['$oid'])
+                    del data['course']['id']
         
-    #     return super().to_internal_value(data)
+        return super().to_internal_value(data)
 
     def create(self, validated_data):
         db = get_mongo_db()
@@ -925,3 +921,54 @@ class CompletionCertificateSerializer(serializers.Serializer):
         db = get_mongo_db()
         result = db.completion_certificates.insert_one(validated_data)
         return db.completion_certificates.find_one({"_id": result.inserted_id})
+
+
+class EventRegistrationSerializer(serializers.Serializer):
+    course = serializers.ChoiceField(
+        choices=[],  # Will be populated dynamically
+        required=True
+    )
+    email = serializers.CharField(required=True)
+    first_name = serializers.CharField(required=True, max_length=100)
+    last_name = serializers.CharField(required=True, max_length=100)
+    phone_number = serializers.CharField(required=True)
+    whatsapp_number = serializers.CharField(required=False)
+    message = serializers.CharField(required=False, allow_blank=True)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Dynamically set course choices - use 'course' to match field name
+        self.fields['course'].choices = [
+            (course.name, course.name) 
+            for course in Course.objects.filter(is_active=True)
+        ]
+
+    def validate_email(self, value):
+        try:
+            validate_email(value)
+            return value.lower()  # Normalize email to lowercase
+        except ValidationError:
+            raise serializers.ValidationError("Enter a valid email address")
+
+    def validate_phone_number(self, value):
+        if not value.isdigit():
+            raise serializers.ValidationError("Phone number should contain only digits")
+        return value
+
+    def validate_first_name(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("First name cannot be empty")
+        return value
+
+    def validate_last_name(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("Last name cannot be empty")
+        return value
+
+    def validate(self, data):
+        """
+        Optional: Add any cross-field validation here
+        """
+        return data

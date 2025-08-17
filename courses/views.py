@@ -1065,56 +1065,57 @@ class GenerateCertificatePDF(APIView):
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class EventRegistrationView(APIView):
+    permission_classes = [AllowAny]
+
     def post(self, request):
-        """Handle course registration with just course name"""
+        """
+        Handle event registration with manual course options
+        """
         serializer = EventRegistrationSerializer(data=request.data)
         
         if not serializer.is_valid():
-            return Response({
-                "success": False,
-                "errors": serializer.errors
-            }, status=status.HTTP_400_BAD_REQUEST)
-            
+            return Response(
+                {"error": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
         try:
             db = get_mongo_db()
             data = serializer.validated_data
             
-            # Check if course exists (by name only)
-            if not db.courses.find_one({"name": data['course']}):
-                return Response({
-                    "success": False,
-                    "error": "Course not found"
-                }, status=status.HTTP_404_NOT_NOT_FOUND)
-            
-            # Check for existing registration
-            if db.registrations.find_one({
-                "course": data['course'],
-                "email": data['email']
-            }):
-                return Response({
-                    "success": False,
-                    "error": "Already registered for this course"
-                }, status=status.HTTP_400_BAD_REQUEST)
-            
-            # Create minimal registration record
-            db.registrations.insert_one({
-                "course": data['course'],
+            # Create registration document
+            registration = {
+                "course_name": data['course_name'],
                 "email": data['email'],
                 "first_name": data['first_name'],
-                "last_name": data['last_name'],
-                "phone": data['phone_number'],
-                "registered_at": datetime.now()
-            })
+                "last_name": data.get('last_name', ''),
+                "phone_number": data.get('phone_number'),
+                "whatsapp_number": data.get('whatsapp_number'),
+                "message": data.get('message', ''),
+                "registration_date": datetime.now().isoformat(),
+                "status": "registered"
+            }
             
-            return Response({
+            # Save to MongoDB
+            result = db.registrations.insert_one(registration)
+            
+            # Prepare response
+            response_data = {
                 "success": True,
-                "message": f"Registered for {data['course']}",
-                "course": data['course']
-            }, status=status.HTTP_201_CREATED)
+                "message": "Registration successful",
+                "registration_id": str(result.inserted_id),
+                "course": data['course_name'],
+                "registrant": {
+                    "name": f"{data['first_name']} {data.get('last_name', '')}".strip(),
+                    "email": data['email']
+                }
+            }
+            
+            return Response(response_data, status=status.HTTP_201_CREATED)
             
         except Exception as e:
-            logger.error(f"Registration error: {str(e)}")
-            return Response({
-                "success": False,
-                "error": "Registration failed"
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.error(f"Registration failed: {str(e)}")
+            return Response(
+                {"error": "Registration failed. Please try again later."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

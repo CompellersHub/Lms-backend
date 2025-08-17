@@ -589,7 +589,7 @@ class EventSerializer(serializers.Serializer):
     title = serializers.CharField(max_length=200)
     image = serializers.URLField()
     event_excerpt = serializers.CharField()
-    date = serializers.DateField()
+    date = serializers.CharField()
     start_time = serializers.TimeField()
     end_time = serializers.TimeField()
     timezone = serializers.CharField(max_length=50, default='EST')
@@ -924,8 +924,16 @@ class CompletionCertificateSerializer(serializers.Serializer):
 
 
 class EventRegistrationSerializer(serializers.Serializer):
-    course = serializers.ChoiceField(
-        choices=[],  # Will be populated dynamically
+    COURSE_CHOICES = [
+        ('AML/KYC Compliance', 'AML/KYC Compliance'),
+        ('Business Analysis & Project Management', 'Business Analysis & Project Management'),
+        ('Cybersecurity', 'Cybersecurity'),
+        ('Data Analysis', 'Data Analysis'),
+        
+    ]
+    
+    course_name = serializers.ChoiceField(
+        choices=COURSE_CHOICES,
         required=True
     )
     email = serializers.CharField(required=True)
@@ -935,13 +943,7 @@ class EventRegistrationSerializer(serializers.Serializer):
     whatsapp_number = serializers.CharField(required=False)
     message = serializers.CharField(required=False, allow_blank=True)
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        # Dynamically set course choices - use 'course' to match field name
-        self.fields['course'].choices = [
-            (course.name, course.name) 
-            for course in Course.objects.filter(is_active=True)
-        ]
+    
 
     def validate_email(self, value):
         try:

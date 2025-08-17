@@ -388,7 +388,7 @@ class Event(models.Model):
     title = models.CharField(max_length=200)
     image = models.ImageField(storage=EventStorage)
     event_excerpt = models.TextField()
-    date = models.DateField()
+    date = models.CharField(max_length=100)
     start_time = models.TimeField()
     end_time = models.TimeField()
     timezone = models.CharField(max_length=50, default='EST')
@@ -411,7 +411,7 @@ class Event(models.Model):
             "title": self.title,
             "image": self.image.url if self.image else None,
             "event_excerpt": self.event_excerpt,
-            "date": self.date.isoformat() if self.date else None,
+            "date": self.date,
             "start_time": self.start_time.isoformat() if self.start_time else None,
             "end_time": self.end_time.isoformat() if self.end_time else None,
             "timezone": self.timezone,

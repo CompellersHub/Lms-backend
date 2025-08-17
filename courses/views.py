@@ -1,3 +1,5 @@
+import os
+import re
 import pytz
 from rest_framework import status
 from rest_framework.views import APIView
@@ -25,6 +27,12 @@ from rest_framework.authentication import SessionAuthentication
 from rest_framework.decorators import authentication_classes, permission_classes
 from django.contrib.auth import get_user_model
 from django.utils import timezone
+from brevo_python.rest import ApiException
+from brevo_python import ContactsApi, CreateContact
+from brevo_python import AddContactToList
+import sib_api_v3_sdk
+from sib_api_v3_sdk.rest import ApiException
+from sib_api_v3_sdk import ContactsApi, CreateContact
 
 
 from user.serializer import CustomUserSerializer
@@ -1064,13 +1072,34 @@ class GenerateCertificatePDF(APIView):
             logger.error(f"Error generating certificate: {str(e)}")
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+logger = logging.getLogger(__name__)
+
+# Brevo configuration
+BREVO_API_KEY = os.getenv('Brevo_API')
+
+# Map courses to Brevo list IDs
+COURSE_LISTS = {
+    "AML/KYC Compliance": 7,  # Replace with actual list IDs
+    "Data Analysis": 8,
+    "Business Analysis & Project Management": 9,
+    "Cybersecurity": 10
+}
+
+def format_phone_number(phone):
+    """Format phone number for Brevo compliance"""
+    if not phone:
+        return None
+    # Remove all non-digit characters
+    cleaned = re.sub(r'[^\d+]', '', phone)
+    # Add + if international number
+    if cleaned.startswith('00'):
+        cleaned = '+' + cleaned[2:]
+    return cleaned if cleaned else None
+
 class EventRegistrationView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
-        """
-        Handle event registration with manual course options
-        """
         serializer = EventRegistrationSerializer(data=request.data)
         
         if not serializer.is_valid():
@@ -1080,12 +1109,47 @@ class EventRegistrationView(APIView):
             )
         
         try:
-            db = get_mongo_db()
-            data = serializer.validated_data
+            # Initialize Brevo API client
+            configuration = sib_api_v3_sdk.Configuration()
+            configuration.api_key['api-key'] = BREVO_API_KEY
             
-            # Create registration document
+            api_instance = sib_api_v3_sdk.ContactsApi(sib_api_v3_sdk.ApiClient(configuration))
+            
+            data = serializer.validated_data
+            course_name = data['course_name']
+            formatted_phone = format_phone_number(data.get('phone_number'))
+            
+            # Prepare contact attributes
+            contact_attrs = {
+                'FIRSTNAME': data['first_name'],
+                'LASTNAME': data.get('last_name', ''),
+            }
+            
+            # Only add phone if valid
+            if formatted_phone:
+                contact_attrs['SMS'] = formatted_phone
+            
+            # Create Brevo contact
+            create_contact = CreateContact(
+                email=data['email'],
+                attributes=contact_attrs,
+                list_ids=[COURSE_LISTS[course_name]],
+                update_enabled=True
+            )
+            
+            # Try Brevo API first
+            try:
+                api_response = api_instance.create_contact(create_contact)
+                brevo_success = True
+                logger.info(f"Brevo contact created for {data['email']}")
+            except ApiException as e:
+                logger.error(f"Brevo API Error: {e.body if hasattr(e, 'body') else str(e)}")
+                brevo_success = False
+            
+            # Save to MongoDB
+            db = get_mongo_db()
             registration = {
-                "course_name": data['course_name'],
+                "course_name": course_name,
                 "email": data['email'],
                 "first_name": data['first_name'],
                 "last_name": data.get('last_name', ''),
@@ -1093,29 +1157,28 @@ class EventRegistrationView(APIView):
                 "whatsapp_number": data.get('whatsapp_number'),
                 "message": data.get('message', ''),
                 "registration_date": datetime.now().isoformat(),
-                "status": "registered"
+                "status": "registered",
+                "brevo_synced": brevo_success,
+                "brevo_formatted_phone": formatted_phone
             }
             
-            # Save to MongoDB
             result = db.registrations.insert_one(registration)
             
-            # Prepare response
-            response_data = {
+            response = {
                 "success": True,
-                "message": "Registration successful",
+                "message": "Registration complete",
                 "registration_id": str(result.inserted_id),
-                "course": data['course_name'],
-                "registrant": {
-                    "name": f"{data['first_name']} {data.get('last_name', '')}".strip(),
-                    "email": data['email']
-                }
+                "course": course_name
             }
             
-            return Response(response_data, status=status.HTTP_201_CREATED)
+            if not brevo_success:
+                response["warning"] = "Registered but failed to sync with mailing list"
+            
+            return Response(response, status=status.HTTP_201_CREATED)
             
         except Exception as e:
-            logger.error(f"Registration failed: {str(e)}")
+            logger.error(f"Registration failed: {str(e)}", exc_info=True)
             return Response(
-                {"error": "Registration failed. Please try again later."},
+                {"error": "Registration process failed"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )

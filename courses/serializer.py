@@ -1,5 +1,6 @@
 import datetime
 import os
+import re
 from rest_framework import serializers
 from bson.objectid import ObjectId
 
@@ -953,8 +954,11 @@ class EventRegistrationSerializer(serializers.Serializer):
             raise serializers.ValidationError("Enter a valid email address")
 
     def validate_phone_number(self, value):
-        if not value.isdigit():
-            raise serializers.ValidationError("Phone number should contain only digits")
+        if value:  # Only validate if phone number is provided
+            # Allow +, numbers, and whitespace/punctuation that will be removed later
+            if not re.match(r'^[\d\s+\-()]{6,20}$', value):
+                raise serializers.ValidationError(
+                    "Enter a valid phone number with country code (e.g. +44...)")
         return value
 
     def validate_first_name(self, value):

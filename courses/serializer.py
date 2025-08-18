@@ -568,10 +568,16 @@ class LiveClassSerializer(serializers.Serializer):
         Convert the '_id' field to 'id' and ensure it's always included in the output.
         """
         representation = super().to_representation(instance)
+
+        db = get_mongo_db()  # This now uses your working function
         
         # If we have a MongoDB ObjectId in the instance, include it in the response
         if '_id' in instance and not 'id' in representation:
             representation['id'] = str(instance['_id'])
+
+        if 'course_id' in representation:
+            course = db.courses.find_one({'_id': ObjectId(representation['course_id'])})
+            representation['course_name'] = course.get('name') if course else None
         
         return representation
 

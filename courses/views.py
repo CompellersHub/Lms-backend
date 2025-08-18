@@ -36,6 +36,7 @@ from sib_api_v3_sdk import ContactsApi, CreateContact
 
 
 from user.serializer import CustomUserSerializer
+from user.tasks import send_course_registration_email
 from .serializer import (
     CategorySerializer,
     CourseSerializer,
@@ -646,10 +647,13 @@ class VideoDetail(APIView):
             return Response({'message': 'Video deleted successfully'}, status=status.HTTP_204_NO_CONTENT)
         return Response(status=status.HTTP_404_NOT_FOUND)
     
+
+
 class CreateLiveClassView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
+        """Create a new live class with notifications"""
         serializer = LiveClassSerializer(data=request.data)
         
         if not serializer.is_valid():
@@ -658,117 +662,137 @@ class CreateLiveClassView(APIView):
         try:
             db = get_mongo_db()
             channel_layer = get_channel_layer()
+            data = serializer.validated_data
             
             # Validate course exists
-            course_id = serializer.validated_data['course_id']
-            course = db.courses.find_one({'_id': ObjectId(course_id)})
+            course_id = data['course_id']
+            course = db.courses.find_one(
+                {'_id': ObjectId(course_id)},
+                {'name': 1}  # Projection - only get the name
+            )
             if not course:
                 return Response(
                     {"error": "Course not found"}, 
                     status=status.HTTP_404_NOT_FOUND
                 )
             
-            # Validate teacher exists
-            teacher_id = serializer.validated_data['teacher_id']
+            # Validate teacher exists and matches requesting user (if needed)
+            teacher_id = data['teacher_id']
             if not db.teacherprofiles.find_one({'_id': ObjectId(teacher_id)}):
                 return Response(
                     {"error": "Teacher not found"}, 
                     status=status.HTTP_404_NOT_FOUND
                 )
-            
-            # Add additional fields before saving
-            live_class_data = serializer.validated_data
-            live_class_data['created_at'] = datetime.now(pytz.utc)
-            live_class_data['status'] = 'scheduled'
+
+            # Prepare live class document
+            live_class_data = {
+                **data,
+                'created_by': str(request.user.id),
+                'created_at': datetime.now(pytz.utc),
+                'status': 'scheduled',
+                'participants': []  # Initialize empty participants list
+            }
             
             # Create the live class
             result = db.liveclasss.insert_one(live_class_data)
             live_class_id = str(result.inserted_id)
             
-            # Get enrolled students (paginated for large classes)
-            batch_size = 100
-            skip = 0
-            
-            while True:
-                enrollments = list(db.CourseEnrollment.find(
-                    {'course_id': ObjectId(course_id)}).skip(skip).limit(batch_size))
-                
-                if not enrollments:
-                    break
-                
-                # Send notifications in batches
-                for enrollment in enrollments:
-                    async_to_sync(channel_layer.group_send)(
-                        f"user_{enrollment['student_id']}",
-                        {
-                            "type": "send_notification",
-                            "message": f"New live class: {live_class_data.get('title', '')}",
-                            "live_class_id": live_class_id,
-                            "course_id": course_id,
-                            "timestamp": datetime.now(pytz.utc).isoformat(),
-                            "course_name": course.get('name', ''),
-                            "start_time": live_class_data.get('start_time').isoformat() if live_class_data.get('start_time') else None
-                        }
-                    )
-                
-                skip += batch_size
+            # Notify enrolled students (batched for performance)
+            self._notify_enrolled_students(
+                db, channel_layer, 
+                course_id, live_class_id, 
+                course.get('name'), 
+                data.get('start_time')
+            )
 
-            # Also notify the teacher
+            # Notify teacher
             async_to_sync(channel_layer.group_send)(
                 f"user_{teacher_id}",
                 {
                     "type": "send_notification",
-                    "message": f"You have scheduled a live class for {course.get('name', '')}",
+                    "message": f"Live class scheduled for {course.get('name', '')}",
                     "live_class_id": live_class_id,
                     "course_id": course_id,
                     "timestamp": datetime.now(pytz.utc).isoformat()
                 }
             )
 
-            # Get the created live class to return in response
-            created_class = db.liveclasss.find_one({'_id': ObjectId(live_class_id)})
-            serializer = LiveClassSerializer(created_class)
-
+            # Return created resource
+            created_class = db.liveclasss.find_one(
+                {'_id': ObjectId(live_class_id)},
+                {'_id': 0}  # Exclude MongoDB _id as serializer handles it
+            )
+            
             return Response(
                 {
                     "message": "Live class created successfully",
-                    "data": serializer.data
+                    "data": LiveClassSerializer(created_class).data
                 }, 
                 status=status.HTTP_201_CREATED
             )
 
         except Exception as e:
             return Response(
-                {"error": f"An error occurred: {str(e)}"}, 
+                {"error": f"Failed to create live class: {str(e)}"}, 
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
     def get(self, request):
         try:
-            db = get_mongo_db()
-            live_classes = list(db.liveclasss.find())
+            db = get_mongo_db()  # Use the centralized function
+            live_classes = list(db.liveclasss.find().limit(100))  # Add limit for safety
             serializer = LiveClassSerializer(live_classes, many=True)
             return Response(serializer.data)
         except Exception as e:
             return Response(
-                {"error": f"An error occurred: {str(e)}"}, 
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {"error": "Database connection failed"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
             )
-    
+
+    def _notify_enrolled_students(self, db, channel_layer, course_id, live_class_id, course_name, start_time):
+        """Helper method to batch notify enrolled students"""
+        batch_size = 100
+        skip = 0
+        
+        while True:
+            enrollments = list(db.CourseEnrollment.find(
+                {'course_id': ObjectId(course_id)},
+                {'student_id': 1}  # Only get student IDs
+            ).skip(skip).limit(batch_size))
+            
+            if not enrollments:
+                break
+            
+            for enrollment in enrollments:
+                async_to_sync(channel_layer.group_send)(
+                    f"user_{enrollment['student_id']}",
+                    {
+                        "type": "send_notification",
+                        "message": f"New live class: {course_name}",
+                        "live_class_id": live_class_id,
+                        "course_id": course_id,
+                        "timestamp": datetime.now(pytz.utc).isoformat(),
+                        "course_name": course_name,
+                        "start_time": start_time.isoformat() if start_time else None
+                    }
+                )
+            
+            skip += batch_size
+
 
 class LiveClassDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def get(self, request, live_class_id):
+        """Retrieve a single live class details"""
         try:
-            db = get_mongo_db()
-            
-            # Validate if the ID is a valid ObjectId
             if not ObjectId.is_valid(live_class_id):
                 return Response(
                     {"error": "Invalid live class ID format"},
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
-            # Find the live class in MongoDB
+            db = get_mongo_db()
             live_class = db.liveclasss.find_one({'_id': ObjectId(live_class_id)})
             
             if not live_class:
@@ -777,10 +801,79 @@ class LiveClassDetailView(APIView):
                     status=status.HTTP_404_NOT_FOUND
                 )
             
-            # Serialize the data
-            serializer = LiveClassSerializer(live_class)
+            return Response(LiveClassSerializer(live_class).data)
             
-            return Response(serializer.data)
+        except Exception as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    def patch(self, request, live_class_id):
+        """Update a live class (partial update)"""
+        try:
+            if not ObjectId.is_valid(live_class_id):
+                return Response(
+                    {"error": "Invalid live class ID format"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            db = get_mongo_db()
+            live_class = db.liveclasss.find_one({'_id': ObjectId(live_class_id)})
+            
+            if not live_class:
+                return Response(
+                    {"error": "Live class not found"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            serializer = LiveClassSerializer(
+                instance=live_class,
+                data=request.data,
+                partial=True
+            )
+            
+            if not serializer.is_valid():
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            
+            serializer.save()
+            
+            return Response({
+                "message": "Live class updated successfully",
+                "data": serializer.data
+            })
+            
+        except Exception as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    def delete(self, request, live_class_id):
+        """Cancel a live class"""
+        try:
+            if not ObjectId.is_valid(live_class_id):
+                return Response(
+                    {"error": "Invalid live class ID format"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            db = get_mongo_db()
+            result = db.liveclasss.update_one(
+                {'_id': ObjectId(live_class_id)},
+                {'$set': {'status': 'cancelled'}}
+            )
+            
+            if result.modified_count == 0:
+                return Response(
+                    {"error": "Live class not found or already cancelled"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            return Response(
+                {"message": "Live class cancelled successfully"},
+                status=status.HTTP_200_OK
+            )
             
         except Exception as e:
             return Response(
@@ -1113,7 +1206,7 @@ class EventRegistrationView(APIView):
             configuration = sib_api_v3_sdk.Configuration()
             configuration.api_key['api-key'] = BREVO_API_KEY
             
-            api_instance = sib_api_v3_sdk.ContactsApi(sib_api_v3_sdk.ApiClient(configuration))
+            api_instance = ContactsApi(sib_api_v3_sdk.ApiClient(configuration))
             
             data = serializer.validated_data
             course_name = data['course_name']
@@ -1163,12 +1256,22 @@ class EventRegistrationView(APIView):
             }
             
             result = db.registrations.insert_one(registration)
+
+            # Send confirmation email via Celery
+            send_course_registration_email.delay(
+                to_email=data['email'],
+                first_name=data['first_name'],
+                course_name=course_name,
+                course_date="24th August 2025, 07:00pm",
+                zoom_link="https://zoom.us/j/95062242795?pwd=r2CTvBheLUQ0YC7Wr8jYwRQRs5PgeU.1"
+            )
             
             response = {
                 "success": True,
-                "message": "Registration complete",
+                "message": "Registration complete. Confirmation email sent.",
                 "registration_id": str(result.inserted_id),
-                "course": course_name
+                "course": course_name,
+                "brevo_synced": brevo_success
             }
             
             if not brevo_success:

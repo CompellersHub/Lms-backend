@@ -73,3 +73,40 @@ def send_application_received_email(self, to_email, first_name):
     except Exception as e:
         logger.error(f"Failed to send application email: {str(e)}")
         self.retry(exc=e, countdown=60, max_retries=3)
+
+
+@shared_task(bind=True)
+def send_course_registration_email(self, to_email, first_name, course_name, course_date, zoom_link):
+    """
+    Celery task to send course registration confirmation email
+    """
+    try:
+        logger.info(f"Sending course registration email to {to_email}")
+        
+        # Prepare template parameters
+        params = {
+            'FIRST_NAME': first_name,
+            'COURSE_NAME': course_name,
+            'COURSE_DATE': course_date,
+            'ZOOM_LINK': zoom_link
+        }
+        
+        # Call email service
+        success = send_brevo_email(
+            to_email=to_email,
+            template_id=8,  # Create this template in Brevo
+            params=params
+        )
+        
+        if not success:
+            raise Exception("Brevo API returned no response")
+            
+        return {
+            'status': 'success',
+            'email': to_email,
+            'message': "Course registration email sent successfully"
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to send to {to_email}: {str(e)}")
+        raise self.retry(exc=e, countdown=60, max_retries=3)

@@ -984,3 +984,48 @@ class EventRegistrationSerializer(serializers.Serializer):
         Optional: Add any cross-field validation here
         """
         return data
+    
+
+class ConsultationSerializer(serializers.Serializer):
+    
+    email = serializers.CharField(required=True)
+    firstName = serializers.CharField(required=True, max_length=100)
+    lastName = serializers.CharField(required=False, max_length=100)
+    phone_number = serializers.CharField(required=False)
+    whatsappNumber = serializers.CharField(required=False)
+    message = serializers.CharField(required=False, allow_blank=True)
+
+    
+
+    def validate_email(self, value):
+        try:
+            validate_email(value)
+            return value.lower()  # Normalize email to lowercase
+        except ValidationError:
+            raise serializers.ValidationError("Enter a valid email address")
+
+    def validate_phone_number(self, value):
+        if value:  # Only validate if phone number is provided
+            # Allow +, numbers, and whitespace/punctuation that will be removed later
+            if not re.match(r'^[\d\s+\-()]{6,20}$', value):
+                raise serializers.ValidationError(
+                    "Enter a valid phone number with country code (e.g. +44...)")
+        return value
+
+    def validate_firstName(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("First name cannot be empty")
+        return value
+
+    def validate_lastName(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("Last name cannot be empty")
+        return value
+
+    def validate(self, data):
+        """
+        Optional: Add any cross-field validation here
+        """
+        return data

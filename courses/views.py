@@ -39,6 +39,7 @@ from user.serializer import CustomUserSerializer
 from user.tasks import send_course_registration_email
 from .serializer import (
     CategorySerializer,
+    ConsultationSerializer,
     CourseSerializer,
     CourseLibrarySerializer,
     AssignmentSerializer,
@@ -1283,5 +1284,104 @@ class EventRegistrationView(APIView):
             logger.error(f"Registration failed: {str(e)}", exc_info=True)
             return Response(
                 {"error": "Registration process failed"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+logger = logging.getLogger(__name__)
+
+# Brevo Configuration
+BREVO_API_KEY = os.getenv('Brevo_API')
+CONSULTATION_WITH_MESSAGE_LIST_ID = 12  # Replace with your actual list ID
+CONSULTATION_WITHOUT_MESSAGE_LIST_ID = 13  # Replace with your actual list ID
+
+class ConsultationView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = ConsultationSerializer(data=request.data)
+        
+        if not serializer.is_valid():
+            return Response(
+                {"error": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            # Initialize Brevo API client
+            configuration = sib_api_v3_sdk.Configuration()
+            configuration.api_key['api-key'] = BREVO_API_KEY
+            
+            api_instance = sib_api_v3_sdk.ContactsApi(sib_api_v3_sdk.ApiClient(configuration))
+            
+            data = serializer.validated_data
+            has_message = bool(data.get('message', '').strip())
+            
+            # Prepare contact attributes
+            contact_attrs = {
+                'FIRSTNAME': data['firstName'],
+                'LASTNAME': data.get('lastName', ''),
+                'WHATSAPP': data.get('whatsappNumber', ''),
+                'SMS': data.get('phone_number', ''),
+            }
+            
+            # Determine which list to add to based on message presence
+            list_ids = [CONSULTATION_WITH_MESSAGE_LIST_ID if has_message 
+                        else CONSULTATION_WITHOUT_MESSAGE_LIST_ID]
+            
+            # Create Brevo contact
+            create_contact = sib_api_v3_sdk.CreateContact(
+                email=data['email'],
+                attributes=contact_attrs,
+                list_ids=list_ids,
+                update_enabled=True
+            )
+            
+            # Try Brevo API first
+            try:
+                api_response = api_instance.create_contact(create_contact)
+                brevo_success = True
+                logger.info(f"Brevo contact created for {data['email']}")
+            except ApiException as e:
+                logger.error(f"Brevo API Error: {e.body if hasattr(e, 'body') else str(e)}")
+                brevo_success = False
+            
+            # Save to your database (example with MongoDB)
+            # If you're using Django models instead, replace this section
+            db = get_mongo_db()  # Your MongoDB connection function
+            consultation = {
+                "email": data['email'],
+                "first_name": data['firstName'],
+                "last_name": data.get('lastName', ''),
+                "phone_number": data.get('phone_number', ''),
+                "whatsapp_number": data.get('whatsappNumber', ''),
+                "message": data.get('message', ''),
+                "has_message": has_message,
+                "created_at": datetime.now().isoformat(),
+                "brevo_synced": brevo_success,
+            }
+            
+            result = db.consultations.insert_one(consultation)
+
+            # Send confirmation email (optional)
+            # send_consultation_confirmation.delay(data['email'], data['firstName'])
+            
+            response = {
+                "success": True,
+                "message": "Consultation request submitted successfully",
+                "consultation_id": str(result.inserted_id),
+                "has_message": has_message,
+                "brevo_synced": brevo_success
+            }
+            
+            if not brevo_success:
+                response["warning"] = "Consultation saved but failed to sync with mailing list"
+            
+            return Response(response, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            logger.error(f"Consultation submission failed: {str(e)}", exc_info=True)
+            return Response(
+                {"error": "Consultation submission process failed"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )

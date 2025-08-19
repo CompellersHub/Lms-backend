@@ -5,8 +5,9 @@ from rest_framework import status
 
 from blog.models import BlogUser
 from blog.serializer import BlogUserSerializer
+from user.services import EmailService
 from user.utils.email_service import send_brevo_email
-from .serializer import CourseProgressSerializer, CustomUserSerializer, TeacherProfileSerializer, NotificationSerializer, CourseProgressRecordSerializer, CourseProgressResponseSerializer
+from .serializer import CourseProgressSerializer, CustomUserSerializer, IndividualEmailSerializer, MassEmailSerializer, TeacherProfileSerializer, NotificationSerializer, CourseProgressRecordSerializer, CourseProgressResponseSerializer
 from rest_framework_simplejwt.views import TokenObtainPairView # Use this for base JWT view
 from django.utils.translation import gettext_lazy as _
 from rest_framework.views import APIView
@@ -1366,3 +1367,126 @@ class TeacherDashboardView(APIView):
         }
 
         return Response(response_data, status=status.HTTP_200_OK)
+
+
+class TeacherEmailView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request):
+        """Handle both individual and mass email based on request data"""
+        # Check if it's individual or mass email
+        if 'student_email' in request.data:
+            serializer = IndividualEmailSerializer(data=request.data)
+        elif 'student_emails' in request.data:
+            serializer = MassEmailSerializer(data=request.data)
+        else:
+            return Response(
+                {"error": "Must provide either student_email or student_emails"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if not serializer.is_valid():
+            return Response(
+                {"error": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            email_service = EmailService()
+            data = serializer.validated_data
+            
+            # Prepare HTML content - FIXED: No backslashes in f-string expressions
+            message_html = data['message'].replace('\n', '<br>')
+            html_content = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>{data['subject']}</title>
+</head>
+<body>
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #333;">{data['subject']}</h2>
+        <div style="background-color: #f9f9f9; padding: 20px; border-radius: 5px;">
+            {message_html}
+        </div>
+        <p style="color: #666; font-size: 14px; margin-top: 20px;">
+            Sent by: {data['teacher_name']} ({data['teacher_email']})
+        </p>
+    </div>
+</body>
+</html>
+            """
+            
+            if 'student_email' in data:
+                # Individual email
+                success = email_service.send_individual_email(
+                    to_email=data['student_email'],
+                    subject=data['subject'],
+                    html_content=html_content,
+                    teacher_name=data['teacher_name'],
+                    teacher_email=data['teacher_email']
+                )
+                
+                if success:
+                    # Log the email sending
+                    self._log_email(
+                        request.user,
+                        [data['student_email']],
+                        data['subject'],
+                        "individual"
+                    )
+                    
+                    return Response({
+                        "success": True,
+                        "message": "Email sent successfully",
+                        "recipient": data['student_email'],
+                        "type": "individual"
+                    }, status=status.HTTP_200_OK)
+                else:
+                    return Response({
+                        "error": "Failed to send email"
+                    }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                    
+            else:
+                # Mass email
+                success_count = email_service.send_mass_email(
+                    to_emails=data['student_emails'],
+                    subject=data['subject'],
+                    html_content=html_content,
+                    teacher_name=data['teacher_name'],
+                    teacher_email=data['teacher_email']
+                )
+                
+                if success_count > 0:
+                    # Log the email sending
+                    self._log_email(
+                        request.user,
+                        data['student_emails'],
+                        data['subject'],
+                        "mass"
+                    )
+                    
+                    return Response({
+                        "success": True,
+                        "message": f"Emails sent to {success_count} recipients",
+                        "total_recipients": len(data['student_emails']),
+                        "successful_sends": success_count,
+                        "type": "mass"
+                    }, status=status.HTTP_200_OK)
+                else:
+                    return Response({
+                        "error": "Failed to send any emails"
+                    }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                    
+        except Exception as e:
+            logger.error(f"Email sending failed: {str(e)}", exc_info=True)
+            return Response(
+                {"error": "Email sending process failed"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    def _log_email(self, user, recipients, subject, email_type):
+        """Log email activity to database"""
+        # You can implement logging to your database here
+        logger.info(f"Teacher {user.email} sent {email_type} email to {len(recipients)} recipients: {subject}")

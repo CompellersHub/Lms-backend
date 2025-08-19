@@ -350,7 +350,7 @@ EMAIL_HOST_PASSWORD = os.getenv('BREVO_SMTP_KEY') # Your Brevo SMTP key (the aut
 
 # brevo email 
 
-CELERY_BROKER_URL = 'amqp://localhost'  # or your broker URL
+CELERY_BROKER_URL = 'amqp://localhost' 
 CELERY_RESULT_BACKEND = 'rpc://'
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'

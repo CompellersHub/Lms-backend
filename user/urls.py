@@ -28,4 +28,6 @@ urlpatterns = [
     path('admin/verify-teachers/', views.AdminTeacherVerificationView.as_view(), name='admin-verify-teachers'),
     path('admin/verify-teachers/<str:teacher_id>/', views.AdminTeacherVerificationDetailView.as_view(), name='admin-verify-teachers-detail'),
     # path('admin/verify-teachers/<str:teacher_id>/', views.AdminTeacherVerificationView.as_view(), name='admin-verify-teacher'),
+
+     path('teacher/email/', views.TeacherEmailView.as_view(), name='teacher-email'),
 ]

@@ -12,6 +12,8 @@ from django.db import models # Add this line
 from django.contrib.auth import authenticate
 from django.utils.translation import gettext_lazy as _
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from django.core.validators import validate_email
+from django.core.exceptions import ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -503,3 +505,38 @@ class CourseProgressRecordSerializer(serializers.Serializer):
 
         representation['details'] = details_data
         return representation
+    
+
+class IndividualEmailSerializer(serializers.Serializer):
+    student_email = serializers.EmailField(required=True)
+    subject = serializers.CharField(required=True, max_length=200)
+    message = serializers.CharField(required=True)
+    teacher_name = serializers.CharField(required=True, max_length=100)
+    teacher_email = serializers.EmailField(required=True)
+
+    def validate_student_email(self, value):
+        try:
+            validate_email(value)
+            return value.lower()
+        except ValidationError:
+            raise serializers.ValidationError("Enter a valid student email address")
+
+class MassEmailSerializer(serializers.Serializer):
+    student_emails = serializers.ListField(
+        child=serializers.EmailField(),
+        required=True
+    )
+    subject = serializers.CharField(required=True, max_length=200)
+    message = serializers.CharField(required=True)
+    teacher_name = serializers.CharField(required=True, max_length=100)
+    teacher_email = serializers.EmailField(required=True)
+
+    def validate_student_emails(self, value):
+        valid_emails = []
+        for email in value:
+            try:
+                validate_email(email)
+                valid_emails.append(email.lower())
+            except ValidationError:
+                raise serializers.ValidationError(f"Invalid email: {email}")
+        return valid_emails

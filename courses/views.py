@@ -654,7 +654,7 @@ class CreateLiveClassView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        """Create a new live class with notifications"""
+        """Create a new live class"""
         serializer = LiveClassSerializer(data=request.data)
         
         if not serializer.is_valid():
@@ -662,7 +662,6 @@ class CreateLiveClassView(APIView):
 
         try:
             db = get_mongo_db()
-            channel_layer = get_channel_layer()
             data = serializer.validated_data
             
             # Validate course exists
@@ -677,7 +676,7 @@ class CreateLiveClassView(APIView):
                     status=status.HTTP_404_NOT_FOUND
                 )
             
-            # Validate teacher exists and matches requesting user (if needed)
+            # Validate teacher exists
             teacher_id = data['teacher_id']
             if not db.teacherprofiles.find_one({'_id': ObjectId(teacher_id)}):
                 return Response(
@@ -697,32 +696,9 @@ class CreateLiveClassView(APIView):
             # Create the live class
             result = db.liveclasss.insert_one(live_class_data)
             live_class_id = str(result.inserted_id)
-            
-            # Notify enrolled students (batched for performance)
-            self._notify_enrolled_students(
-                db, channel_layer, 
-                course_id, live_class_id, 
-                course.get('name'), 
-                data.get('start_time')
-            )
-
-            # Notify teacher
-            async_to_sync(channel_layer.group_send)(
-                f"user_{teacher_id}",
-                {
-                    "type": "send_notification",
-                    "message": f"Live class scheduled for {course.get('name', '')}",
-                    "live_class_id": live_class_id,
-                    "course_id": course_id,
-                    "timestamp": datetime.now(pytz.utc).isoformat()
-                }
-            )
 
             # Return created resource
-            created_class = db.liveclasss.find_one(
-                {'_id': ObjectId(live_class_id)},
-                {'_id': 0}  # Exclude MongoDB _id as serializer handles it
-            )
+            created_class = db.liveclasss.find_one({'_id': ObjectId(live_class_id)})
             
             return Response(
                 {
@@ -739,46 +715,45 @@ class CreateLiveClassView(APIView):
             )
 
     def get(self, request):
+        """List all live classes"""
         try:
-            db = get_mongo_db()  # Use the centralized function
-            live_classes = list(db.liveclasss.find().limit(100))  # Add limit for safety
+            db = get_mongo_db()
+            
+            # Build query based on request parameters
+            query = {}
+            if teacher_id := request.query_params.get('teacher_id'):
+                if ObjectId.is_valid(teacher_id):
+                    query['teacher_id'] = ObjectId(teacher_id)
+            
+            if course_id := request.query_params.get('course_id'):
+                if ObjectId.is_valid(course_id):
+                    query['course_id'] = ObjectId(course_id)
+            
+            if status := request.query_params.get('status'):
+                query['status'] = status
+            
+            live_classes = list(db.liveclasss.find(query).limit(100))
+            
+            # Convert ObjectId to string for serialization
+            for lc in live_classes:
+                lc['_id'] = str(lc['_id'])
+                if 'course_id' in lc:
+                    lc['course_id'] = str(lc['course_id'])
+                if 'teacher_id' in lc:
+                    lc['teacher_id'] = str(lc['teacher_id'])
+            
             serializer = LiveClassSerializer(live_classes, many=True)
-            return Response(serializer.data)
+            
+            return Response({
+                "count": len(live_classes),
+                "results": serializer.data
+            })
+            
         except Exception as e:
             return Response(
-                {"error": "Database connection failed"},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE
+                {"error": f"Failed to fetch live classes: {str(e)}"}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-
-    def _notify_enrolled_students(self, db, channel_layer, course_id, live_class_id, course_name, start_time):
-        """Helper method to batch notify enrolled students"""
-        batch_size = 100
-        skip = 0
-        
-        while True:
-            enrollments = list(db.CourseEnrollment.find(
-                {'course_id': ObjectId(course_id)},
-                {'student_id': 1}  # Only get student IDs
-            ).skip(skip).limit(batch_size))
-            
-            if not enrollments:
-                break
-            
-            for enrollment in enrollments:
-                async_to_sync(channel_layer.group_send)(
-                    f"user_{enrollment['student_id']}",
-                    {
-                        "type": "send_notification",
-                        "message": f"New live class: {course_name}",
-                        "live_class_id": live_class_id,
-                        "course_id": course_id,
-                        "timestamp": datetime.now(pytz.utc).isoformat(),
-                        "course_name": course_name,
-                        "start_time": start_time.isoformat() if start_time else None
-                    }
-                )
-            
-            skip += batch_size
 
 
 class LiveClassDetailView(APIView):

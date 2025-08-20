@@ -469,126 +469,187 @@ class CourseLibrarySerializer(serializers.Serializer):
 # ... (rest of your serializers remain the same)
 
 class LiveClassSerializer(serializers.Serializer):
-    id = serializers.CharField(read_only=True)  # This will be the live class ID
-    course_id = serializers.CharField(write_only=True)  # For input
-    course = serializers.SerializerMethodField(read_only=True)  # For output
-    teacher_id = serializers.CharField(write_only=True)  # For input
-    teacher = serializers.SerializerMethodField(read_only=True)  # For output
+    id = serializers.CharField(read_only=True)
+    course_id = serializers.CharField(write_only=True)
+    course = serializers.SerializerMethodField(read_only=True)
+    teacher_id = serializers.CharField(write_only=True)
+    teacher = serializers.SerializerMethodField(read_only=True)
     start_time = serializers.DateTimeField()
     end_time = serializers.DateTimeField()
     created_at = serializers.DateTimeField(read_only=True)
     link = serializers.URLField()
+    status = serializers.CharField(read_only=True, default='scheduled')
 
     def get_course(self, obj):
-        db = get_mongo_db()
-        course_id = obj.get('course_id') or (obj['course'] if 'course' in obj else None)
-        
-        if not course_id:
+        """Safely get course information without breaking the serializer"""
+        try:
+            course_id = obj.get('course_id')
+            if not course_id:
+                return None
+                
+            # Convert to ObjectId if it's a string
+            if isinstance(course_id, str):
+                course_id = ObjectId(course_id)
+            
+            db = get_mongo_db()
+            course = db.courses.find_one(
+                {'_id': course_id},
+                {'name': 1, 'code': 1}  # Only get needed fields
+            )
+            
+            if not course:
+                return None
+                
+            return {
+                'id': str(course['_id']),
+                'name': course.get('name', ''),
+                'code': course.get('code', '')
+            }
+            
+        except Exception as e:
+            # Don't break serialization on error
             return None
-            
-        if isinstance(course_id, ObjectId):
-            course_id = str(course_id)
-            
-        course = db.courses.find_one({'_id': ObjectId(course_id)})
-        if not course:
-            return None
-            
-        return {
-            'id': str(course['_id']),
-            'name': course.get('name'),
-            # include other course fields you need
-        }
 
     def get_teacher(self, obj):
+        """Safely get teacher information without breaking the serializer"""
         try:
-            db = get_mongo_db()
-            teacher_id = (obj.get('teacher_id') or 
-                         obj.get('teacher') or 
-                         (obj['teacher'] if 'teacher' in obj else None))
-
+            teacher_id = obj.get('teacher_id')
             if not teacher_id:
                 return None
-
-            if not isinstance(teacher_id, ObjectId):
-                teacher_id = ObjectId(str(teacher_id))
-
+                
+            # Convert to ObjectId if it's a string
+            if isinstance(teacher_id, str):
+                teacher_id = ObjectId(teacher_id)
+            
+            db = get_mongo_db()
             teacher = db.teacherprofiles.find_one(
                 {'_id': teacher_id},
-                {'first_name': 1, 'last_name': 1}
+                {'first_name': 1, 'last_name': 1, 'email': 1}
             )
-
+            
             if not teacher:
                 return None
-
+                
             return {
                 'id': str(teacher['_id']),
                 'first_name': teacher.get('first_name', ''),
                 'last_name': teacher.get('last_name', ''),
+                'email': teacher.get('email', '')
             }
+            
         except Exception as e:
-            print(f"Error fetching teacher data: {str(e)}")
+            # Don't break serialization on error
             return None
 
     def create(self, validated_data):
-        db = get_mongo_db()
-        live_class = {
-            'course_id': ObjectId(validated_data['course_id']),
-            'teacher_id': ObjectId(validated_data['teacher_id']),
-            'start_time': validated_data['start_time'],
-            'end_time': validated_data['end_time'],
-            'link': validated_data.get('link'),
-            'created_at': timezone.now()
-        }
-        result = db.liveclasss.insert_one(live_class)
-        # Return the complete object with _id included
-        live_class['_id'] = result.inserted_id
-        live_class['id'] = str(result.inserted_id)  # Add string version of ID
-        return live_class
+        """Create a new live class"""
+        try:
+            db = get_mongo_db()
+            
+            live_class_data = {
+                'course_id': ObjectId(validated_data['course_id']),
+                'teacher_id': ObjectId(validated_data['teacher_id']),
+                'start_time': validated_data['start_time'],
+                'end_time': validated_data['end_time'],
+                'link': validated_data['link'],
+                'created_at': timezone.now(),
+                'status': 'scheduled',
+                'participants': []
+            }
+            
+            result = db.liveclasss.insert_one(live_class_data)
+            live_class_data['_id'] = result.inserted_id
+            live_class_data['id'] = str(result.inserted_id)
+            
+            return live_class_data
+            
+        except Exception as e:
+            raise serializers.ValidationError(f"Failed to create live class: {str(e)}")
 
     def update(self, instance, validated_data):
-        db = get_mongo_db()
-        updates = {
-            'course_id': ObjectId(validated_data.get('course_id', instance['course_id'])),
-            'teacher_id': ObjectId(validated_data.get('teacher_id', instance['teacher_id'])),
-            'start_time': validated_data.get('start_time', instance['start_time']),
-            'end_time': validated_data.get('end_time', instance['end_time']),
-            'link': validated_data.get('link', instance.get('link'))
-        }
-        
-        db.liveclasss.update_one({'_id': ObjectId(instance['_id'])}, {'$set': updates})
-        
-        # Update the instance with the new values
-        instance.update(updates)
-        # Ensure the ID is included in the response
-        instance['id'] = str(instance['_id'])
-        return instance
+        """Update an existing live class"""
+        try:
+            db = get_mongo_db()
+            
+            updates = {}
+            if 'course_id' in validated_data:
+                updates['course_id'] = ObjectId(validated_data['course_id'])
+            if 'teacher_id' in validated_data:
+                updates['teacher_id'] = ObjectId(validated_data['teacher_id'])
+            if 'start_time' in validated_data:
+                updates['start_time'] = validated_data['start_time']
+            if 'end_time' in validated_data:
+                updates['end_time'] = validated_data['end_time']
+            if 'link' in validated_data:
+                updates['link'] = validated_data['link']
+            
+            if updates:
+                db.liveclasss.update_one(
+                    {'_id': ObjectId(instance['_id'])},
+                    {'$set': updates}
+                )
+                
+                # Update the instance
+                instance.update(updates)
+            
+            return instance
+            
+        except Exception as e:
+            raise serializers.ValidationError(f"Failed to update live class: {str(e)}")
 
     def to_representation(self, instance):
-        """
-        Convert the '_id' field to 'id' and ensure it's always included in the output.
-        """
+        """Convert MongoDB document to API response format"""
         representation = super().to_representation(instance)
-
-        db = get_mongo_db()  # This now uses your working function
         
-        # If we have a MongoDB ObjectId in the instance, include it in the response
-        if '_id' in instance and not 'id' in representation:
+        # Ensure ID is always present
+        if '_id' in instance and 'id' not in representation:
             representation['id'] = str(instance['_id'])
-
-        if 'course_id' in representation:
-            course = db.courses.find_one({'_id': ObjectId(representation['course_id'])})
-            representation['course_name'] = course.get('name') if course else None
+        
+        # Remove internal MongoDB fields
+        representation.pop('_id', None)
+        representation.pop('course_id', None)
+        representation.pop('teacher_id', None)
+        
+        # Add additional fields if needed
+        if 'status' in instance:
+            representation['status'] = instance['status']
+        if 'participants' in instance:
+            representation['participants'] = instance['participants']
+        if 'created_at' in instance:
+            representation['created_at'] = instance['created_at']
         
         return representation
 
+    def validate_course_id(self, value):
+        """Validate that course exists"""
+        try:
+            db = get_mongo_db()
+            course = db.courses.find_one({'_id': ObjectId(value)})
+            if not course:
+                raise serializers.ValidationError("Course does not exist")
+            return value
+        except:
+            raise serializers.ValidationError("Invalid course ID format")
 
-from rest_framework import serializers
-from .models import Course, Event
-from bson import ObjectId
-from django.db import connections
+    def validate_teacher_id(self, value):
+        """Validate that teacher exists"""
+        try:
+            db = get_mongo_db()
+            teacher = db.teacherprofiles.find_one({'_id': ObjectId(value)})
+            if not teacher:
+                raise serializers.ValidationError("Teacher does not exist")
+            return value
+        except:
+            raise serializers.ValidationError("Invalid teacher ID format")
 
-def get_mongo_db():
-    return connections['mongodb'].connection['your_db_name']
+    def validate(self, data):
+        """Validate that end_time is after start_time"""
+        if data['start_time'] >= data['end_time']:
+            raise serializers.ValidationError("End time must be after start time")
+        return data
+
+
+
 
 class EventSerializer(serializers.Serializer):
     id = serializers.CharField(required=False)

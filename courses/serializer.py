@@ -768,7 +768,7 @@ logger = logging.getLogger(__name__)
 class AssignmentSerializer(serializers.Serializer):
     # Use 'course_id' to match your data.
     id = serializers.CharField(read_only=True, source='_id')
-    teacher = TeacherProfileSerializer(required=False)
+    teacher = TeacherProfileSerializer(read_only=True)
     course_id = serializers.CharField(max_length=24, required=False)
     title = serializers.CharField(max_length=200)
     total_marks = serializers.IntegerField(default=100)
@@ -776,43 +776,37 @@ class AssignmentSerializer(serializers.Serializer):
     due_date = serializers.DateTimeField()
     file = serializers.FileField(allow_null=True, required=False)
 
-    # In courses/serializer.py, AssignmentSerializer
     def to_representation(self, instance):
         representation = super().to_representation(instance)
-    
-        # Always ensure 'id' is present and derived from '_id'
-        if isinstance(instance, dict) and '_id' in instance:
-            representation['id'] = str(instance['_id'])
-        # The 'id' field with source='_id.$oid' or just source='_id'
-        # should already handle this, but this adds a safety net.
-    
-        # Safely remove the '_id' key if it exists
+        
+        # Handle ID conversion safely
+        if isinstance(instance, dict):
+            if '_id' in instance:
+                representation['id'] = str(instance['_id'])
+            elif 'id' in instance:
+                representation['id'] = str(instance['id'])
+        
+        # Remove internal fields
         representation.pop('_id', None)
-    
+        
+        # Handle teacher data
         teacher_data = instance.get('teacher')
-        representation['teacher'] = None  # Initialize as None
-    
-        # Handle the teacher data as before
+        representation['teacher'] = None
+        
         if teacher_data:
-            # ... (Your teacher logic here) ...
             from user.serializer import TeacherProfileSerializer
             if isinstance(teacher_data, dict):
                 representation['teacher'] = TeacherProfileSerializer().to_representation(teacher_data)
-            elif isinstance(teacher_data, str):
+            elif isinstance(teacher_data, (str, ObjectId)):
                 try:
-                    teacher_profile_id = ObjectId(teacher_data)
+                    teacher_id = ObjectId(str(teacher_data))
                     db = get_mongo_db()
-                    teacher_profile = db.teacher_profiles.find_one({"_id": teacher_profile_id})
+                    teacher_profile = db.teacherprofiles.find_one({"_id": teacher_id})
                     if teacher_profile:
                         representation['teacher'] = TeacherProfileSerializer().to_representation(teacher_profile)
                 except Exception as e:
-                    print(f"Error fetching TeacherProfile with ID '{teacher_data}': {e}")
-            elif isinstance(teacher_data, ObjectId):
-                db = get_mongo_db()
-                teacher_profile = db.teacher_profiles.find_one({"_id": teacher_data})
-                if teacher_profile:
-                    representation['teacher'] = TeacherProfileSerializer().to_representation(teacher_profile)
-    
+                    print(f"Error fetching TeacherProfile: {e}")
+        
         return representation
     
     def create(self, validated_data):
@@ -845,31 +839,37 @@ class AssignmentSerializer(serializers.Serializer):
 
     def update(self, instance, validated_data):
         db = get_mongo_db()
-        assignment_id = ObjectId(instance['id'])
+
+        # FIX: Handle different types of ID
+        if isinstance(instance, dict) and 'id' in instance:
+            assignment_id_str = str(instance['id'])  # Convert to string first
+            assignment_id = ObjectId(assignment_id_str)
+        elif isinstance(instance, dict) and '_id' in instance:
+            assignment_id = instance['_id']
+        else:
+            raise serializers.ValidationError("Invalid assignment instance")
 
         uploaded_file = validated_data.pop('file', None)
         old_file_s3_key_to_delete = None 
         new_file_s3_key = None
 
         if uploaded_file:
-            # File update logic (omitted for brevity, as it's already correct)
+            # File update logic
             ...
         elif 'file' in validated_data and validated_data['file'] is None:
-            # File deletion logic (omitted for brevity, as it's already correct)
+            # File deletion logic
             ...
 
-        # Use course_id directly. Convert it to ObjectId.
+        # Handle course_id conversion
         if 'course_id' in validated_data:
             validated_data['course_id'] = ObjectId(validated_data.pop('course_id'))
 
-        if 'teacher' in validated_data and validated_data['teacher'] is not None:
-            validated_data['teacher'] = ObjectId(validated_data['teacher'].get('_id'))
-        elif 'teacher' in validated_data:
-            del validated_data['teacher']
+        # Handle teacher field - REMOVE THIS since teacher is read-only now
+        # validated_data.pop('teacher', None)  # Remove teacher data from update
 
         try:
             db.make_assignments.update_one({"_id": assignment_id}, {"$set": validated_data})
-            
+
             if old_file_s3_key_to_delete and old_file_s3_key_to_delete != new_file_s3_key: 
                 default_storage.delete(old_file_s3_key_to_delete)
 

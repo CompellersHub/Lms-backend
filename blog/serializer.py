@@ -327,8 +327,38 @@ class BlogSerializer(serializers.Serializer):
         return ''
 
     def get_date(self, obj):
-        """Get published date in ISO format"""
-        return self._get_iso_date(obj, 'published_at')
+        """Return formatted date string (e.g., '15 August 2025')"""
+        # Try different date sources in order of priority
+        date_sources = ['publishedAt', 'createdAt', 'date']
+        
+        date_value = None
+        for source in date_sources:
+            date_value = obj.get(source)
+            if date_value:
+                break
+        
+        # If no date found, use current time
+        if not date_value:
+            return timezone.now().strftime("%-d %B %Y")
+        
+        # Convert string to datetime if needed
+        if isinstance(date_value, str):
+            try:
+                # Handle ISO format with timezone
+                if 'Z' in date_value:
+                    date_value = datetime.fromisoformat(date_value.replace('Z', '+00:00'))
+                else:
+                    date_value = datetime.fromisoformat(date_value)
+            except ValueError:
+                # If parsing fails, use current time
+                return timezone.now().strftime("%-d %B %Y")
+        
+        # Handle ObjectId timestamps
+        elif isinstance(date_value, ObjectId):
+            date_value = date_value.generation_time
+        
+        # Format as "15 August 2025"
+        return date_value.strftime("%-d %B %Y")
 
     def get_category(self, obj):
         """Handle both string and object/dict categories"""

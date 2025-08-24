@@ -4,6 +4,7 @@ import re
 from rest_framework import serializers
 from bson.objectid import ObjectId
 
+from courses.storages_backends import CourseLibraryStorage
 from user.serializer import TeacherProfileSerializer
 from django.core.validators import validate_email
 from django.core.exceptions import ValidationError
@@ -399,34 +400,67 @@ class CourseSerializer(serializers.Serializer):
         except Exception as e:
             raise serializers.ValidationError(f"Error updating data: {e}")
 
+course_library_storage = CourseLibraryStorage()
+
 class CourseLibraryVideoSerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)
     title = serializers.CharField(max_length=200)
-    video_file = serializers.CharField(allow_null=True, required=False)
-    video_id = serializers.CharField(allow_null=True, required=False)
+    video_file = serializers.FileField(
+        max_length=100,
+        allow_empty_file=False
+    )
     created_at = serializers.DateTimeField(read_only=True)
 
     def to_representation(self, instance):
         if '_id' in instance:
             instance['id'] = str(instance['_id'])
             del instance['_id']
+        
+        # Generate signed URL for the video file using your custom storage
+        if 'video_file' in instance and instance['video_file']:
+            instance['video_file'] = course_library_storage.url(instance['video_file'])
+        
         return instance
 
     def create(self, validated_data):
         db = get_mongo_db()
+        
+        # Handle file upload to S3 using your custom storage
+        video_file = validated_data.pop('video_file')
+        file_name = course_library_storage.save(f'course_videos/{video_file.name}', video_file)
+        
+        # Store the file path in MongoDB
+        validated_data['video_file'] = file_name
+        validated_data['created_at'] = datetime.now()
+        
         result = db.course_library_videos.insert_one(validated_data)
         return db.course_library_videos.find_one({"_id": result.inserted_id})
 
     def update(self, instance, validated_data):
         db = get_mongo_db()
         video_id = ObjectId(instance['id'])
+        
+        # Handle file update if new file is provided
+        if 'video_file' in validated_data:
+            # Delete old file from S3 using your custom storage
+            if 'video_file' in instance and instance['video_file']:
+                course_library_storage.delete(instance['video_file'])
+            
+            # Save new file to S3 using your custom storage
+            video_file = validated_data.pop('video_file')
+            file_name = course_library_storage.save(f'course_videos/{video_file.name}', video_file)
+            validated_data['video_file'] = file_name
+        
         db.course_library_videos.update_one({"_id": video_id}, {"$set": validated_data})
         return db.course_library_videos.find_one({"_id": video_id})
 
 class CourseLibrarySerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)
     title = serializers.CharField(max_length=200)
-    file = serializers.CharField(allow_null=True, required=False)
+    file = serializers.FileField(
+        max_length=100,
+        allow_null=True, required=False
+    )
     url = serializers.URLField(allow_null=True, required=False)
     course = serializers.CharField()
     video = CourseLibraryVideoSerializer(many=True, required=False)
@@ -434,6 +468,8 @@ class CourseLibrarySerializer(serializers.Serializer):
 
     def to_representation(self, instance):
         representation = super().to_representation(instance)
+        
+        # Handle ID conversion
         if hasattr(instance, '_id'):
             representation['id'] = str(instance._id)
         elif '_id' in instance:
@@ -442,25 +478,83 @@ class CourseLibrarySerializer(serializers.Serializer):
         if '_id' in representation:
             del representation['_id']
 
+        # Handle file field - check if it exists in the instance
+        if 'file' in instance:
+            # If file exists in instance, generate URL
+            file_path = instance['file']
+            if file_path:
+                representation['file'] = course_library_storage.url(file_path)
+        elif 'file' not in representation:
+            # If file doesn't exist in instance or representation, set to None
+            representation['file'] = None
+
+        # Handle video field
         if 'video' in instance and isinstance(instance['video'], list):
             representation['video'] = [CourseLibraryVideoSerializer().to_representation(item) for item in instance['video']]
         elif 'video' in instance and isinstance(instance['video'], dict):
             representation['video'] = CourseLibraryVideoSerializer().to_representation(instance['video'])
+        elif 'video' not in representation:
+            representation['video'] = []
 
+        # Handle course_id field
         representation['course_id'] = representation.get('course')
         if 'course' in representation:
             del representation['course']
+
+        # Handle created_at if it exists in instance but not in representation
+        if 'created_at' in instance and 'created_at' not in representation:
+            representation['created_at'] = instance['created_at']
 
         return representation
 
     def create(self, validated_data):
         db = get_mongo_db()
+        
+        # Handle file upload to S3 using your custom storage
+        file = validated_data.pop('file')
+        file_name = course_library_storage.save(f'course_library/{file.name}', file)
+        
+        # Store the file path in MongoDB
+        validated_data['file'] = file_name
+        validated_data['created_at'] = datetime.now()
+        
+        # Handle video data if provided
+        videos_data = validated_data.pop('video', [])
+        
         result = db.course_library.insert_one(validated_data)
-        return db.course_library.find_one({"_id": result.inserted_id})
+        library_doc = db.course_library.find_one({"_id": result.inserted_id})
+        
+        # If videos were provided, create them and link to this library
+        if videos_data:
+            video_serializer = CourseLibraryVideoSerializer(data=videos_data, many=True)
+            if video_serializer.is_valid():
+                videos = video_serializer.save()
+                # Update the library document with video references
+                video_ids = [str(video['_id']) for video in videos]
+                db.course_library.update_one(
+                    {"_id": result.inserted_id},
+                    {"$set": {"video": video_ids}}
+                )
+                # Refetch the updated document
+                library_doc = db.course_library.find_one({"_id": result.inserted_id})
+        
+        return library_doc
 
     def update(self, instance, validated_data):
         db = get_mongo_db()
         library_id = ObjectId(instance['id'])
+        
+        # Handle file update if new file is provided
+        if 'file' in validated_data:
+            # Delete old file from S3 using your custom storage
+            if 'file' in instance and instance['file']:
+                course_library_storage.delete(instance['file'])
+            
+            # Save new file to S3 using your custom storage
+            file = validated_data.pop('file')
+            file_name = course_library_storage.save(f'course_library/{file.name}', file)
+            validated_data['file'] = file_name
+        
         db.course_library.update_one({"_id": library_id}, {"$set": validated_data})
         return db.course_library.find_one({"_id": library_id})
 

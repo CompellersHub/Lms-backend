@@ -222,7 +222,7 @@ class CourseDetail(APIView):
 class CourseLibraryView(APIView):
     def get(self, request):
         db = get_mongo_db()
-        course_libraries = list(db.courselibrarys.find())
+        course_libraries = list(db.course_library.find())
         serializer = CourseLibrarySerializer(course_libraries, many=True)
         return Response(serializer.data)
 
@@ -238,7 +238,7 @@ class CourseLibraryDetailView(APIView):
     def get_object(self, pk: str):
         db = get_mongo_db()
         try:
-            course_library = db.courselibrarys.find_one({"_id": ObjectId(pk)})
+            course_library = db.course_library.find_one({"_id": ObjectId(pk)})
             if course_library:
                 return course_library
             else:
@@ -275,7 +275,7 @@ class CourseLibraryDetailView(APIView):
         db = get_mongo_db()
         course_library = self.get_object(pk)
         if course_library:
-            db.courselibrarys.delete_one({"_id": ObjectId(pk)})
+            db.course_library.delete_one({"_id": ObjectId(pk)})
             return Response({'message': 'Course library deleted successfully'}, status=status.HTTP_204_NO_CONTENT)
         return Response(status=status.HTTP_404_NOT_FOUND)
 
@@ -1378,7 +1378,7 @@ class SendTemplateToListAPIView(APIView):
         sender_email = settings.DEFAULT_FROM_EMAIL
         sender_name = "Titans Careers"
         list_id = 8  # Specific list ID
-        template_id = 9  # Specific template ID
+        template_id = 10  # Specific template ID
         
         # Get all contacts from the specified list
         contacts = self.get_brevo_contacts_in_list(brevo_api_key, list_id)

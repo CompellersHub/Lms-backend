@@ -1,7 +1,7 @@
 from bson import ObjectId
 from django.db import models
 from django.utils import timezone
-from courses.storages_backends import AssignmentStorage, CourseMediaStorage, CourseNotesStorage, EventStorage, VideoMediaStorage
+from courses.storages_backends import AssignmentStorage, CourseLibraryStorage, CourseMediaStorage, CourseNotesStorage, EventStorage, VideoMediaStorage
 from user.models import TeacherProfile
 from django.conf import settings
 from django.utils.translation import gettext_lazy as _
@@ -260,7 +260,7 @@ class CourseLibrary(models.Model):
     title = models.CharField(max_length=200) # Required
     courselibraryvideo = models.ManyToManyField('CourseLibraryVideo') # REQUIRED (removed blank=True, null=True)
     course = models.ForeignKey('Course', on_delete=models.CASCADE) # Required
-    file = models.FileField(upload_to='course_library/') # REQUIRED (removed blank=True, null=True)
+    file = models.FileField(storage=CourseLibraryStorage(), blank=True, null=True) # REQUIRED (removed blank=True, null=True)
     url = models.URLField() # REQUIRED (removed blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True) # Auto-set
     updated_at = models.DateTimeField(auto_now=True) # Auto-set

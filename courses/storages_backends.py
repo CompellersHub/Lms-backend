@@ -71,3 +71,6 @@ class EventStorage(S3Boto3Storage):
     location = 'events'
     file_overwrite = False
 
+class CourseLibraryStorage(S3Boto3Storage):
+    location = 'course_library'
+    file_overwrite = False

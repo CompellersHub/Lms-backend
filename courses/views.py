@@ -1,6 +1,7 @@
 import os
 import re
 import pytz
+import requests
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -1360,3 +1361,141 @@ class ConsultationView(APIView):
                 {"error": "Consultation submission process failed"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
+
+class SendTemplateToListAPIView(APIView):
+    """
+    API endpoint to send template ID 9 to all contacts in list ID 8
+    """
+    
+    def post(self, request):
+        """
+        Send template to all contacts in the specified list
+        """
+        # Brevo API configuration
+        brevo_api_key = settings.BREVO_API_KEY
+        sender_email = settings.DEFAULT_FROM_EMAIL
+        sender_name = "Titans Careers"
+        list_id = 8  # Specific list ID
+        template_id = 9  # Specific template ID
+        
+        # Get all contacts from the specified list
+        contacts = self.get_brevo_contacts_in_list(brevo_api_key, list_id)
+        
+        if not contacts:
+            return Response(
+                {"error": f"No contacts found in list {list_id}"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Send email to each contact
+        results = {
+            "success_count": 0,
+            "fail_count": 0,
+            "failed_emails": [],
+            "total_contacts": len(contacts),
+            "list_id": list_id,
+            "template_id": template_id
+        }
+        
+        for contact in contacts:
+            success = self.send_transactional_email(
+                brevo_api_key,
+                contact['email'],
+                contact.get('firstname', ''),
+                sender_email,
+                sender_name,
+                template_id,
+                {
+                    "firstname": contact.get('firstname', ''),
+                    "course_date": "24th August 2025, 07:00pm",
+                    "zoom_link": "https://zoom.us/j/95062242795?pwd=r2CTvBheLUQ0YC7Wr8jYwRQRs5PgeU.1"
+                }
+            )
+            
+            if success:
+                results["success_count"] += 1
+            else:
+                results["fail_count"] += 1
+                results["failed_emails"].append(contact['email'])
+        
+        return Response(results, status=status.HTTP_200_OK)
+
+    def get_brevo_contacts_in_list(self, api_key, list_id):
+        """
+        Retrieve all contacts from specific Brevo list with pagination handling
+        """
+        url = f"https://api.brevo.com/v3/contacts/lists/{list_id}/contacts"
+        limit = 50  # Brevo's default limit
+        offset = 0
+        all_contacts = []
+        
+        headers = {
+            "accept": "application/json",
+            "api-key": api_key
+        }
+        
+        try:
+            while True:
+                # Add pagination parameters
+                params = {
+                    "limit": limit,
+                    "offset": offset
+                }
+                
+                response = requests.get(url, headers=headers, params=params)
+                response.raise_for_status()
+                data = response.json()
+                
+                contacts = data.get('contacts', [])
+                if not contacts:
+                    break
+                
+                for contact in contacts:
+                    if contact.get('email'):
+                        all_contacts.append({
+                            'email': contact['email'],
+                            'firstname': contact.get('attributes', {}).get('FIRSTNAME', ''),
+                            'lastname': contact.get('attributes', {}).get('LASTNAME', '')
+                        })
+                
+                # Check if we've fetched all contacts
+                if len(contacts) < limit:
+                    break
+                    
+                offset += limit
+                
+            return all_contacts
+            
+        except requests.exceptions.RequestException as e:
+            print(f"Error fetching contacts from list {list_id}: {e}")
+            return None
+
+    def send_transactional_email(self, api_key, to_email, to_name, sender_email, sender_name, template_id, params):
+        """
+        Send transactional email using Brevo template
+        """
+        url = "https://api.brevo.com/v3/smtp/email"
+        
+        headers = {
+            "accept": "application/json",
+            "content-type": "application/json",
+            "api-key": api_key
+        }
+        
+        payload = {
+            "templateId": template_id,
+            "to": [{"email": to_email, "name": to_name}],
+            "params": params,
+            "sender": {"email": sender_email, "name": sender_name}
+        }
+        
+        try:
+            response = requests.post(url, headers=headers, data=json.dumps(payload))
+            response.raise_for_status()
+            return True
+            
+        except requests.exceptions.RequestException as e:
+            print(f"Error sending email to {to_email}: {e}")
+            return False

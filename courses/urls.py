@@ -41,5 +41,7 @@ urlpatterns = [
     path('event-register/', views.EventRegistrationView.as_view(), name='course-registration'),
 
     path('consultations/', views.ConsultationView.as_view(), name='create-consultation'),
+
+    path('send-template-to-list/', views.SendTemplateToListAPIView.as_view(), name='send_template_to_list'),
 ]
 

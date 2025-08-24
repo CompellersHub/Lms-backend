@@ -207,7 +207,7 @@ class BlogSerializer(serializers.Serializer):
         help_text="URL from image upload endpoint"
     )
     
-    excerpt = serializers.CharField(max_length=300, required=False)
+    excerpt = serializers.CharField(max_length=1000, required=False)
     content = serializers.ListField(
         child=serializers.DictField(),
         required=False,

@@ -73,29 +73,66 @@ class LiveClassConsumer(AsyncWebsocketConsumer):
 
 class NotificationConsumer(AsyncWebsocketConsumer):
     """Handles personal user notifications"""
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.user_group_name = None
+        self.user_id = "test_user"  # Default for testing
+
     async def connect(self):
-        if self.scope["user"].is_anonymous:
-            await self.close()
-            return
+        try:
+            # TEMPORARY: Accept all connections for testing
+            # Remove this in production
+            if self.scope["user"].is_anonymous:
+                print("⚠️  Anonymous user connecting - accepting for testing")
+                # For testing, we'll accept anyway but use a test user ID
+                self.user_id = "test_anonymous"
+            else:
+                self.user_id = str(self.scope["user"].id)
+            
+            self.user_group_name = f"user_{self.user_id}"
 
-        self.user_id = str(self.scope["user"].id)
-        self.user_group_name = f"user_{self.user_id}"
-
-        await self.channel_layer.group_add(
-            self.user_group_name,
-            self.channel_name
-        )
-        await self.accept()
+            # Join user group
+            await self.channel_layer.group_add(
+                self.user_group_name,
+                self.channel_name
+            )
+            
+            await self.accept()
+            print(f"✅ User {self.user_id} connected to notifications")
+            
+            # Send connection confirmation
+            await self.send(text_data=json.dumps({
+                "type": "connection",
+                "message": "Connected to notifications",
+                "user_id": self.user_id,
+                "status": "connected"
+            }))
+            
+        except Exception as e:
+            print(f"❌ Connection error: {e}")
+            await self.close(code=4002)
 
     async def disconnect(self, close_code):
-        await self.channel_layer.group_discard(
-            self.user_group_name,
-            self.channel_name
-        )
+        print(f"🔌 Disconnecting user {self.user_id} with code: {close_code}")
+        
+        if self.user_group_name:
+            try:
+                await self.channel_layer.group_discard(
+                    self.user_group_name,
+                    self.channel_name
+                )
+            except Exception as e:
+                print(f"❌ Error leaving group: {e}")
 
     async def send_notification(self, event):
-        await self.send(text_data=json.dumps({
-            "type": "notification",
-            "message": event["message"],
-            "timestamp": event.get("timestamp")
-        }))
+        """Handle notifications from channel layer"""
+        try:
+            await self.send(text_data=json.dumps({
+                "type": "notification",
+                "message": event["message"],
+                "timestamp": event.get("timestamp"),
+                "data": event.get("data", {})
+            }))
+        except Exception as e:
+            print(f"❌ Error sending notification: {e}")

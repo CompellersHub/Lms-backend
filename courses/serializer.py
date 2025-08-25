@@ -4,7 +4,7 @@ import re
 from rest_framework import serializers
 from bson.objectid import ObjectId
 
-from courses.storages_backends import CourseLibraryStorage
+from courses.storages_backends import AssignmentStorage, CourseLibraryStorage
 from user.serializer import TeacherProfileSerializer
 from django.core.validators import validate_email
 from django.core.exceptions import ValidationError
@@ -516,7 +516,7 @@ class CourseLibrarySerializer(serializers.Serializer):
         
         # Store the file path in MongoDB
         validated_data['file'] = file_name
-        validated_data['created_at'] = datetime.now()
+        validated_data['created_at'] = timezone.now()
         
         # Handle video data if provided
         videos_data = validated_data.pop('video', [])
@@ -859,8 +859,9 @@ class EventSerializer(serializers.Serializer):
 
 logger = logging.getLogger(__name__)
 
+assignment_storage = AssignmentStorage()
+
 class AssignmentSerializer(serializers.Serializer):
-    # Use 'course_id' to match your data.
     id = serializers.CharField(read_only=True, source='_id')
     teacher = TeacherProfileSerializer(read_only=True)
     course_id = serializers.CharField(max_length=24, required=False)
@@ -868,7 +869,10 @@ class AssignmentSerializer(serializers.Serializer):
     total_marks = serializers.IntegerField(default=100)
     description = serializers.CharField()
     due_date = serializers.DateTimeField()
-    file = serializers.FileField(allow_null=True, required=False)
+    file = serializers.FileField(
+        max_length=100,
+        allow_null=True, required=False
+    )
 
     def to_representation(self, instance):
         representation = super().to_representation(instance)
@@ -882,6 +886,12 @@ class AssignmentSerializer(serializers.Serializer):
         
         # Remove internal fields
         representation.pop('_id', None)
+        
+        # Handle file field - generate S3 URL
+        if 'file' in instance and instance.get('file'):
+            representation['file'] = assignment_storage.url(instance['file'])
+        elif 'file' not in representation:
+            representation['file'] = None
         
         # Handle teacher data
         teacher_data = instance.get('teacher')
@@ -908,19 +918,23 @@ class AssignmentSerializer(serializers.Serializer):
         uploaded_file = validated_data.pop('file', None) 
         
         # Use course_id directly. Convert it to ObjectId.
-        validated_data['course_id'] = ObjectId(validated_data.pop('course_id'))
+        if 'course_id' in validated_data:
+            validated_data['course_id'] = ObjectId(validated_data['course_id'])
 
         if 'teacher' in validated_data and validated_data['teacher'] is not None:
             validated_data['teacher'] = ObjectId(validated_data['teacher'].get('_id'))
         elif 'teacher' in validated_data:
             del validated_data['teacher']
 
+        # Handle file upload to S3 using your custom storage
         file_s3_key = None
         if uploaded_file:
-            # File upload logic (omitted for brevity, as it's already correct)
-            ...
+            file_s3_key = assignment_storage.save(f'assignments/{uploaded_file.name}', uploaded_file)
+            validated_data['file'] = file_s3_key
         else:
             validated_data['file'] = None
+
+        validated_data['created_at'] = datetime.now()
 
         try:
             result = db.make_assignments.insert_one(validated_data)
@@ -928,7 +942,7 @@ class AssignmentSerializer(serializers.Serializer):
         except Exception as e:
             logger.exception("Error creating assignment.")
             if file_s3_key:
-                default_storage.delete(file_s3_key)
+                assignment_storage.delete(file_s3_key)
             raise serializers.ValidationError(f"Error creating assignment: {e}")
 
     def update(self, instance, validated_data):
@@ -947,31 +961,41 @@ class AssignmentSerializer(serializers.Serializer):
         old_file_s3_key_to_delete = None 
         new_file_s3_key = None
 
+        # Handle file update using custom storage
         if uploaded_file:
-            # File update logic
-            ...
+            # Delete old file if it exists
+            if 'file' in instance and instance.get('file'):
+                old_file_s3_key_to_delete = instance['file']
+            
+            # Save new file to S3
+            new_file_s3_key = assignment_storage.save(f'assignments/{uploaded_file.name}', uploaded_file)
+            validated_data['file'] = new_file_s3_key
         elif 'file' in validated_data and validated_data['file'] is None:
-            # File deletion logic
-            ...
+            # Handle file deletion
+            if 'file' in instance and instance.get('file'):
+                old_file_s3_key_to_delete = instance['file']
+            validated_data['file'] = None
 
         # Handle course_id conversion
         if 'course_id' in validated_data:
-            validated_data['course_id'] = ObjectId(validated_data.pop('course_id'))
+            validated_data['course_id'] = ObjectId(validated_data['course_id'])
 
         # Handle teacher field - REMOVE THIS since teacher is read-only now
-        # validated_data.pop('teacher', None)  # Remove teacher data from update
+        validated_data.pop('teacher', None)  # Remove teacher data from update
 
         try:
             db.make_assignments.update_one({"_id": assignment_id}, {"$set": validated_data})
 
-            if old_file_s3_key_to_delete and old_file_s3_key_to_delete != new_file_s3_key: 
-                default_storage.delete(old_file_s3_key_to_delete)
+            # Delete old file after successful update
+            if old_file_s3_key_to_delete and old_file_s3_key_to_delete != new_file_s3_key:
+                assignment_storage.delete(old_file_s3_key_to_delete)
 
             return db.make_assignments.find_one({"_id": assignment_id})
         except Exception as e:
             logger.exception("Error updating assignment.")
+            # Delete new file if update failed
             if new_file_s3_key:
-                default_storage.delete(new_file_s3_key)
+                assignment_storage.delete(new_file_s3_key)
             raise serializers.ValidationError(f"Error updating assignment: {e}")
 
 

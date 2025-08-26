@@ -655,7 +655,7 @@ class CreateLiveClassView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        """Create a new live class"""
+        """Create a new live class and notify enrolled students"""
         serializer = LiveClassSerializer(data=request.data)
         
         if not serializer.is_valid():
@@ -669,7 +669,7 @@ class CreateLiveClassView(APIView):
             course_id = data['course_id']
             course = db.courses.find_one(
                 {'_id': ObjectId(course_id)},
-                {'name': 1}  # Projection - only get the name
+                {'name': 1, 'title': 1}  # Get course details for notification
             )
             if not course:
                 return Response(
@@ -679,7 +679,11 @@ class CreateLiveClassView(APIView):
             
             # Validate teacher exists
             teacher_id = data['teacher_id']
-            if not db.teacherprofiles.find_one({'_id': ObjectId(teacher_id)}):
+            teacher = db.teacherprofiles.find_one(
+                {'_id': ObjectId(teacher_id)},
+                {'name': 1, 'user_id': 1}
+            )
+            if not teacher:
                 return Response(
                     {"error": "Teacher not found"}, 
                     status=status.HTTP_404_NOT_FOUND
@@ -691,15 +695,23 @@ class CreateLiveClassView(APIView):
                 'created_by': str(request.user.id),
                 'created_at': datetime.now(pytz.utc),
                 'status': 'scheduled',
-                'participants': []  # Initialize empty participants list
+                'participants': []
             }
             
             # Create the live class
             result = db.liveclasss.insert_one(live_class_data)
             live_class_id = str(result.inserted_id)
 
-            # Return created resource
+            # Get the created live class
             created_class = db.liveclasss.find_one({'_id': ObjectId(live_class_id)})
+            
+            # Send notifications to students enrolled in this course
+            self.notify_enrolled_students(course_id, created_class, course, teacher)
+            
+            # Convert ObjectId to string for response
+            created_class['_id'] = str(created_class['_id'])
+            created_class['course_id'] = str(created_class['course_id'])
+            created_class['teacher_id'] = str(created_class['teacher_id'])
             
             return Response(
                 {
@@ -714,6 +726,62 @@ class CreateLiveClassView(APIView):
                 {"error": f"Failed to create live class: {str(e)}"}, 
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+    def notify_enrolled_students(self, course_id, live_class, course, teacher):
+        """Notify all students who have this course in their user data"""
+        db = get_mongo_db()
+        channel_layer = get_channel_layer()
+
+        # Find all users who have this course_id in their course array
+        enrolled_students = db.users.find({
+            'course._id': ObjectId(course_id)  # Match course._id in the array
+        }, {'_id': 1, 'username': 1, 'email': 1})  # Get user details
+
+        course_name = course.get('name') or course.get('title', 'Unknown Course')
+        teacher_name = teacher.get('name', 'Unknown Teacher')
+
+        student_count = 0
+        for student in enrolled_students:
+            student_id = str(student['_id'])
+            student_count += 1
+
+            # Send WebSocket notification
+            async_to_sync(channel_layer.group_send)(
+                f"user_{student_id}",
+                {
+                    "type": "send_notification",
+                    "message": f"New live class: {live_class.get('title', 'Untitled')} for {course_name}",
+                    "timestamp": datetime.now(pytz.utc).isoformat(),
+                    "data": {
+                        "live_class_id": str(live_class['_id']),
+                        "course_id": course_id,
+                        "course_name": course_name,
+                        "teacher_name": teacher_name,
+                        "title": live_class.get('title', ''),
+                        "start_time": live_class.get('start_time'),
+                        "action_url": f"/live-class/{str(live_class['_id'])}/join",
+                        "notification_type": "live_class_scheduled"
+                    }
+                }
+            )
+
+            print(f"📨 Notification sent to student {student['username']} ({student_id}) for course {course_name}")
+
+        # Also send to course-specific group for any connected clients
+        async_to_sync(channel_layer.group_send)(
+            f"liveclass_{course_id}",
+            {
+                "type": "liveclass_notification",
+                "message": f"New live class scheduled: {live_class.get('title', 'Untitled')}",
+                "class_id": str(live_class['_id']),
+                "course_id": course_id,
+                "course_name": course_name,
+                "start_time": live_class.get('start_time').isoformat() if live_class.get('start_time') else None,
+                "join_url": f"/live-class/{str(live_class['_id'])}/join"
+            }
+        )
+    
+        print(f"✅ Notified {student_count} students for course {course_name}")
 
     def get(self, request):
         """List all live classes"""
@@ -733,7 +801,7 @@ class CreateLiveClassView(APIView):
             if status := request.query_params.get('status'):
                 query['status'] = status
             
-            live_classes = list(db.liveclasss.find(query).limit(100))
+            live_classes = list(db.liveclasss.find(query).sort('created_at', -1).limit(100))
             
             # Convert ObjectId to string for serialization
             for lc in live_classes:
@@ -755,6 +823,7 @@ class CreateLiveClassView(APIView):
                 {"error": f"Failed to fetch live classes: {str(e)}"}, 
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+            
 
 
 class LiveClassDetailView(APIView):

@@ -934,7 +934,7 @@ class AssignmentSerializer(serializers.Serializer):
         else:
             validated_data['file'] = None
 
-        validated_data['created_at'] = datetime.now()
+        validated_data['created_at'] = timezone.now()
 
         try:
             result = db.make_assignments.insert_one(validated_data)

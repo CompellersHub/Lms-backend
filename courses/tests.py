@@ -1,18 +1,27 @@
-import boto3
-from django.conf import settings
+# test_user_query.py
+from pymongo import MongoClient
+from bson import ObjectId
+import os
 
-s3 = boto3.client(
-    's3',
-    aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-    aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-    region_name=settings.AWS_S3_REGION_NAME
-)
+# Connect to MongoDB
+client = MongoClient(os.getenv('MONGO_URI'))
+db = client['titans']  # Your database name
 
-# List buckets to test connection
-try:
-    response = s3.list_buckets()
-    print("Connection successful. Buckets:")
-    for bucket in response['Buckets']:
-        print(f"- {bucket['Name']}")
-except Exception as e:
-    print(f"Connection failed: {str(e)}")
+# Test course ID (use one from your user's course array)
+test_course_id = "68238b8c98930563248cbe09"  # Cybersecurity course ID
+
+# Test the query
+enrolled_students = db.customusers.find({
+    'course._id': ObjectId(test_course_id)
+}, {'_id': 1, 'username': 1, 'email': 1, 'course.$': 1})  # Include matching course
+
+students = list(enrolled_students)
+print(f"Found {len(students)} students enrolled in course {test_course_id}")
+
+for student in students:
+    print(f"Student: {student.get('username', 'No username')}")
+    print(f"Email: {student.get('email', 'No email')}")
+    print(f"Student ID: {student['_id']}")
+    if 'course' in student and student['course']:
+        print(f"Enrolled since: {student['course'][0].get('enrollment_date', 'Unknown date')}")
+    print("---")

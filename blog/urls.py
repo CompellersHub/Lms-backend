@@ -1,5 +1,6 @@
 from django.urls import path
 from .views import *
+from blog import views
 
 urlpatterns = [
     path('categories/', CategoryListCreateView.as_view(), name='category-list-create'),
@@ -11,4 +12,5 @@ urlpatterns = [
     path('blogusers/login/', Login.as_view(), name='bloguser-login'),
     path('blogusers/logout/', Logout.as_view(), name='bloguser-logout'),
     path('api/upload/image/', BlogImageUploadView.as_view(), name='blog-image-upload'),
+    path('api/webhooks/rankyak/', views.rankyak_webhook, name='rankyak-webhook'),
 ]

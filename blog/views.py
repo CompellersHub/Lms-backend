@@ -1,5 +1,6 @@
 import datetime
 import uuid
+from django.conf import settings
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -16,6 +17,11 @@ from courses.mongo_utils import get_mongo_db
 from bson.objectid import ObjectId
 from bson.errors import InvalidId
 from datetime import datetime, timedelta
+import hmac
+import hashlib
+import json
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
 
 # Initialize the MongoDB database connection
 db = get_mongo_db()
@@ -235,3 +241,57 @@ class BlogImageUploadView(APIView):
             "type": image_type,
             "filename": filename
         }, status=status.HTTP_201_CREATED)
+    
+
+
+
+
+@csrf_exempt
+def rankyak_webhook(request):
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
+    # Verify signature
+    signature = request.headers.get('X-RankYak-Signature')
+    payload = request.body
+    expected_signature = hmac.new(
+        key=settings.RANKYAK_SECRET.encode(),
+        msg=payload,
+        digestmod=hashlib.sha256
+    ).hexdigest()
+    
+    if not hmac.compare_digest(signature, expected_signature):
+        return JsonResponse({'error': 'Invalid signature'}, status=401)
+    
+    # Process payload
+    try:
+        data = json.loads(payload.decode('utf-8'))
+        event_type = data['event']
+        
+        if event_type == 'blog.published':
+            blog_data = data['data']
+            
+            # Map RankYak data to your serializer format
+            serialized_data = {
+                'title': blog_data['title'],
+                'slug': blog_data['slug'],
+                'category': blog_data['category'],
+                'tags': blog_data['tags'],
+                'excerpt': blog_data['excerpt'],
+                'content': blog_data['content'],
+                'image_url': blog_data['featured_image'],
+                'status': 'published' if settings.AUTO_PUBLISH else 'draft'
+            }
+            
+            # Validate and save using your BlogSerializer
+            serializer = BlogSerializer(data=serialized_data)
+            if serializer.is_valid():
+                blog = serializer.save()
+                return JsonResponse({'status': 'success', 'blog_id': str(blog.id)})
+            else:
+                return JsonResponse({'error': serializer.errors}, status=400)
+                
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'received'})

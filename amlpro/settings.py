@@ -710,3 +710,9 @@ LOGGING = {
 
 # https://titanscareers.s3.eu-north-1.amazonaws.com/course_images/choong-deng-xiang--WXQm_NTK0U-unsplash.jpg
 # https://titanscareers.s3.eu-north-1.amazonaws.com/course_images/choong-deng-xiang--WXQm_NTK0U-unsplash_q17xrgU.jpg
+
+
+
+# settings.py
+RANKYAK_SECRET = os.environ.get('RANKYAK_SECRET', 'your-secret-token-here')
+AUTO_PUBLISH = os.environ.get('AUTO_PUBLISH', False)

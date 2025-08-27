@@ -714,5 +714,5 @@ LOGGING = {
 
 
 # settings.py
-RANKYAK_SECRET = os.environ.get('RANKYAK_SECRET', 'your-secret-token-here')
+RANKYAK_WEBHOOK_SECRET = os.environ.get('RANKYAK_SECRET', 'your-secret-token-here')
 AUTO_PUBLISH = os.environ.get('AUTO_PUBLISH', False)

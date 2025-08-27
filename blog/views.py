@@ -1,6 +1,7 @@
 import datetime
 import uuid
 from django.conf import settings
+from django.views import View
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -19,6 +20,7 @@ from bson.errors import InvalidId
 from datetime import datetime, timedelta
 import hmac
 import hashlib
+from django.utils.decorators import method_decorator
 import json
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
@@ -246,52 +248,73 @@ class BlogImageUploadView(APIView):
 
 
 
-@csrf_exempt
-def rankyak_webhook(request):
-    if request.method != 'POST':
-        return JsonResponse({'error': 'Method not allowed'}, status=405)
-    
-    # Verify signature
-    signature = request.headers.get('X-RankYak-Signature')
-    payload = request.body
-    expected_signature = hmac.new(
-        key=settings.RANKYAK_SECRET.encode(),
-        msg=payload,
-        digestmod=hashlib.sha256
-    ).hexdigest()
-    
-    if not hmac.compare_digest(signature, expected_signature):
-        return JsonResponse({'error': 'Invalid signature'}, status=401)
-    
-    # Process payload
-    try:
-        data = json.loads(payload.decode('utf-8'))
-        event_type = data['event']
-        
-        if event_type == 'blog.published':
-            blog_data = data['data']
+@method_decorator(csrf_exempt, name='dispatch')
+class RankYakWebhookView(View):
+    def post(self, request):
+        try:
+            # Verify webhook secret (optional but recommended)
+            expected_secret = settings.RANKYAK_WEBHOOK_SECRET
+            incoming_secret = request.headers.get('X-RankYak-Secret')
             
-            # Map RankYak data to your serializer format
-            serialized_data = {
-                'title': blog_data['title'],
-                'slug': blog_data['slug'],
-                'category': blog_data['category'],
-                'tags': blog_data['tags'],
-                'excerpt': blog_data['excerpt'],
-                'content': blog_data['content'],
-                'image_url': blog_data['featured_image'],
-                'status': 'published' if settings.AUTO_PUBLISH else 'draft'
-            }
+            if expected_secret and incoming_secret != expected_secret:
+                return JsonResponse({'error': 'Invalid webhook secret'}, status=403)
             
-            # Validate and save using your BlogSerializer
-            serializer = BlogSerializer(data=serialized_data)
+            data = json.loads(request.body)
+            
+            # Transform RankYak data to match your BlogSerializer
+            blog_data = self.transform_rankyak_data(data)
+            
+            # Validate and save using your serializer
+            serializer = BlogSerializer(data=blog_data)
+            
             if serializer.is_valid():
-                blog = serializer.save()
-                return JsonResponse({'status': 'success', 'blog_id': str(blog.id)})
+                blog_instance = serializer.save()
+                return JsonResponse({
+                    'status': 'success',
+                    'message': 'Blog created successfully',
+                    'id': str(blog_instance['_id']) if '_id' in blog_instance else None
+                }, status=201)
             else:
-                return JsonResponse({'error': serializer.errors}, status=400)
+                return JsonResponse({
+                    'status': 'error',
+                    'message': 'Validation failed',
+                    'errors': serializer.errors
+                }, status=400)
                 
-    except Exception as e:
-        return JsonResponse({'error': str(e)}, status=500)
+        except json.JSONDecodeError:
+            return JsonResponse({'error': 'Invalid JSON'}, status=400)
+        except Exception as e:
+            return JsonResponse({'error': str(e)}, status=500)
     
-    return JsonResponse({'status': 'received'})
+    def transform_rankyak_data(self, rankyak_data):
+        """Transform RankYak webhook data to match BlogSerializer format"""
+        return {
+            'title': rankyak_data.get('title', ''),
+            'slug': rankyak_data.get('slug', ''),
+            'category': rankyak_data.get('category', 'General'),
+            'tags': rankyak_data.get('tags', []),
+            'excerpt': rankyak_data.get('excerpt', ''),
+            'content': self.transform_content(rankyak_data.get('content', '')),
+            'status': rankyak_data.get('status', 'draft'),
+            'image_url': rankyak_data.get('featured_image', '')
+        }
+    
+    def transform_content(self, content_text):
+        """Convert plain text content to your structured content format"""
+        # This is a simple transformation - you might need to adjust based on RankYak's output format
+        paragraphs = content_text.split('\n\n')
+        structured_content = []
+        
+        for paragraph in paragraphs:
+            if paragraph.strip():
+                # Simple heuristic to detect headings
+                if paragraph.startswith('# '):
+                    structured_content.append({'type': 'h1', 'text': paragraph[2:].strip()})
+                elif paragraph.startswith('## '):
+                    structured_content.append({'type': 'h2', 'text': paragraph[3:].strip()})
+                elif paragraph.startswith('### '):
+                    structured_content.append({'type': 'h3', 'text': paragraph[4:].strip()})
+                else:
+                    structured_content.append({'type': 'paragraph', 'text': paragraph.strip()})
+        
+        return structured_content

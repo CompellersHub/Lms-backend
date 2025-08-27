@@ -864,7 +864,7 @@ assignment_storage = AssignmentStorage()
 class AssignmentSerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True, source='_id')
     teacher = TeacherProfileSerializer(read_only=True)
-    course_id = serializers.CharField(max_length=24, required=False)
+    course = serializers.CharField(max_length=24, required=False)
     title = serializers.CharField(max_length=200)
     total_marks = serializers.IntegerField(default=100)
     description = serializers.CharField()
@@ -878,72 +878,98 @@ class AssignmentSerializer(serializers.Serializer):
         representation = super().to_representation(instance)
         
         # Handle ID conversion safely
-        if isinstance(instance, dict):
-            if '_id' in instance:
-                representation['id'] = str(instance['_id'])
-            elif 'id' in instance:
-                representation['id'] = str(instance['id'])
+        if '_id' in instance:
+            representation['id'] = str(instance['_id'])
         
-        # Remove internal fields
-        representation.pop('_id', None)
+        # Handle course data - your data has 'course' as ObjectId
+        if 'course' in instance and instance['course']:
+            try:
+                course_id = ObjectId(str(instance['course']))
+                db = get_mongo_db()
+                course = db.courses.find_one(
+                    {'_id': course_id},
+                    {'name': 1, 'code': 1}
+                )
+                
+                if course:
+                    representation['course'] = {
+                        'id': str(course['_id']),
+                        'name': course.get('name', ''),
+                        'code': course.get('code', '')
+                    }
+            except Exception as e:
+                representation['course'] = None
         
-        # Handle file field - generate S3 URL
-        if 'file' in instance and instance.get('file'):
-            representation['file'] = assignment_storage.url(instance['file'])
+        if 'file' in instance:
+            # If file exists in instance, generate URL
+            file_path = instance['file']
+            if file_path:
+                representation['file'] = assignment_storage.url(file_path)
         elif 'file' not in representation:
+            # If file doesn't exist in instance or representation, set to None
             representation['file'] = None
-        
-        # Handle teacher data
-        teacher_data = instance.get('teacher')
-        representation['teacher'] = None
-        
-        if teacher_data:
-            from user.serializer import TeacherProfileSerializer
-            if isinstance(teacher_data, dict):
-                representation['teacher'] = TeacherProfileSerializer().to_representation(teacher_data)
-            elif isinstance(teacher_data, (str, ObjectId)):
-                try:
-                    teacher_id = ObjectId(str(teacher_data))
-                    db = get_mongo_db()
-                    teacher_profile = db.teacherprofiles.find_one({"_id": teacher_id})
-                    if teacher_profile:
-                        representation['teacher'] = TeacherProfileSerializer().to_representation(teacher_profile)
-                except Exception as e:
-                    print(f"Error fetching TeacherProfile: {e}")
+
+
         
         return representation
+
+    def get_course(self, obj):
+        """Get course information"""
+        try:
+            # Check if course is already populated or is an ObjectId
+            if 'course' in obj and isinstance(obj['course'], dict):
+                # Course data is already populated
+                course_data = obj['course']
+                return {
+                    'id': str(course_data.get('_id', '')),
+                    'name': course_data.get('name', ''),
+                    'code': course_data.get('code', '')
+                }
+            elif 'course' in obj and obj['course']:
+                # Course is an ObjectId, need to fetch from DB
+                course_id = ObjectId(str(obj['course']))
+                db = get_mongo_db()
+                course = db.courses.find_one(
+                    {'_id': course_id},
+                    {'name': 1, 'code': 1}
+                )
+                
+                if course:
+                    return {
+                        'id': str(course['_id']),
+                        'name': course.get('name', ''),
+                        'code': course.get('code', '')
+                    }
+            
+            return None
+        except Exception as e:
+            return None
     
     def create(self, validated_data):
         db = get_mongo_db()
-        uploaded_file = validated_data.pop('file', None) 
         
+
         # Use course_id directly. Convert it to ObjectId.
         if 'course_id' in validated_data:
-            validated_data['course_id'] = ObjectId(validated_data['course_id'])
-
-        if 'teacher' in validated_data and validated_data['teacher'] is not None:
-            validated_data['teacher'] = ObjectId(validated_data['teacher'].get('_id'))
-        elif 'teacher' in validated_data:
-            del validated_data['teacher']
+            validated_data['course'] = ObjectId(validated_data.pop('course_id'))
 
         # Handle file upload to S3 using your custom storage
-        file_s3_key = None
-        if uploaded_file:
-            file_s3_key = assignment_storage.save(f'assignments/{uploaded_file.name}', uploaded_file)
-            validated_data['file'] = file_s3_key
-        else:
-            validated_data['file'] = None
+        file = validated_data.pop('file')
+        file_name = assignment_storage.save(f'assignments/{file.name}', file)
 
+
+        validated_data['file'] = file_name
         validated_data['created_at'] = timezone.now()
 
         try:
             result = db.make_assignments.insert_one(validated_data)
             return db.make_assignments.find_one({"_id": result.inserted_id})
         except Exception as e:
-            logger.exception("Error creating assignment.")
-            if file_s3_key:
-                assignment_storage.delete(file_s3_key)
+            # Clean up file if insertion fails
+            if file_name:
+                course_library_storage.delete(file_name)
             raise serializers.ValidationError(f"Error creating assignment: {e}")
+        
 
     def update(self, instance, validated_data):
         db = get_mongo_db()
@@ -957,24 +983,15 @@ class AssignmentSerializer(serializers.Serializer):
         else:
             raise serializers.ValidationError("Invalid assignment instance")
 
-        uploaded_file = validated_data.pop('file', None)
-        old_file_s3_key_to_delete = None 
-        new_file_s3_key = None
+        file = validated_data.pop('file')
+        file_name = course_library_storage.save(f'assignments/{file.name}', file)
+        
+        # Store the file path in MongoDB
+        validated_data['file'] = file_name
+        validated_data['created_at'] = timezone.now()
 
         # Handle file update using custom storage
-        if uploaded_file:
-            # Delete old file if it exists
-            if 'file' in instance and instance.get('file'):
-                old_file_s3_key_to_delete = instance['file']
-            
-            # Save new file to S3
-            new_file_s3_key = assignment_storage.save(f'assignments/{uploaded_file.name}', uploaded_file)
-            validated_data['file'] = new_file_s3_key
-        elif 'file' in validated_data and validated_data['file'] is None:
-            # Handle file deletion
-            if 'file' in instance and instance.get('file'):
-                old_file_s3_key_to_delete = instance['file']
-            validated_data['file'] = None
+        
 
         # Handle course_id conversion
         if 'course_id' in validated_data:
@@ -983,20 +1000,10 @@ class AssignmentSerializer(serializers.Serializer):
         # Handle teacher field - REMOVE THIS since teacher is read-only now
         validated_data.pop('teacher', None)  # Remove teacher data from update
 
-        try:
-            db.make_assignments.update_one({"_id": assignment_id}, {"$set": validated_data})
+        
+        db.make_assignments.update_one({"_id": assignment_id}, {"$set": validated_data})
 
-            # Delete old file after successful update
-            if old_file_s3_key_to_delete and old_file_s3_key_to_delete != new_file_s3_key:
-                assignment_storage.delete(old_file_s3_key_to_delete)
-
-            return db.make_assignments.find_one({"_id": assignment_id})
-        except Exception as e:
-            logger.exception("Error updating assignment.")
-            # Delete new file if update failed
-            if new_file_s3_key:
-                assignment_storage.delete(new_file_s3_key)
-            raise serializers.ValidationError(f"Error updating assignment: {e}")
+            
 
 
 class SubmissionSerializer(serializers.Serializer):

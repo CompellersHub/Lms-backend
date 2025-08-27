@@ -478,6 +478,24 @@ class CourseLibrarySerializer(serializers.Serializer):
         if '_id' in representation:
             del representation['_id']
 
+        if 'course' in instance and instance['course']:
+            try:
+                course_id = ObjectId(str(instance['course']))
+                db = get_mongo_db()
+                course = db.courses.find_one(
+                    {'_id': course_id},
+                    {'name': 1, 'code': 1}
+                )
+                
+                if course:
+                    representation['course'] = {
+                        'id': str(course['_id']),
+                        'name': course.get('name', ''),
+                        'code': course.get('code', '')
+                    }
+            except Exception as e:
+                representation['course'] = None
+
         # Handle file field - check if it exists in the instance
         if 'file' in instance:
             # If file exists in instance, generate URL
@@ -496,10 +514,10 @@ class CourseLibrarySerializer(serializers.Serializer):
         elif 'video' not in representation:
             representation['video'] = []
 
-        # Handle course_id field
-        representation['course_id'] = representation.get('course')
-        if 'course' in representation:
-            del representation['course']
+        # # Handle course_id field
+        # representation['course_id'] = representation.get('course')
+        # if 'course' in representation:
+        #     del representation['course']
 
         # Handle created_at if it exists in instance but not in representation
         if 'created_at' in instance and 'created_at' not in representation:
@@ -542,22 +560,50 @@ class CourseLibrarySerializer(serializers.Serializer):
 
     def update(self, instance, validated_data):
         db = get_mongo_db()
-        library_id = ObjectId(instance['id'])
         
-        # Handle file update if new file is provided
-        if 'file' in validated_data:
-            # Delete old file from S3 using your custom storage
-            if 'file' in instance and instance['file']:
-                course_library_storage.delete(instance['file'])
+        # Get the library ID - handle both 'id' and '_id' cases
+        if isinstance(instance, dict):
+            if '_id' in instance:
+                library_id = instance['_id']
+            elif 'id' in instance:
+                library_id = ObjectId(instance['id'])
+            else:
+                raise serializers.ValidationError("Invalid library instance: no ID found")
+        else:
+            # If instance is a model object, handle accordingly
+            library_id = getattr(instance, '_id', None) or getattr(instance, 'id', None)
+            if library_id and isinstance(library_id, str):
+                library_id = ObjectId(library_id)
+        
+        if not library_id:
+            raise serializers.ValidationError("Invalid library instance: no ID found")
+        
+        # Handle file update if needed
+        uploaded_file = validated_data.pop('file', None)
+        old_file = instance.get('file') if isinstance(instance, dict) else getattr(instance, 'file', None)
+        new_file_name = None
+        
+        if uploaded_file:
+            # Save new file
+            new_file_name = course_library_storage.save(f'courselibrary/{uploaded_file.name}', uploaded_file)
+            validated_data['file'] = new_file_name
             
-            # Save new file to S3 using your custom storage
-            file = validated_data.pop('file')
-            file_name = course_library_storage.save(f'course_library/{file.name}', file)
-            validated_data['file'] = file_name
-        
-        db.course_library.update_one({"_id": library_id}, {"$set": validated_data})
-        return db.course_library.find_one({"_id": library_id})
-
+            # Delete old file if it exists
+            if old_file and not old_file.startswith('http'):
+                try:
+                    course_library_storage.delete(old_file)
+                except:
+                    pass  # Don't fail if old file deletion fails
+                
+        try:
+            db.course_library.update_one({"_id": library_id}, {"$set": validated_data})
+            return db.course_library.find_one({"_id": library_id})
+        except Exception as e:
+            # Clean up new file if update fails
+            if new_file_name:
+                course_library_storage.delete(new_file_name)
+            raise serializers.ValidationError(f"Error updating course library: {e}")
+    
 
 
 # ... (rest of your serializers remain the same)

@@ -1209,13 +1209,21 @@ class EventRegistrationSerializer(serializers.Serializer):
     
 
 class ConsultationSerializer(serializers.Serializer):
+
+    COURSE_CHOICES = [
+    ('AML/KYC Compliance', 'AML/KYC Compliance'),
+    ('Business Analysis & Project Management', 'Business Analysis & Project Management'),
+    ('Cybersecurity', 'Cybersecurity'),
+    ('Data Analysis', 'Data Analysis'),
+    ]
     
-    email = serializers.CharField(required=True)
-    firstName = serializers.CharField(required=True, max_length=100)
-    lastName = serializers.CharField(required=False, max_length=100)
-    phone_number = serializers.CharField(required=False)
-    whatsappNumber = serializers.CharField(required=False)
+    firstName = serializers.CharField(max_length=100)
+    lastName = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    email = serializers.EmailField()
+    phone_number = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    whatsappNumber = serializers.CharField(max_length=20, required=False, allow_blank=True)
     message = serializers.CharField(required=False, allow_blank=True)
+    course = serializers.ChoiceField(choices=COURSE_CHOICES)
 
     
 

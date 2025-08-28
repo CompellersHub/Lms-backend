@@ -1257,7 +1257,7 @@ class EventRegistrationView(APIView):
             data = serializer.validated_data
             course_name = data['course_name']
             formatted_phone = format_phone_number(data.get('phone_number'))
-            
+             
             # Prepare contact attributes
             contact_attrs = {
                 'FIRSTNAME': data['first_name'],
@@ -1337,8 +1337,34 @@ logger = logging.getLogger(__name__)
 
 # Brevo Configuration
 BREVO_API_KEY = os.getenv('Brevo_API')
-CONSULTATION_WITH_MESSAGE_LIST_ID = 12  # Replace with your actual list ID
-CONSULTATION_WITHOUT_MESSAGE_LIST_ID = 13  # Replace with your actual list ID
+
+# Define course choices and their corresponding list IDs
+COURSE_CHOICES = [
+    ('AML/KYC Compliance', 'AML/KYC Compliance'),
+    ('Business Analysis & Project Management', 'Business Analysis & Project Management'),
+    ('Cybersecurity', 'Cybersecurity'),
+    ('Data Analysis', 'Data Analysis'),
+]
+
+# Map courses to their Brevo list IDs (with and without message)
+COURSE_LIST_MAPPING = {
+    'AML/KYC Compliance': {
+        'with_message': 16,    # Replace with actual list ID
+        'without_message': 17,  # Replace with actual list ID
+    },
+    'Business Analysis & Project Management': {
+        'with_message': 14,    # Replace with actual list ID
+        'without_message': 15,  # Replace with actual list ID
+    },
+    'Cybersecurity': {
+        'with_message': 18,    # Replace with actual list ID
+        'without_message': 19,  # Replace with actual list ID
+    },
+    'Data Analysis': {
+        'with_message': 20,    # Replace with actual list ID
+        'without_message': 21,  # Replace with actual list ID
+    },
+}
 
 class ConsultationView(APIView):
     permission_classes = [AllowAny]
@@ -1361,6 +1387,18 @@ class ConsultationView(APIView):
             
             data = serializer.validated_data
             has_message = bool(data.get('message', '').strip())
+            selected_course = data.get('course')
+            
+            # Validate course selection
+            if not selected_course or selected_course not in COURSE_LIST_MAPPING:
+                return Response(
+                    {"error": "Invalid course selection"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Get appropriate list ID based on course and message presence
+            list_mapping = COURSE_LIST_MAPPING[selected_course]
+            list_id = list_mapping['with_message'] if has_message else list_mapping['without_message']
             
             # Prepare contact attributes
             contact_attrs = {
@@ -1368,17 +1406,14 @@ class ConsultationView(APIView):
                 'LASTNAME': data.get('lastName', ''),
                 'WHATSAPP': data.get('whatsappNumber', ''),
                 'SMS': data.get('phone_number', ''),
+                'COURSE': selected_course,  # Add course to Brevo contact attributes
             }
-            
-            # Determine which list to add to based on message presence
-            list_ids = [CONSULTATION_WITH_MESSAGE_LIST_ID if has_message 
-                        else CONSULTATION_WITHOUT_MESSAGE_LIST_ID]
             
             # Create Brevo contact
             create_contact = sib_api_v3_sdk.CreateContact(
                 email=data['email'],
                 attributes=contact_attrs,
-                list_ids=list_ids,
+                list_ids=[list_id],
                 update_enabled=True
             )
             
@@ -1386,14 +1421,13 @@ class ConsultationView(APIView):
             try:
                 api_response = api_instance.create_contact(create_contact)
                 brevo_success = True
-                logger.info(f"Brevo contact created for {data['email']}")
+                logger.info(f"Brevo contact created for {data['email']} in list {list_id}")
             except ApiException as e:
                 logger.error(f"Brevo API Error: {e.body if hasattr(e, 'body') else str(e)}")
                 brevo_success = False
             
-            # Save to your database (example with MongoDB)
-            # If you're using Django models instead, replace this section
-            db = get_mongo_db()  # Your MongoDB connection function
+            # Save to your database
+            db = get_mongo_db()
             consultation = {
                 "email": data['email'],
                 "first_name": data['firstName'],
@@ -1401,20 +1435,20 @@ class ConsultationView(APIView):
                 "phone_number": data.get('phone_number', ''),
                 "whatsapp_number": data.get('whatsappNumber', ''),
                 "message": data.get('message', ''),
+                "course": selected_course,
                 "has_message": has_message,
                 "created_at": datetime.now().isoformat(),
                 "brevo_synced": brevo_success,
+                "brevo_list_id": list_id,
             }
             
             result = db.consultations.insert_one(consultation)
 
-            # Send confirmation email (optional)
-            # send_consultation_confirmation.delay(data['email'], data['firstName'])
-            
             response = {
                 "success": True,
                 "message": "Consultation request submitted successfully",
                 "consultation_id": str(result.inserted_id),
+                "course": selected_course,
                 "has_message": has_message,
                 "brevo_synced": brevo_success
             }

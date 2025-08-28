@@ -1045,9 +1045,9 @@ class AssignmentSerializer(serializers.Serializer):
 
 
 class SubmissionSerializer(serializers.Serializer):
-    id = serializers.CharField(read_only=True)
-    assignment = AssignmentSerializer()
-    student = serializers.CharField() 
+    id = serializers.CharField(read_only=True)  
+    assignment = serializers.CharField(required=False)
+    student = serializers.CharField(required=False)
     submission_date = serializers.DateTimeField(read_only=True)
     marks_obtained = serializers.IntegerField(required=False, default=0)
     feedback = serializers.CharField(required=False, allow_blank=True)
@@ -1058,9 +1058,7 @@ class SubmissionSerializer(serializers.Serializer):
         if '_id' in instance:
             instance['id'] = str(instance['_id'])
             del instance['_id']
-        if 'assignment' in instance and isinstance(instance['assignment'], dict):
-            instance['assignment'] = AssignmentSerializer().to_representation(instance['assignment'])
-        return super().to_representation(instance)
+        
 
     def create(self, validated_data):
         db = get_mongo_db()

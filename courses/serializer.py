@@ -560,7 +560,7 @@ class CourseLibrarySerializer(serializers.Serializer):
 
     def update(self, instance, validated_data):
         db = get_mongo_db()
-        
+
         # Get the library ID - handle both 'id' and '_id' cases
         if isinstance(instance, dict):
             if '_id' in instance:
@@ -574,20 +574,20 @@ class CourseLibrarySerializer(serializers.Serializer):
             library_id = getattr(instance, '_id', None) or getattr(instance, 'id', None)
             if library_id and isinstance(library_id, str):
                 library_id = ObjectId(library_id)
-        
+
         if not library_id:
             raise serializers.ValidationError("Invalid library instance: no ID found")
-        
+
         # Handle file update if needed
         uploaded_file = validated_data.pop('file', None)
         old_file = instance.get('file') if isinstance(instance, dict) else getattr(instance, 'file', None)
         new_file_name = None
-        
+
         if uploaded_file:
             # Save new file
             new_file_name = course_library_storage.save(f'courselibrary/{uploaded_file.name}', uploaded_file)
             validated_data['file'] = new_file_name
-            
+
             # Delete old file if it exists
             if old_file and not old_file.startswith('http'):
                 try:
@@ -603,7 +603,7 @@ class CourseLibrarySerializer(serializers.Serializer):
             if new_file_name:
                 course_library_storage.delete(new_file_name)
             raise serializers.ValidationError(f"Error updating course library: {e}")
-    
+
 
 
 # ... (rest of your serializers remain the same)
@@ -909,8 +909,8 @@ assignment_storage = AssignmentStorage()
 
 class AssignmentSerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True, source='_id')
-    teacher = TeacherProfileSerializer(read_only=True)
     course = serializers.CharField(max_length=24, required=False)
+    teacher = serializers.CharField(max_length=24, required=False)
     title = serializers.CharField(max_length=200)
     total_marks = serializers.IntegerField(default=100)
     description = serializers.CharField()
@@ -945,6 +945,24 @@ class AssignmentSerializer(serializers.Serializer):
                     }
             except Exception as e:
                 representation['course'] = None
+
+        if 'teacher' in instance and instance['teacher']:
+            try:
+                teacher_id = ObjectId(str(instance['teacher']))
+                db = get_mongo_db()
+                teacher = db.teacherprofiles.find_one(
+                    {'_id': teacher_id},
+                    {'name': 1, 'code': 1}
+                )
+                
+                if teacher:
+                    representation['teacher'] = {
+                        'id': str(teacher['_id']),
+                        'first_name': teacher.get('first_name'),
+                        'last_name': teacher.get('last_name'),
+                    }
+            except Exception as e:
+                representation['teacher'] = None
         
         if 'file' in instance:
             # If file exists in instance, generate URL

@@ -927,7 +927,7 @@ class AssignmentSerializer(serializers.Serializer):
         if '_id' in instance:
             representation['id'] = str(instance['_id'])
         
-        # Handle course data - your data has 'course' as ObjectId
+        # Handle course data
         if 'course' in instance and instance['course']:
             try:
                 course_id = ObjectId(str(instance['course']))
@@ -943,71 +943,45 @@ class AssignmentSerializer(serializers.Serializer):
                         'name': course.get('name', ''),
                         'code': course.get('code', '')
                     }
+                else:
+                    representation['course'] = None
             except Exception as e:
                 representation['course'] = None
 
+        # Handle teacher data
         if 'teacher' in instance and instance['teacher']:
             try:
                 teacher_id = ObjectId(str(instance['teacher']))
                 db = get_mongo_db()
                 teacher = db.teacherprofiles.find_one(
                     {'_id': teacher_id},
-                    {'name': 1, 'code': 1}
+                    {'first_name': 1, 'last_name': 1, 'email': 1, 'profile_picture': 1}
                 )
                 
                 if teacher:
                     representation['teacher'] = {
                         'id': str(teacher['_id']),
-                        'first_name': teacher.get('first_name'),
-                        'last_name': teacher.get('last_name'),
+                        'first_name': teacher.get('first_name', ''),
+                        'last_name': teacher.get('last_name', ''),
+                        'email': teacher.get('email', ''),
+                        'profile_picture': teacher.get('profile_picture', '')
                     }
+                else:
+                    representation['teacher'] = None
             except Exception as e:
                 representation['teacher'] = None
         
-        if 'file' in instance:
-            # If file exists in instance, generate URL
-            file_path = instance['file']
-            if file_path:
-                representation['file'] = assignment_storage.url(file_path)
-        elif 'file' not in representation:
-            # If file doesn't exist in instance or representation, set to None
+        # Handle file field
+        if 'file' in instance and instance.get('file'):
+            # Check if it's already a URL or a file path
+            if instance['file'].startswith('http'):
+                representation['file'] = instance['file']
+            else:
+                representation['file'] = assignment_storage.url(instance['file'])
+        else:
             representation['file'] = None
-
-
         
         return representation
-
-    def get_course(self, obj):
-        """Get course information"""
-        try:
-            # Check if course is already populated or is an ObjectId
-            if 'course' in obj and isinstance(obj['course'], dict):
-                # Course data is already populated
-                course_data = obj['course']
-                return {
-                    'id': str(course_data.get('_id', '')),
-                    'name': course_data.get('name', ''),
-                    'code': course_data.get('code', '')
-                }
-            elif 'course' in obj and obj['course']:
-                # Course is an ObjectId, need to fetch from DB
-                course_id = ObjectId(str(obj['course']))
-                db = get_mongo_db()
-                course = db.courses.find_one(
-                    {'_id': course_id},
-                    {'name': 1, 'code': 1}
-                )
-                
-                if course:
-                    return {
-                        'id': str(course['_id']),
-                        'name': course.get('name', ''),
-                        'code': course.get('code', '')
-                    }
-            
-            return None
-        except Exception as e:
-            return None
     
     def create(self, validated_data):
         db = get_mongo_db()

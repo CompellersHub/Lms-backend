@@ -4,7 +4,7 @@ import re
 from rest_framework import serializers
 from bson.objectid import ObjectId
 
-from courses.storages_backends import AssignmentStorage, CourseLibraryStorage
+from courses.storages_backends import AssignmentStorage, CourseLibraryStorage, SubmissionStorage
 from user.serializer import TeacherProfileSerializer
 from django.core.validators import validate_email
 from django.core.exceptions import ValidationError
@@ -1043,34 +1043,249 @@ class AssignmentSerializer(serializers.Serializer):
 
             
 
-
+submission_storage = SubmissionStorage
 class SubmissionSerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)  
-    assignment = serializers.CharField(required=False)
-    student = serializers.CharField(required=False)
+    assignment_id = serializers.CharField(write_only=True)  # For writing
+    assignment = serializers.SerializerMethodField(read_only=True)  # For reading
+    student_id = serializers.CharField(write_only=True, required=False)  # For writing
+    student = serializers.SerializerMethodField(read_only=True)  # For reading
     submission_date = serializers.DateTimeField(read_only=True)
     marks_obtained = serializers.IntegerField(required=False, default=0)
     feedback = serializers.CharField(required=False, allow_blank=True)
-    marked_by = serializers.CharField(required=False, allow_null=True)
+    marked_by_id = serializers.CharField(required=False, allow_null=True, write_only=True)  # For writing
+    marked_by = serializers.SerializerMethodField(read_only=True)  # For reading
     file = serializers.FileField(allow_null=True, required=False)
 
     def to_representation(self, instance):
-        if '_id' in instance:
-            instance['id'] = str(instance['_id'])
-            del instance['_id']
+        representation = super().to_representation(instance)
         
+        # Handle ID conversion
+        if '_id' in instance:
+            representation['id'] = str(instance['_id'])
+        
+        # Handle assignment data
+        if 'assignment' in instance and instance['assignment']:
+            try:
+                assignment_id = ObjectId(str(instance['assignment']))
+                db = get_mongo_db()
+                assignment = db.make_assignments.find_one(
+                    {'_id': assignment_id},
+                    {'title': 1, 'course': 1}
+                )
+                
+                if assignment:
+                    representation['assignment'] = {
+                        'id': str(assignment['_id']),
+                        'title': assignment.get('title', ''),
+                        'course_id': str(assignment.get('course', '')) if assignment.get('course') else None
+                    }
+            except Exception as e:
+                representation['assignment'] = None
+        
+        # Handle student data
+        if 'student' in instance and instance['student']:
+            try:
+                student_id = ObjectId(str(instance['student']))
+                db = get_mongo_db()
+                student = db.customusers.find_one(
+                    {'_id': student_id},
+                    {'first_name': 1, 'last_name': 1, 'email': 1}
+                )
+                
+                if student:
+                    representation['student'] = {
+                        'id': str(student['_id']),
+                        'first_name': student.get('first_name', ''),
+                        'last_name': student.get('last_name', ''),
+                        'email': student.get('email', '')
+                    }
+            except Exception as e:
+                representation['student'] = None
+                
+        # Handle marked_by data
+        if 'marked_by' in instance and instance['marked_by']:
+            try:
+                marked_by_id = ObjectId(str(instance['marked_by']))
+                db = get_mongo_db()
+                teacher = db.teacherprofiles.find_one(
+                    {'_id': marked_by_id},
+                    {'first_name': 1, 'last_name': 1, 'email': 1}
+                )
+                
+                if teacher:
+                    representation['marked_by'] = {
+                        'id': str(teacher['_id']),
+                        'first_name': teacher.get('first_name', ''),
+                        'last_name': teacher.get('last_name', ''),
+                        'email': teacher.get('email', '')
+                    }
+            except Exception as e:
+                representation['marked_by'] = None
+        
+        # Handle file field
+        if 'file' in instance and instance.get('file'):
+            file_path = instance['file']
+            # Check if it's already a URL or a file path
+            if file_path.startswith('http'):
+                representation['file'] = file_path
+            else:
+                # Make sure you're calling url() with the file name/path
+                try:
+                    representation['file'] = default_storage.url(file_path)
+                except Exception as e:
+                    representation['file'] = None
+        else:
+            representation['file'] = None
+        
+        return representation
+
+    def get_assignment(self, obj):
+        """Get assignment information for read operations"""
+        try:
+            if 'assignment' in obj and obj['assignment']:
+                assignment_id = ObjectId(str(obj['assignment']))
+                db = get_mongo_db()
+                assignment = db.make_assignments.find_one(
+                    {'_id': assignment_id},
+                    {'title': 1, 'course': 1}
+                )
+                
+                if assignment:
+                    return {
+                        'id': str(assignment['_id']),
+                        'title': assignment.get('title', ''),
+                        'course_id': str(assignment.get('course', '')) if assignment.get('course') else None
+                    }
+            return None
+        except Exception as e:
+            return None
+
+    def get_student(self, obj):
+        """Get student information for read operations"""
+        try:
+            if 'student' in obj and obj['student']:
+                student_id = ObjectId(str(obj['student']))
+                db = get_mongo_db()
+                student = db.customusers.find_one(
+                    {'_id': student_id},
+                    {'first_name': 1, 'last_name': 1, 'email': 1}
+                )
+                
+                if student:
+                    return {
+                        'id': str(student['_id']),
+                        'first_name': student.get('first_name', ''),
+                        'last_name': student.get('last_name', ''),
+                        'email': student.get('email', '')
+                    }
+            return None
+        except Exception as e:
+            return None
+
+    def get_marked_by(self, obj):
+        """Get marked_by information for read operations"""
+        try:
+            if 'marked_by' in obj and obj['marked_by']:
+                marked_by_id = ObjectId(str(obj['marked_by']))
+                db = get_mongo_db()
+                teacher = db.teacherprofiles.find_one(
+                    {'_id': marked_by_id},
+                    {'first_name': 1, 'last_name': 1, 'email': 1}
+                )
+                
+                if teacher:
+                    return {
+                        'id': str(teacher['_id']),
+                        'first_name': teacher.get('first_name', ''),
+                        'last_name': teacher.get('last_name', ''),
+                        'email': teacher.get('email', '')
+                    }
+            return None
+        except Exception as e:
+            return None
 
     def create(self, validated_data):
         db = get_mongo_db()
+        uploaded_file = validated_data.pop('file', None)
+        
+        # Handle assignment_id conversion
+        if 'assignment_id' in validated_data:
+            validated_data['assignment'] = ObjectId(validated_data.pop('assignment_id'))
+
+        # Handle student - get from request context
+        request = self.context.get('request')
+        if request and hasattr(request, 'user'):
+            # Assuming the user has a studentprofile with _id field
+            try:
+                student_id = request.user.customusers._id
+                validated_data['student'] = ObjectId(student_id)
+            except AttributeError:
+                raise serializers.ValidationError("User doesn't have a student profile")
+
+        # Handle file upload
+        file_name = None
+        if uploaded_file:
+            # Use default storage or your configured storage
+            file_name = default_storage.save(f'submissions/{uploaded_file.name}', uploaded_file)
+            validated_data['file'] = file_name
+
         validated_data['submission_date'] = datetime.datetime.utcnow()
-        result = db.submissions.insert_one(validated_data)
-        return db.submissions.find_one({"_id": result.inserted_id})
+
+        try:
+            result = db.submissions.insert_one(validated_data)
+            return db.submissions.find_one({"_id": result.inserted_id})
+        except Exception as e:
+            # Clean up file if insertion fails
+            if file_name:
+                default_storage.delete(file_name)
+            raise serializers.ValidationError(f"Error creating submission: {e}")
 
     def update(self, instance, validated_data):
         db = get_mongo_db()
-        submission_id = ObjectId(instance['id'])
-        db.submissions.update_one({"_id": submission_id}, {"$set": validated_data})
-        return db.submissions.find_one({"_id": submission_id})
+        
+        # Get submission ID
+        if isinstance(instance, dict) and '_id' in instance:
+            submission_id = instance['_id']
+        else:
+            raise serializers.ValidationError("Invalid submission instance")
+
+        uploaded_file = validated_data.pop('file', None)
+        old_file = instance.get('file')
+        new_file_name = None
+        
+        # Handle file update
+        if uploaded_file:
+            new_file_name = submission_storage.save(f'submissions/{uploaded_file.name}', uploaded_file)
+            validated_data['file'] = new_file_name
+            
+            # Delete old file if it exists
+            if old_file and not old_file.startswith('http'):
+                try:
+                    submission_storage.delete(old_file)
+                except:
+                    pass  # Don't fail if old file deletion fails
+
+        # Handle assignment_id conversion if provided
+        if 'assignment_id' in validated_data:
+            validated_data['assignment'] = ObjectId(validated_data.pop('assignment_id'))
+
+        # Handle student_id conversion if provided
+        if 'student_id' in validated_data:
+            validated_data['student'] = ObjectId(validated_data.pop('student_id'))
+
+        # Handle marked_by_id conversion if provided
+        if 'marked_by_id' in validated_data:
+            validated_data['marked_by'] = ObjectId(validated_data.pop('marked_by_id'))
+
+        try:
+            db.submissions.update_one({"_id": submission_id}, {"$set": validated_data})
+            return db.submissions.find_one({"_id": submission_id})
+        except Exception as e:
+            # Clean up new file if update fails
+            if new_file_name:
+                submission_storage.delete(new_file_name)
+            raise serializers.ValidationError(f"Error updating submission: {e}")
 
 # class CourseOrderItemSerializer(serializers.Serializer):
 #     id = serializers.CharField(read_only=True)
@@ -1234,12 +1449,14 @@ class ConsultationSerializer(serializers.Serializer):
         except ValidationError:
             raise serializers.ValidationError("Enter a valid email address")
 
+    def validate_whatsappNumber(self, value):
+        if value and not re.match(r'^\+[1-9]\d{1,14}$', value):
+            raise serializers.ValidationError("WhatsApp number must be in international format (e.g., +1234567890)")
+        return value
+    
     def validate_phone_number(self, value):
-        if value:  # Only validate if phone number is provided
-            # Allow +, numbers, and whitespace/punctuation that will be removed later
-            if not re.match(r'^[\d\s+\-()]{6,20}$', value):
-                raise serializers.ValidationError(
-                    "Enter a valid phone number with country code (e.g. +44...)")
+        if value and not re.match(r'^\+[1-9]\d{1,14}$', value):
+            raise serializers.ValidationError("Phone number must be in international format (e.g., +1234567890)")
         return value
 
     def validate_firstName(self, value):

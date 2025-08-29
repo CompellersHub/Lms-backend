@@ -1400,14 +1400,21 @@ class ConsultationView(APIView):
             list_mapping = COURSE_LIST_MAPPING[selected_course]
             list_id = list_mapping['with_message'] if has_message else list_mapping['without_message']
             
-            # Prepare contact attributes
+            # Prepare contact attributes - only include valid phone numbers
             contact_attrs = {
                 'FIRSTNAME': data['firstName'],
                 'LASTNAME': data.get('lastName', ''),
-                'WHATSAPP': data.get('whatsappNumber', ''),
-                'SMS': data.get('phone_number', ''),
-                'COURSE': selected_course,  # Add course to Brevo contact attributes
+                'COURSE': selected_course,
             }
+            
+            # Only add phone numbers if they're in valid format
+            phone_number = data.get('phone_number')
+            if phone_number and re.match(r'^\+[1-9]\d{1,14}$', phone_number):
+                contact_attrs['SMS'] = phone_number
+            
+            whatsapp_number = data.get('whatsappNumber')
+            if whatsapp_number and re.match(r'^\+[1-9]\d{1,14}$', whatsapp_number):
+                contact_attrs['WHATSAPP'] = whatsapp_number
             
             # Create Brevo contact
             create_contact = sib_api_v3_sdk.CreateContact(
@@ -1417,7 +1424,7 @@ class ConsultationView(APIView):
                 update_enabled=True
             )
             
-            # Try Brevo API first
+            # Try Brevo API
             try:
                 api_response = api_instance.create_contact(create_contact)
                 brevo_success = True
@@ -1425,6 +1432,27 @@ class ConsultationView(APIView):
             except ApiException as e:
                 logger.error(f"Brevo API Error: {e.body if hasattr(e, 'body') else str(e)}")
                 brevo_success = False
+                # If Brevo fails due to phone number, try without phone numbers
+                if "phone" in str(e).lower() or "whatsapp" in str(e).lower():
+                    try:
+                        # Remove phone attributes and try again
+                        if 'SMS' in contact_attrs:
+                            del contact_attrs['SMS']
+                        if 'WHATSAPP' in contact_attrs:
+                            del contact_attrs['WHATSAPP']
+                        
+                        create_contact = sib_api_v3_sdk.CreateContact(
+                            email=data['email'],
+                            attributes=contact_attrs,
+                            list_ids=[list_id],
+                            update_enabled=True
+                        )
+                        api_response = api_instance.create_contact(create_contact)
+                        brevo_success = True
+                        logger.info(f"Brevo contact created without phone numbers for {data['email']}")
+                    except ApiException as retry_e:
+                        logger.error(f"Brevo API Retry Error: {retry_e.body if hasattr(retry_e, 'body') else str(retry_e)}")
+                        brevo_success = False
             
             # Save to your database
             db = get_mongo_db()

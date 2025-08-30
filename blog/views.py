@@ -1,4 +1,6 @@
 import datetime
+import logging
+import time
 import uuid
 from django.conf import settings
 from django.views import View
@@ -248,47 +250,87 @@ class BlogImageUploadView(APIView):
 
 
 
+logger = logging.getLogger(__name__)
+
 @method_decorator(csrf_exempt, name='dispatch')
 class RankYakWebhookView(View):
     def post(self, request):
+        # Start timing the request
+        start_time = time.time()
+        
+        # Generate a unique request ID for tracking
+        request_id = f"rankyak_{int(time.time())}_{hash(request.META.get('REMOTE_ADDR', ''))}"
+        
         try:
-            # Verify webhook secret (optional but recommended)
+            # Log incoming request
+            logger.info(f"[{request_id}] RankYak webhook received from IP: {request.META.get('REMOTE_ADDR')}")
+            logger.debug(f"[{request_id}] Request headers: {dict(request.headers)}")
+            
+            # Verify webhook secret
             expected_secret = settings.RANKYAK_WEBHOOK_SECRET
             incoming_secret = request.headers.get('X-RankYak-Secret')
             
             if expected_secret and incoming_secret != expected_secret:
+                logger.warning(f"[{request_id}] Invalid webhook secret received: {incoming_secret}")
                 return JsonResponse({'error': 'Invalid webhook secret'}, status=403)
             
-            data = json.loads(request.body)
+            # Parse request body
+            try:
+                data = json.loads(request.body)
+                logger.debug(f"[{request_id}] Raw webhook data: {json.dumps(data)[:500]}...")  # Limit log size
+            except json.JSONDecodeError as e:
+                logger.error(f"[{request_id}] JSON decode error: {str(e)}")
+                return JsonResponse({'error': 'Invalid JSON'}, status=400)
             
             # Transform RankYak data to match your BlogSerializer
             blog_data = self.transform_rankyak_data(data)
+            logger.info(f"[{request_id}] Transformed blog data for title: {blog_data.get('title', 'Unknown')}")
             
             # Validate and save using your serializer
             serializer = BlogSerializer(data=blog_data)
             
             if serializer.is_valid():
+                logger.debug(f"[{request_id}] Data validation passed")
                 blog_instance = serializer.save()
+                processing_time = time.time() - start_time
+                
+                logger.info(f"[{request_id}] Blog created successfully in {processing_time:.2f}s. ID: {str(blog_instance.get('_id', 'Unknown'))}, Title: {blog_data.get('title', 'Unknown')}")
+                
                 return JsonResponse({
                     'status': 'success',
                     'message': 'Blog created successfully',
-                    'id': str(blog_instance['_id']) if '_id' in blog_instance else None
+                    'id': str(blog_instance['_id']) if '_id' in blog_instance else None,
+                    'processing_time': processing_time
                 }, status=201)
             else:
+                logger.warning(f"[{request_id}] Validation failed: {serializer.errors}")
                 return JsonResponse({
                     'status': 'error',
                     'message': 'Validation failed',
                     'errors': serializer.errors
                 }, status=400)
                 
-        except json.JSONDecodeError:
-            return JsonResponse({'error': 'Invalid JSON'}, status=400)
         except Exception as e:
-            return JsonResponse({'error': str(e)}, status=500)
+            processing_time = time.time() - start_time
+            logger.error(f"[{request_id}] Unexpected error after {processing_time:.2f}s: {str(e)}", exc_info=True)
+            return JsonResponse({
+                'error': 'Internal server error',
+                'request_id': request_id
+            }, status=500)
     
     def transform_rankyak_data(self, rankyak_data):
         """Transform RankYak webhook data to match BlogSerializer format"""
-        return {
+        logger.debug(f"Transforming RankYak data: {json.dumps(rankyak_data)[:200]}...")
+        
+        # Get featured image or use a default/placeholder
+        featured_image = rankyak_data.get('featured_image', '')
+        
+        # If no image provided, use a default placeholder image
+        if not featured_image:
+            featured_image = "https://titanscareers.s3.amazonaws.com/blogs/placeholder-image.jpg"
+            logger.info(f"No featured image provided, using placeholder: {featured_image}")
+        
+        transformed_data = {
             'title': rankyak_data.get('title', ''),
             'slug': rankyak_data.get('slug', ''),
             'category': rankyak_data.get('category', 'General'),
@@ -296,12 +338,20 @@ class RankYakWebhookView(View):
             'excerpt': rankyak_data.get('excerpt', ''),
             'content': self.transform_content(rankyak_data.get('content', '')),
             'status': rankyak_data.get('status', 'draft'),
-            'image_url': rankyak_data.get('featured_image', '')
+            'image_url': featured_image  # Use the processed image URL
         }
+        
+        logger.debug(f"Transformed data: {json.dumps(transformed_data)[:200]}...")
+        return transformed_data
     
     def transform_content(self, content_text):
         """Convert plain text content to your structured content format"""
-        # This is a simple transformation - you might need to adjust based on RankYak's output format
+        logger.debug(f"Transforming content: {content_text[:100]}...")
+        
+        if not content_text:
+            logger.warning("Empty content received from RankYak")
+            return []
+            
         paragraphs = content_text.split('\n\n')
         structured_content = []
         
@@ -317,4 +367,5 @@ class RankYakWebhookView(View):
                 else:
                     structured_content.append({'type': 'paragraph', 'text': paragraph.strip()})
         
+        logger.debug(f"Created {len(structured_content)} content blocks")
         return structured_content

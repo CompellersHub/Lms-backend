@@ -1509,7 +1509,7 @@ class SendTemplateToListAPIView(APIView):
         sender_email = settings.DEFAULT_FROM_EMAIL
         sender_name = "Titans Careers"
         list_id = 8  # Specific list ID
-        template_id = 10  # Specific template ID
+        template_id = 11  # Specific template ID
         
         # Get all contacts from the specified list
         contacts = self.get_brevo_contacts_in_list(brevo_api_key, list_id)
@@ -1558,7 +1558,7 @@ class SendTemplateToListAPIView(APIView):
         Retrieve all contacts from specific Brevo list with pagination handling
         """
         url = f"https://api.brevo.com/v3/contacts/lists/{list_id}/contacts"
-        limit = 50  # Brevo's default limit
+        limit = 100  # Brevo's default limit
         offset = 0
         all_contacts = []
         

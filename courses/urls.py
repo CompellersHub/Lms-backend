@@ -37,7 +37,7 @@ urlpatterns = [
     path('live-classes/<str:live_class_id>/', views.LiveClassDetailView.as_view(), name='live-class-detail'),
 
     path('GenerateCertificate/', views.GenerateCertificatePDF.as_view(), name='generate-certificate'),
-    path('event', views.EventAPIView.as_view(), name='course_events'),
+    path('event/', views.EventAPIView.as_view(), name='course_events'),
     path('event-register/', views.EventRegistrationView.as_view(), name='course-registration'),
 
     path('consultations/', views.ConsultationView.as_view(), name='create-consultation'),

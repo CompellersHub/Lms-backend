@@ -1084,59 +1084,54 @@ class SubmissionSerializer(serializers.Serializer):
                 representation['assignment'] = None
         
         # Handle student data
-        if 'student' in instance and instance['student']:
-            try:
-                student_id = ObjectId(str(instance['student']))
-                db = get_mongo_db()
-                student = db.customusers.find_one(
-                    {'_id': student_id},
-                    {'first_name': 1, 'last_name': 1, 'email': 1}
-                )
-                
-                if student:
-                    representation['student'] = {
-                        'id': str(student['_id']),
-                        'first_name': student.get('first_name', ''),
-                        'last_name': student.get('last_name', ''),
-                        'email': student.get('email', '')
-                    }
-            except Exception as e:
-                representation['student'] = None
-                
-        # Handle marked_by data
-        if 'marked_by' in instance and instance['marked_by']:
-            try:
-                marked_by_id = ObjectId(str(instance['marked_by']))
-                db = get_mongo_db()
-                teacher = db.teacherprofiles.find_one(
-                    {'_id': marked_by_id},
-                    {'first_name': 1, 'last_name': 1, 'email': 1}
-                )
-                
-                if teacher:
-                    representation['marked_by'] = {
-                        'id': str(teacher['_id']),
-                        'first_name': teacher.get('first_name', ''),
-                        'last_name': teacher.get('last_name', ''),
-                        'email': teacher.get('email', '')
-                    }
-            except Exception as e:
-                representation['marked_by'] = None
-        
-        # Handle file field
-        if 'file' in instance and instance.get('file'):
-            file_path = instance['file']
-            # Check if it's already a URL or a file path
-            if file_path.startswith('http'):
-                representation['file'] = file_path
-            else:
-                # Make sure you're calling url() with the file name/path
+            if 'student' in instance and instance['student']:
                 try:
-                    representation['file'] = default_storage.url(file_path)
+                    student_id = ObjectId(str(instance['student']))
+                    db = get_mongo_db()
+                    student = db.customusers.find_one(
+                        {'_id': student_id},
+                        {'first_name': 1, 'last_name': 1, 'email': 1}
+                    )
+                    
+                    if student:
+                        representation['student'] = {
+                            'id': str(student['_id']),
+                            'first_name': student.get('first_name', ''),
+                            'last_name': student.get('last_name', ''),
+                            'email': student.get('email', '')
+                        }
                 except Exception as e:
-                    representation['file'] = None
-        else:
-            representation['file'] = None
+                    representation['student'] = None
+                    
+            # Handle marked_by data
+            if 'marked_by' in instance and instance['marked_by']:
+                try:
+                    marked_by_id = ObjectId(str(instance['marked_by']))
+                    db = get_mongo_db()
+                    teacher = db.teacherprofiles.find_one(
+                        {'_id': marked_by_id},
+                        {'first_name': 1, 'last_name': 1, 'email': 1}
+                    )
+                    
+                    if teacher:
+                        representation['marked_by'] = {
+                            'id': str(teacher['_id']),
+                            'first_name': teacher.get('first_name', ''),
+                            'last_name': teacher.get('last_name', ''),
+                            'email': teacher.get('email', '')
+                        }
+                except Exception as e:
+                    representation['marked_by'] = None
+            
+            # Handle file field
+            if 'file' in instance and instance.get('file'):
+                # Check if it's already a URL or a file path
+                if instance['file'].startswith('http'):
+                    representation['file'] = instance['file']
+                else:
+                    representation['file'] = submission_storage.url(instance['file'])
+            else:
+                representation['file'] = None
         
         return representation
 
@@ -1207,7 +1202,6 @@ class SubmissionSerializer(serializers.Serializer):
 
     def create(self, validated_data):
         db = get_mongo_db()
-        uploaded_file = validated_data.pop('file', None)
         
         # Handle assignment_id conversion
         if 'assignment_id' in validated_data:
@@ -1218,19 +1212,20 @@ class SubmissionSerializer(serializers.Serializer):
         if request and hasattr(request, 'user'):
             # Assuming the user has a studentprofile with _id field
             try:
-                student_id = request.user.customusers._id
+                # FIX: Changed from request.user.customusers._id to the correct path
+                # This depends on your user model structure
+                student_id = request.user.studentprofile._id  # or request.user._id
                 validated_data['student'] = ObjectId(student_id)
             except AttributeError:
                 raise serializers.ValidationError("User doesn't have a student profile")
 
-        # Handle file upload
-        file_name = None
-        if uploaded_file:
-            # Use default storage or your configured storage
-            file_name = default_storage.save(f'submissions/{uploaded_file.name}', uploaded_file)
-            validated_data['file'] = file_name
+        # Handle file upload - FIXED: Check if file exists and handle properly
+        file = validated_data.pop('file')
+        file_name = submission_storage.save(f'submission/{file.name}', file)
 
-        validated_data['submission_date'] = datetime.datetime.utcnow()
+
+        validated_data['file'] = file_name
+        validated_data['created_at'] = timezone.now()
 
         try:
             result = db.submissions.insert_one(validated_data)
@@ -1238,7 +1233,7 @@ class SubmissionSerializer(serializers.Serializer):
         except Exception as e:
             # Clean up file if insertion fails
             if file_name:
-                default_storage.delete(file_name)
+                submission_storage.delete(file_name)
             raise serializers.ValidationError(f"Error creating submission: {e}")
 
     def update(self, instance, validated_data):

@@ -140,10 +140,8 @@ class GoogleLoginView(APIView):
             try:
                 user = CustomUser.from_mongo(user_document)
                 refresh = RefreshToken.for_user(user)
-                tokens = {
-                    'refresh': str(refresh),
-                    'access': str(refresh.access_token),
-                }
+                tokens = create_jwt_tokens(user)
+
             except Exception as e:
                 logger.error(f"Failed to generate JWT tokens: {str(e)}", exc_info=True)
                 return Response(
@@ -155,11 +153,11 @@ class GoogleLoginView(APIView):
 
             logger.info(f"Successful Google login for user: {user_document['email']}")
             return Response({
-                'message': 'Login successful',
-                'user': serializer.data,
-                'access': tokens['access'],
-                'refresh': tokens['refresh'],
-            }, status=status.HTTP_200_OK)
+                    "access": tokens['access'],
+                    "refresh": tokens['refresh'],
+                    "user_info": serializer.data,
+                    "message": "Logged in with Google successfully"
+                }, status=status.HTTP_200_OK)
 
         except ValueError as e:
             logger.error(f"Error verifying Google token: {str(e)}")

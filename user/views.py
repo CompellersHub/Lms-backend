@@ -154,7 +154,7 @@ class GoogleLoginView(APIView):
             return Response({
                 'access': tokens['access'],
                 'refresh': tokens['refresh'],
-                'user': serializer.data,
+                'user_info': serializer.data,
                 'message': "Login Successful"
             }, status=status.HTTP_200_OK)
 

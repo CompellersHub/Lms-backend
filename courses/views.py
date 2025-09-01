@@ -1217,8 +1217,7 @@ logger = logging.getLogger(__name__)
 BREVO_API_KEY = os.getenv('Brevo_API')
 
 # Map courses to Brevo list IDs
-# Unified course settings mapping
-COURSE_SETTINGS = {
+COURSE_LISTS = {
     "AML/KYC Compliance": {
         "list_id": 7,  # Brevo contact list ID
         "template_id": 12,  # Brevo template ID or your custom template name
@@ -1244,7 +1243,6 @@ COURSE_SETTINGS = {
         "zoom_link": "https://zoom.us/j/95062242798?pwd=yetanotherpassword"
     }
 }
-
 
 def format_phone_number(phone):
     """Format phone number for Brevo compliance"""
@@ -1278,16 +1276,14 @@ class EventRegistrationView(APIView):
             
             data = serializer.validated_data
             course_name = data['course_name']
-            
-            # Get course-specific settings
-            course_settings = COURSE_SETTINGS.get(course_name, {})
+            formatted_phone = format_phone_number(data.get('phone_number'))
+
+            course_settings = COURSE_LISTS.get(course_name, {})
             if not course_settings:
                 return Response(
                     {"error": "Invalid course selection"},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            
-            formatted_phone = format_phone_number(data.get('phone_number'))
              
             # Prepare contact attributes
             contact_attrs = {
@@ -1303,7 +1299,7 @@ class EventRegistrationView(APIView):
             create_contact = CreateContact(
                 email=data['email'],
                 attributes=contact_attrs,
-                list_ids=[course_settings['list_id']],  # Use the list_id from course settings
+                list_ids=[course_settings['list_id']],
                 update_enabled=True
             )
             
@@ -1329,8 +1325,7 @@ class EventRegistrationView(APIView):
                 "registration_date": datetime.now().isoformat(),
                 "status": "registered",
                 "brevo_synced": brevo_success,
-                "brevo_formatted_phone": formatted_phone,
-                "course_settings": course_settings  # Store the settings used
+                "brevo_formatted_phone": formatted_phone
             }
             
             result = db.registrations.insert_one(registration)
@@ -1340,9 +1335,9 @@ class EventRegistrationView(APIView):
                 to_email=data['email'],
                 first_name=data['first_name'],
                 course_name=course_name,
+                template_id=course_settings['template_id'],
                 course_date=course_settings['course_date'],
                 zoom_link=course_settings['zoom_link'],
-                template_id=course_settings['template_id']  # Use the template_id from course settings
             )
             
             response = {

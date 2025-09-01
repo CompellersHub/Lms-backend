@@ -86,9 +86,7 @@ def send_course_registration_email(self, to_email, first_name, course_name, cour
         # Prepare template parameters
         params = {
             'FIRST_NAME': first_name,
-            'COURSE_NAME': course_name,
-            'COURSE_DATE': course_date,
-            'ZOOM_LINK': zoom_link
+            
         }
         
         # Call email service with the specific template ID

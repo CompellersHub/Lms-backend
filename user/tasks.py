@@ -1,7 +1,11 @@
+import os
 from celery import shared_task
 from django.conf import settings
 from .utils.email_service import send_brevo_email
 import logging
+import sib_api_v3_sdk
+from sib_api_v3_sdk.rest import ApiException
+from sib_api_v3_sdk import ContactsApi, CreateContact
 
 logger = logging.getLogger(__name__)
 
@@ -75,38 +79,34 @@ def send_application_received_email(self, to_email, first_name):
         self.retry(exc=e, countdown=60, max_retries=3)
 
 
-@shared_task(bind=True)
-def send_course_registration_email(self, to_email, first_name, course_name, course_date, zoom_link):
+@shared_task
+def send_course_registration_email(to_email, first_name, course_name, course_date, zoom_link, template_id):
     """
-    Celery task to send course registration confirmation email
+    Send course registration email using Brevo's transactional templates
     """
     try:
-        logger.info(f"Sending course registration email to {to_email}")
+        configuration = sib_api_v3_sdk.Configuration()
+        configuration.api_key['api-key'] = os.getenv('Brevo_API')
         
-        # Prepare template parameters
-        params = {
-            'FIRST_NAME': first_name,
-            'COURSE_NAME': course_name,
-            'COURSE_DATE': course_date,
-            'ZOOM_LINK': zoom_link
-        }
+        api_instance = sib_api_v3_sdk.TransactionalEmailsApi(sib_api_v3_sdk.ApiClient(configuration))
         
-        # Call email service
-        success = send_brevo_email(
-            to_email=to_email,
-            template_id=8,  # Create this template in Brevo
-            params=params
+        send_smtp_email = sib_api_v3_sdk.SendSmtpEmail(
+            to=[{"email": to_email, "name": first_name}],
+            template_id=template_id,
+            params={
+                "FIRSTNAME": first_name,
+                "COURSE_NAME": course_name,
+                "COURSE_DATE": course_date,
+                "ZOOM_LINK": zoom_link
+            }
         )
         
-        if not success:
-            raise Exception("Brevo API returned no response")
-            
-        return {
-            'status': 'success',
-            'email': to_email,
-            'message': "Course registration email sent successfully"
-        }
+        api_response = api_instance.send_transac_email(send_smtp_email)
+        logger.info(f"Email sent to {to_email} using template {template_id}")
+        return True
         
-    except Exception as e:
-        logger.error(f"Failed to send to {to_email}: {str(e)}")
-        raise self.retry(exc=e, countdown=60, max_retries=3)
+    except ApiException as e:
+        logger.error(f"Failed to send email via Brevo: {e}")
+        # Just log the error without fallback
+        return False
+        

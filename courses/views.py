@@ -1217,12 +1217,34 @@ logger = logging.getLogger(__name__)
 BREVO_API_KEY = os.getenv('Brevo_API')
 
 # Map courses to Brevo list IDs
-COURSE_LISTS = {
-    "AML/KYC Compliance": 7,  # Replace with actual list IDs
-    "Data Analysis": 8,
-    "Business Analysis & Project Management": 9,
-    "Cybersecurity": 10
+# Unified course settings mapping
+COURSE_SETTINGS = {
+    "AML/KYC Compliance": {
+        "list_id": 7,  # Brevo contact list ID
+        "template_id": 12,  # Brevo template ID or your custom template name
+        "course_date": "24th August 2025, 07:00pm",
+        "zoom_link": "https://zoom.us/j/95062242795?pwd=r2CTvBheLUQ0YC7Wr8jYwRQRs5PgeU.1"
+    },
+    "Data Analysis": {
+        "list_id": 8,
+        "template_id": 8,
+        "course_date": "25th August 2025, 07:00pm",
+        "zoom_link": "https://zoom.us/j/95062242796?pwd=differentpassword"
+    },
+    "Business Analysis & Project Management": {
+        "list_id": 9,
+        "template_id": 14,
+        "course_date": "26th August 2025, 07:00pm",
+        "zoom_link": "https://zoom.us/j/95062242797?pwd=anotherpassword"
+    },
+    "Cybersecurity": {
+        "list_id": 10,
+        "template_id": 13,
+        "course_date": "27th August 2025, 07:00pm",
+        "zoom_link": "https://zoom.us/j/95062242798?pwd=yetanotherpassword"
+    }
 }
+
 
 def format_phone_number(phone):
     """Format phone number for Brevo compliance"""
@@ -1256,6 +1278,15 @@ class EventRegistrationView(APIView):
             
             data = serializer.validated_data
             course_name = data['course_name']
+            
+            # Get course-specific settings
+            course_settings = COURSE_SETTINGS.get(course_name, {})
+            if not course_settings:
+                return Response(
+                    {"error": "Invalid course selection"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
             formatted_phone = format_phone_number(data.get('phone_number'))
              
             # Prepare contact attributes
@@ -1272,7 +1303,7 @@ class EventRegistrationView(APIView):
             create_contact = CreateContact(
                 email=data['email'],
                 attributes=contact_attrs,
-                list_ids=[COURSE_LISTS[course_name]],
+                list_ids=[course_settings['list_id']],  # Use the list_id from course settings
                 update_enabled=True
             )
             
@@ -1298,7 +1329,8 @@ class EventRegistrationView(APIView):
                 "registration_date": datetime.now().isoformat(),
                 "status": "registered",
                 "brevo_synced": brevo_success,
-                "brevo_formatted_phone": formatted_phone
+                "brevo_formatted_phone": formatted_phone,
+                "course_settings": course_settings  # Store the settings used
             }
             
             result = db.registrations.insert_one(registration)
@@ -1308,8 +1340,9 @@ class EventRegistrationView(APIView):
                 to_email=data['email'],
                 first_name=data['first_name'],
                 course_name=course_name,
-                course_date="24th August 2025, 07:00pm",
-                zoom_link="https://zoom.us/j/95062242795?pwd=r2CTvBheLUQ0YC7Wr8jYwRQRs5PgeU.1"
+                course_date=course_settings['course_date'],
+                zoom_link=course_settings['zoom_link'],
+                template_id=course_settings['template_id']  # Use the template_id from course settings
             )
             
             response = {

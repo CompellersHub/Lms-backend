@@ -156,7 +156,7 @@ class GoogleLoginView(APIView):
                     "access": tokens['access'],
                     "refresh": tokens['refresh'],
                     "user_info": serializer.data,
-                    "message": "Logged in with Google successfully"
+                    
                 }, status=status.HTTP_200_OK)
 
         except ValueError as e:

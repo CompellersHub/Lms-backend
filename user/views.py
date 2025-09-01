@@ -139,7 +139,6 @@ class GoogleLoginView(APIView):
             # Create Django user instance for JWT token generation
             try:
                 user = CustomUser.from_mongo(user_document)
-                refresh = RefreshToken.for_user(user)
                 tokens = create_jwt_tokens(user)
 
             except Exception as e:

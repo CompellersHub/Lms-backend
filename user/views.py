@@ -152,10 +152,10 @@ class GoogleLoginView(APIView):
 
             logger.info(f"Successful Google login for user: {user_document['email']}")
             return Response({
-                "access": tokens['access'],
-                "refresh": tokens['refresh'],
-                "user_info": serializer.data,
-                "message": "Login Successful"
+                'access': tokens['access'],
+                'refresh': tokens['refresh'],
+                'user_info': serializer.data,
+                'message': "Login Successful"
             }, status=status.HTTP_200_OK)
 
         except ValueError as e:

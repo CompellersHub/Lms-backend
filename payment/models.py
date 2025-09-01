@@ -17,11 +17,11 @@ def __str__(self):
 
 db = get_mongo_db()
 
-bank_transfers = db['bank_transfers']
-bank_transfers.create_index("reference", unique=True)
-bank_transfers.create_index([("user_id", 1), ("course_id", 1)])
-bank_transfers.create_index("status")
+# bank_transfers = db['bank_transfers']
+# bank_transfers.create_index("reference", unique=True)
+# bank_transfers.create_index([("user_id", 1), ("course_id", 1)])
+# bank_transfers.create_index("status")
 
-# Virtual account numbers mapped to users
-virtual_accounts = db['virtual_accounts']
-virtual_accounts.create_index("account_number", unique=True)
+# # Virtual account numbers mapped to users
+# virtual_accounts = db['virtual_accounts']
+# virtual_accounts.create_index("account_number", unique=True)

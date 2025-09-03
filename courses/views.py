@@ -1664,6 +1664,7 @@ class SendTemplateToListAPIView(APIView):
 logger = logging.getLogger(__name__)
 
 class CustomPasswordResetRequestView(APIView):
+    permission_classes = [AllowAny]
     def post(self, request):
         email = request.data.get('email')
         
@@ -1777,6 +1778,7 @@ class CustomPasswordResetRequestView(APIView):
             return False
 
 class CustomPasswordResetConfirmView(APIView):
+    permission_classes = [AllowAny]
     def post(self, request):
         token = request.data.get('token')
         new_password = request.data.get('new_password')

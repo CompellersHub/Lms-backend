@@ -43,5 +43,7 @@ urlpatterns = [
     path('consultations/', views.ConsultationView.as_view(), name='create-consultation'),
 
     path('send-template-to-list/', views.SendTemplateToListAPIView.as_view(), name='send_template_to_list'),
+    path('password-reset/request/', views.CustomPasswordResetRequestView.as_view(), name='custom-password-reset'),
+    path('password-reset/confirm/', views.CustomPasswordResetConfirmView.as_view(), name='custom-password-reset-confirm'),
 ]
 

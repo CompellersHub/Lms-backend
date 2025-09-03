@@ -17,7 +17,7 @@ MONGO_URI = os.getenv('MONGO_URI')
 MONGO_DATABASE_NAME = os.getenv('DATABASE_NAME')
 
 # For your signals.py
-FRONTEND_RESET_PASSWORD_URL = 'https://titanscareers/api/password_reset/' # Replace with your actual frontend URL
+FRONTEND_RESET_PASSWORD_URL = 'https://titanscareers/courses/password-reset/confirm/' # Replace with your actual frontend URL
 FRONTEND_DOMAIN = 'titanscareers.com' # Your frontend domain
 SITE_NAME = 'Titans Careers' # Your site name
 

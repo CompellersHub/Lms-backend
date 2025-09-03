@@ -85,10 +85,8 @@ from django_rest_passwordreset.signals import reset_password_token_created
 
 logger = logging.getLogger(__name__)
 
-# --- IMPORTANT ---
 # Get this from your Brevo account under Transactional > Templates
-BREVO_PASSWORD_RESET_TEMPLATE_ID = 2 # <--- REPLACE WITH YOUR ACTUAL BREVO TEMPLATE ID
-# --- ---
+BREVO_PASSWORD_RESET_TEMPLATE_ID = 2  # Replace with your actual Brevo template ID
 
 @receiver(reset_password_token_created)
 def password_reset_token_created(sender, instance, reset_password_token, *args, **kwargs):
@@ -96,129 +94,84 @@ def password_reset_token_created(sender, instance, reset_password_token, *args, 
     Handles password reset tokens by fetching user data from MongoDB
     and sending an email using a Brevo template.
     """
-    django_user = reset_password_token.user
-    user_email = django_user.email  # Fallback: Django user's email
-    user_username = django_user.username # Fallback: Django user's username
-
-    logger.info(f"Django User PK: {django_user.pk} (Type: {type(django_user.pk)})")
-    logger.info(f"Django User Email (fallback): {django_user.email}")
-
-    # --- Fetch MongoDB User ---
+    # Get the email from the reset token (this comes from Django's user model)
+    django_user_email = reset_password_token.user.email
+    
+    logger.info(f"Django User Email from token: {django_user_email}")
+    
+    # Fetch user from MongoDB using email
     db = get_mongo_db()
-    if db is not None:
-        try:
-            users_collection = db.customusers # Your custom user collection name
-
-            mongo_query_value = None 
-
-            if isinstance(django_user.pk, ObjectId):
-                mongo_query_value = django_user.pk
-                logger.info("Querying MongoDB with ObjectId directly from django_user.pk")
-            elif isinstance(django_user.pk, str) and len(django_user.pk) == 24: # ObjectId hex strings are 24 chars
-                try:
-                    mongo_query_value = ObjectId(django_user.pk)
-                    logger.info("Querying MongoDB by converting string django_user.pk to ObjectId")
-                except Exception:
-                    logger.warning(f"django_user.pk '{django_user.pk}' is a string but not a valid ObjectId hex string. Trying as direct string.")
-                    mongo_query_value = django_user.pk # Fallback to query as string if not ObjectId
-            elif isinstance(django_user.pk, int):
-                mongo_query_value = django_user.pk
-                logger.info("Querying MongoDB with integer django_user.pk")
-            
-            mongo_user = None
-            if mongo_query_value is not None:
-                # Prioritize _id query
-                mongo_user = users_collection.find_one({"_id": mongo_query_value})
-                if mongo_user:
-                    logger.info(f"MongoDB User found by _id: {mongo_user.get('username')} (ID: {mongo_user.get('_id')})")
-                else:
-                    logger.warning(f"MongoDB user not found by _id '{mongo_query_value}'. Attempting by email as fallback.")
-                    # Fallback to email query if _id didn't work
-                    mongo_user = users_collection.find_one({"email": django_user.email})
-                    if mongo_user:
-                        logger.info(f"MongoDB User found by email (fallback): {mongo_user.get('username')} (ID: {mongo_user.get('_id')})")
-
-            else:
-                logger.warning("Could not determine appropriate query value for MongoDB based on django_user.pk type. Attempting by email.")
-                # If PK type is unknown, try by email
-                mongo_user = users_collection.find_one({"email": django_user.email})
-                if mongo_user:
-                    logger.info(f"MongoDB User found by email (initial attempt): {mongo_user.get('username')} (ID: {mongo_user.get('_id')})")
-
-
-            if mongo_user:
-                # Update email and username from MongoDB if found
-                user_email = mongo_user.get('email', django_user.email)
-                user_username = mongo_user.get('username', django_user.username)
-                logger.info(f"Using MongoDB user data: Email='{user_email}', Username='{user_username}'")
-            else:
-                logger.warning("MongoDB user not found. Falling back to Django user email and username.")
-
-        except PyMongoError as e: # Catch specific PyMongo errors
-            logger.error(f"MongoDB operation error while fetching user for password reset email: {e}", exc_info=True)
-            # user_email and user_username retain their django_user fallbacks
-        except Exception as e:
-            logger.error(f"General error fetching MongoDB user for password reset email: {e}", exc_info=True)
-            # user_email and user_username retain their django_user fallbacks
-
-    else:
-        logger.warning("MongoDB client not available. Using Django user email and username for password reset.")
-
-    # --- Construct Password Reset URL ---
-    current_site = get_current_site(instance.request)
-    protocol = 'https' if instance.request.is_secure() else 'http'
+    if db is None:
+        logger.error("MongoDB client not available. Cannot send password reset email.")
+        return
     
-    # Get frontend base URL from settings (or provide a default)
-    # Ensure you have FRONTEND_RESET_PASSWORD_URL and FRONTEND_DOMAIN defined in settings.py
-    # Example in settings.py: FRONTEND_RESET_PASSWORD_URL = 'http://localhost:3000/reset-password/'
-    # Example in settings.py: FRONTEND_DOMAIN = 'localhost:3000'
-    frontend_base_url = getattr(settings, 'FRONTEND_RESET_PASSWORD_URL', f'{protocol}://{current_site.domain}/reset-password/')
-    
-    # THIS IS CRITICAL: Adjust this URL to match your frontend's routing.
-    # It should be the URL where your frontend expects the reset token.
-    # Example for a React/Vue SPA: `http://localhost:3000/reset-password/?token={token}`
-    reset_password_url = f"{frontend_base_url}?token={reset_password_token.key}"
-    
-    logger.info(f"Generated password reset URL: {reset_password_url}")
-
-    # --- Configure Brevo API ---
-    configuration = sib_api_v3_sdk.Configuration()
-    configuration.api_key['api-key'] = settings.BREVO_API_KEY
-
-    api_instance = sib_api_v3_sdk.TransactionalEmailsApi(sib_api_v3_sdk.ApiClient(configuration))
-
-    # --- Prepare parameters for the Brevo template ---
-    # These keys (e.g., 'username', 'reset_password_url', 'site_name')
-    # MUST match the placeholders you've defined in your Brevo template.
-    # In your Brevo template, you'd typically access these as {{ params.username }}, {{ params.reset_password_url }}, etc.
-    template_params = {
-        'username': user_username, # Use the username derived from MongoDB or Django fallback
-        'email': user_email,       # Use the email derived from MongoDB or Django fallback
-        'reset_password_url': reset_password_url,
-        'site_name': getattr(settings, 'SITE_NAME', current_site.name), # Use SITE_NAME from settings or current site
-        'domain': getattr(settings, 'FRONTEND_DOMAIN', current_site.domain), # Use FRONTEND_DOMAIN from settings or current site
-        # Add any other variables your Brevo template expects
-        'logo_url': getattr(settings, 'BREVO_EMAIL_LOGO_URL', 'staticfiles/logo/logo.jpg'), 
-        'contact_url': getattr(settings, 'BREVO_EMAIL_CONTACT_URL', 'https://your-site.com/contact'),
-        'privacy_url': getattr(settings, 'BREVO_EMAIL_PRIVACY_URL', 'https://your-site.com/privacy-policy'),
-    }
-
-    # Use DEFAULT_FROM_EMAIL from settings.py for the sender
-    sender_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'no-reply@example.com')
-    sender_name = getattr(settings, 'SITE_NAME', current_site.name)
-
-    send_smtp_email = sib_api_v3_sdk.SendSmtpEmail(
-        to=[{"email": user_email}], # Send to the email derived from MongoDB or Django fallback
-        template_id=BREVO_PASSWORD_RESET_TEMPLATE_ID,
-        params=template_params,
-        sender={"email": sender_email, "name": sender_name}
-    )
-
-    # --- Send the email via Brevo API ---
     try:
-        api_response = api_instance.send_transac_email(send_smtp_email)
-        logger.info(f"Brevo transactional email sent successfully to {user_email} via template ID {BREVO_PASSWORD_RESET_TEMPLATE_ID}: {api_response}")
-    except ApiException as e:
-        logger.error(f"Brevo API Exception when sending password reset email to {user_email}: {e}", exc_info=True)
+        users_collection = db.customusers  # Your custom user collection name
+        
+        # Query MongoDB user by email
+        mongo_user = users_collection.find_one({"email": django_user_email})
+        
+        if not mongo_user:
+            logger.error(f"MongoDB user not found with email: {django_user_email}")
+            return
+            
+        # Get user data from MongoDB
+        user_email = mongo_user.get('email')
+        user_username = mongo_user.get('username', 'User')  # Default to 'User' if username not found
+        
+        logger.info(f"Found MongoDB user: {user_username} ({user_email})")
+
+        # Construct Password Reset URL
+        current_site = get_current_site(instance.request)
+        protocol = 'https' if instance.request.is_secure() else 'http'
+        
+        # Get frontend base URL from settings
+        frontend_base_url = getattr(settings, 'FRONTEND_RESET_PASSWORD_URL', 
+                                   f'{protocol}://{current_site.domain}/reset-password/')
+        
+        reset_password_url = f"{frontend_base_url}?token={reset_password_token.key}"
+        logger.info(f"Generated password reset URL: {reset_password_url}")
+
+        # Configure Brevo API
+        configuration = sib_api_v3_sdk.Configuration()
+        configuration.api_key['api-key'] = settings.BREVO_API_KEY
+
+        api_instance = sib_api_v3_sdk.TransactionalEmailsApi(sib_api_v3_sdk.ApiClient(configuration))
+
+        # Prepare parameters for the Brevo template
+        template_params = {
+            'username': user_username,
+            'email': user_email,
+            'reset_password_url': reset_password_url,
+            'site_name': getattr(settings, 'SITE_NAME', current_site.name),
+            'domain': getattr(settings, 'FRONTEND_DOMAIN', current_site.domain),
+            'logo_url': getattr(settings, 'BREVO_EMAIL_LOGO_URL', 'staticfiles/logo/logo.jpg'), 
+            'contact_url': getattr(settings, 'BREVO_EMAIL_CONTACT_URL', 'https://your-site.com/contact'),
+            'privacy_url': getattr(settings, 'BREVO_EMAIL_PRIVACY_URL', 'https://your-site.com/privacy-policy'),
+        }
+
+        # Use DEFAULT_FROM_EMAIL from settings.py for the sender
+        sender_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'no-reply@example.com')
+        sender_name = getattr(settings, 'SITE_NAME', current_site.name)
+
+        send_smtp_email = sib_api_v3_sdk.SendSmtpEmail(
+            to=[{"email": user_email}],
+            template_id=BREVO_PASSWORD_RESET_TEMPLATE_ID,
+            params=template_params,
+            sender={"email": sender_email, "name": sender_name}
+        )
+
+        # Send the email via Brevo API
+        try:
+            api_response = api_instance.send_transac_email(send_smtp_email)
+            logger.info(f"Brevo transactional email sent successfully to {user_email} via template ID {BREVO_PASSWORD_RESET_TEMPLATE_ID}: {api_response}")
+        except ApiException as e:
+            logger.error(f"Brevo API Exception when sending password reset email to {user_email}: {e}", exc_info=True)
+        except Exception as e:
+            logger.error(f"An unexpected error occurred while sending Brevo password reset email to {user_email}: {e}", exc_info=True)
+
+    except PyMongoError as e:
+        logger.error(f"MongoDB operation error while fetching user for password reset email: {e}", exc_info=True)
     except Exception as e:
-        logger.error(f"An unexpected error occurred while sending Brevo password reset email to {user_email}: {e}", exc_info=True)
+        logger.error(f"General error in password reset process: {e}", exc_info=True)
+

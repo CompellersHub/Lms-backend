@@ -1,5 +1,6 @@
 import os
 import re
+import secrets
 import pytz
 import requests
 from rest_framework import status
@@ -12,7 +13,7 @@ from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse, JsonResponse
 from django.conf import settings
 from bson.objectid import ObjectId, InvalidId
-from datetime import datetime
+from datetime import datetime, timedelta
 from bson.errors import InvalidId
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
@@ -1658,3 +1659,191 @@ class SendTemplateToListAPIView(APIView):
         except requests.exceptions.RequestException as e:
             print(f"Error sending email to {to_email}: {e}")
             return False
+
+
+logger = logging.getLogger(__name__)
+
+class CustomPasswordResetRequestView(APIView):
+    def post(self, request):
+        email = request.data.get('email')
+        
+        logger.info(f"Password reset request received for email: {email}")
+        
+        if not email:
+            logger.warning("Password reset request missing email")
+            return Response({'error': 'Email is required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        db = get_mongo_db()
+        # FIX: Compare with None instead of checking truthiness
+        if db is None:
+            logger.error("MongoDB connection failed during password reset request")
+            return Response({'error': 'Server configuration error'}, 
+                           status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        users_collection = db.customusers
+        
+        # Find user by email in MongoDB
+        user = users_collection.find_one({'email': email})
+        
+        if not user:
+            # Don't reveal whether email exists for security
+            logger.info(f"No user found with email: {email} (returning generic success)")
+            return Response({'message': 'If the email exists, a password reset link has been sent'}, 
+                           status=status.HTTP_200_OK)
+        
+        # Generate a reset token
+        reset_token = secrets.token_urlsafe(32)
+        token_expiry = datetime.now() + timedelta(hours=24)
+        
+        logger.info(f"Generated reset token for user {user.get('_id')}: {reset_token[:8]}...")
+        
+        # Store the token in MongoDB
+        try:
+            update_result = users_collection.update_one(
+                {'_id': user['_id']},
+                {'$set': {
+                    'reset_token': reset_token,
+                    'reset_token_expiry': token_expiry
+                }}
+            )
+            
+            if update_result.modified_count == 1:
+                logger.info(f"Reset token successfully stored for user {user.get('_id')}")
+            else:
+                logger.error(f"Failed to store reset token for user {user.get('_id')}")
+                return Response({'error': 'Server error'}, 
+                               status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                
+        except Exception as e:
+            logger.error(f"Database error storing reset token: {str(e)}")
+            return Response({'error': 'Server error'}, 
+                           status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        # Send email using Brevo
+        email_sent = self.send_password_reset_email(user, reset_token)
+        
+        if email_sent:
+            logger.info(f"Password reset email successfully sent to {email}")
+            return Response({'message': 'If the email exists, a password reset link has been sent'}, 
+                           status=status.HTTP_200_OK)
+        else:
+            logger.error(f"Failed to send password reset email to {email}")
+            return Response({'error': 'Failed to send email'}, 
+                           status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    def send_password_reset_email(self, user, reset_token):
+        try:
+            # Configure Brevo API
+            configuration = sib_api_v3_sdk.Configuration()
+            configuration.api_key['api-key'] = settings.BREVO_API_KEY
+            
+            api_instance = sib_api_v3_sdk.TransactionalEmailsApi(sib_api_v3_sdk.ApiClient(configuration))
+            
+            # Construct reset URL
+            frontend_base_url = getattr(settings, 'FRONTEND_RESET_PASSWORD_URL', '')
+            reset_password_url = f"{frontend_base_url}?token={reset_token}"
+            
+            logger.info(f"Generated reset URL: {reset_password_url}")
+            
+            # Prepare template parameters
+            template_params = {
+                'username': user.get('username', 'User'),
+                'email': user.get('email'),
+                'reset_password_url': reset_password_url,
+                'site_name': getattr(settings, 'SITE_NAME', 'Our Site'),
+                'support_email': getattr(settings, 'SUPPORT_EMAIL', 'support@example.com'),
+            }
+            
+            # Use DEFAULT_FROM_EMAIL from settings.py for the sender
+            sender_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'no-reply@example.com')
+            sender_name = getattr(settings, 'SITE_NAME', 'Our Site')
+            
+            send_smtp_email = sib_api_v3_sdk.SendSmtpEmail(
+                to=[{"email": user.get('email')}],
+                template_id=getattr(settings, 'BREVO_PASSWORD_RESET_TEMPLATE_ID', 2),
+                params=template_params,
+                sender={"email": sender_email, "name": sender_name}
+            )
+            
+            api_response = api_instance.send_transac_email(send_smtp_email)
+            logger.info(f"Brevo API response: {api_response}")
+            return True
+            
+        except ApiException as e:
+            logger.error(f"Brevo API Exception: {str(e)}")
+            return False
+        except Exception as e:
+            logger.error(f"Unexpected error sending email: {str(e)}")
+            return False
+
+class CustomPasswordResetConfirmView(APIView):
+    def post(self, request):
+        token = request.data.get('token')
+        new_password = request.data.get('new_password')
+        
+        logger.info(f"Password reset confirmation request received with token: {token[:8]}...")
+        
+        if not token or not new_password:
+            logger.warning("Password reset confirmation missing token or password")
+            return Response({'error': 'Token and new password are required'}, 
+                           status=status.HTTP_400_BAD_REQUEST)
+        
+        db = get_mongo_db()
+        # FIX: Compare with None instead of checking truthiness
+        if db is None:
+            logger.error("MongoDB connection failed during password reset confirmation")
+            return Response({'error': 'Server configuration error'}, 
+                           status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        users_collection = db.customusers
+        
+        # Find user by reset token
+        try:
+            user = users_collection.find_one({
+                'reset_token': token,
+                'reset_token_expiry': {'$gt': datetime.now()}
+            })
+        except Exception as e:
+            logger.error(f"Database error finding user by token: {str(e)}")
+            return Response({'error': 'Server error'}, 
+                           status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        if not user:
+            logger.warning(f"Invalid or expired reset token used: {token[:8]}...")
+            return Response({'error': 'Invalid or expired token'}, 
+                           status=status.HTTP_400_BAD_REQUEST)
+        
+        logger.info(f"Valid reset token found for user {user.get('_id')}")
+        
+        # Update password
+        hashed_password = self.hash_password(new_password)
+        
+        try:
+            update_result = users_collection.update_one(
+                {'_id': user['_id']},
+                {'$set': {
+                    'password': hashed_password,
+                    'reset_token': None,
+                    'reset_token_expiry': None
+                }}
+            )
+            
+            if update_result.modified_count == 1:
+                logger.info(f"Password successfully reset for user {user.get('_id')}")
+                return Response({'message': 'Password has been reset successfully'}, 
+                               status=status.HTTP_200_OK)
+            else:
+                logger.error(f"Failed to update password for user {user.get('_id')}")
+                return Response({'error': 'Server error'}, 
+                               status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                
+        except Exception as e:
+            logger.error(f"Database error updating password: {str(e)}")
+            return Response({'error': 'Server error'}, 
+                           status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    def hash_password(self, password):
+        # Implement your password hashing logic here
+        # You might use Django's make_password or another method
+        from django.contrib.auth.hashers import make_password
+        return make_password(password)

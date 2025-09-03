@@ -1,0 +1,17 @@
+<center>
+                                    <a href="https://zoom.us/j/91481483605?pwd=1lqLsau8mD5oaqmboSUGabLW7g7KET.1" class="button">JOIN LIVE SESSION NOW</a>
+                                </center>
+
+
+
+.button {
+            display: inline-block;
+            padding: 14px 30px;
+            background-color: #e53e3e;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            font-weight: bold;
+            margin: 20px 0;
+            font-size: 16px;
+        }

@@ -1,6 +1,7 @@
 import datetime
 import os
 import re
+import pytz
 from rest_framework import serializers
 from bson.objectid import ObjectId
 
@@ -627,14 +628,13 @@ class LiveClassSerializer(serializers.Serializer):
             if not course_id:
                 return None
                 
-            # Convert to ObjectId if it's a string
             if isinstance(course_id, str):
                 course_id = ObjectId(course_id)
             
             db = get_mongo_db()
             course = db.courses.find_one(
                 {'_id': course_id},
-                {'name': 1, 'code': 1}  # Only get needed fields
+                {'name': 1, 'code': 1}
             )
             
             if not course:
@@ -647,7 +647,6 @@ class LiveClassSerializer(serializers.Serializer):
             }
             
         except Exception as e:
-            # Don't break serialization on error
             return None
 
     def get_teacher(self, obj):
@@ -657,7 +656,6 @@ class LiveClassSerializer(serializers.Serializer):
             if not teacher_id:
                 return None
                 
-            # Convert to ObjectId if it's a string
             if isinstance(teacher_id, str):
                 teacher_id = ObjectId(teacher_id)
             
@@ -678,21 +676,40 @@ class LiveClassSerializer(serializers.Serializer):
             }
             
         except Exception as e:
-            # Don't break serialization on error
             return None
 
     def create(self, validated_data):
-        """Create a new live class"""
+        """Create a new live class with proper timezone handling"""
         try:
             db = get_mongo_db()
+            
+            # Get current time in Lagos timezone
+            lagos_tz = pytz.timezone('Africa/Lagos')
+            current_time = datetime.now(lagos_tz)
+            
+            # Handle start_time and end_time
+            start_time = validated_data['start_time']
+            end_time = validated_data['end_time']
+            
+            # If times are naive, assume they're in Lagos timezone
+            if timezone.is_naive(start_time):
+                start_time = lagos_tz.localize(start_time)
+            else:
+                # Convert to Lagos timezone if it's in another timezone
+                start_time = start_time.astimezone(lagos_tz)
+                
+            if timezone.is_naive(end_time):
+                end_time = lagos_tz.localize(end_time)
+            else:
+                end_time = end_time.astimezone(lagos_tz)
             
             live_class_data = {
                 'course_id': ObjectId(validated_data['course_id']),
                 'teacher_id': ObjectId(validated_data['teacher_id']),
-                'start_time': validated_data['start_time'],
-                'end_time': validated_data['end_time'],
+                'start_time': start_time,
+                'end_time': end_time,
                 'link': validated_data['link'],
-                'created_at': timezone.now(),
+                'created_at': current_time,
                 'status': 'scheduled',
                 'participants': []
             }
@@ -707,19 +724,31 @@ class LiveClassSerializer(serializers.Serializer):
             raise serializers.ValidationError(f"Failed to create live class: {str(e)}")
 
     def update(self, instance, validated_data):
-        """Update an existing live class"""
+        """Update an existing live class with proper timezone handling"""
         try:
             db = get_mongo_db()
             
             updates = {}
+            lagos_tz = pytz.timezone('Africa/Lagos')
+            
             if 'course_id' in validated_data:
                 updates['course_id'] = ObjectId(validated_data['course_id'])
             if 'teacher_id' in validated_data:
                 updates['teacher_id'] = ObjectId(validated_data['teacher_id'])
             if 'start_time' in validated_data:
-                updates['start_time'] = validated_data['start_time']
+                start_time = validated_data['start_time']
+                if timezone.is_naive(start_time):
+                    start_time = lagos_tz.localize(start_time)
+                else:
+                    start_time = start_time.astimezone(lagos_tz)
+                updates['start_time'] = start_time
             if 'end_time' in validated_data:
-                updates['end_time'] = validated_data['end_time']
+                end_time = validated_data['end_time']
+                if timezone.is_naive(end_time):
+                    end_time = lagos_tz.localize(end_time)
+                else:
+                    end_time = end_time.astimezone(lagos_tz)
+                updates['end_time'] = end_time
             if 'link' in validated_data:
                 updates['link'] = validated_data['link']
             
@@ -729,7 +758,6 @@ class LiveClassSerializer(serializers.Serializer):
                     {'$set': updates}
                 )
                 
-                # Update the instance
                 instance.update(updates)
             
             return instance
@@ -787,7 +815,6 @@ class LiveClassSerializer(serializers.Serializer):
         if data['start_time'] >= data['end_time']:
             raise serializers.ValidationError("End time must be after start time")
         return data
-
 
 
 

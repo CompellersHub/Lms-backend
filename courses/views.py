@@ -897,31 +897,30 @@ class LiveClassDetailView(APIView):
             )
 
     def delete(self, request, live_class_id):
-        """Cancel a live class"""
+        """Permanently delete a live class"""
         try:
             if not ObjectId.is_valid(live_class_id):
                 return Response(
                     {"error": "Invalid live class ID format"},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            
+
             db = get_mongo_db()
-            result = db.liveclasss.update_one(
-                {'_id': ObjectId(live_class_id)},
-                {'$set': {'status': 'cancelled'}}
+            result = db.liveclasss.delete_one(
+                {'_id': ObjectId(live_class_id)}
             )
-            
-            if result.modified_count == 0:
+
+            if result.deleted_count == 0:
                 return Response(
-                    {"error": "Live class not found or already cancelled"},
+                    {"error": "Live class not found"},
                     status=status.HTTP_404_NOT_FOUND
                 )
-            
+
             return Response(
-                {"message": "Live class cancelled successfully"},
-                status=status.HTTP_200_OK
+                {"message": "Live class deleted successfully"},
+                status=status.HTTP_204_NO_CONTENT
             )
-            
+
         except Exception as e:
             return Response(
                 {"error": str(e)},
@@ -1537,8 +1536,8 @@ class SendTemplateToListAPIView(APIView):
         brevo_api_key = settings.BREVO_API_KEY
         sender_email = settings.DEFAULT_FROM_EMAIL
         sender_name = "Titans Careers"
-        list_id = 8  # Specific list ID
-        template_id = 10  # Specific template ID
+        list_id = 7  # Specific list ID
+        template_id = 18  # Specific template ID
         
         # Get all contacts from the specified list
         contacts = self.get_brevo_contacts_in_list(brevo_api_key, list_id)

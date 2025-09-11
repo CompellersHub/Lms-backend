@@ -787,7 +787,7 @@ class VerifyPayPalOrderAndEnrollView(APIView):
             # 7. Validate Course Exists
             course = db.courses.find_one(
                 {'_id': course_oid},
-                {'name': 1, 'price': 1}
+                {'name': 1, 'price': 1, 'course_image': 1}
             )
             if not course:
                 logger.error("Course not found", extra={
@@ -812,6 +812,7 @@ class VerifyPayPalOrderAndEnrollView(APIView):
                         "_id": course['_id'],
                         "name": course['name'],
                         "price": course['price'],
+                        "image": course['course_image'],
                         "enrollment_date": enrollment_date,
                     }}}
                 )

@@ -831,6 +831,19 @@ class StudentDetail(APIView):
             return Response({"student": updated_student}, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+    def patch(self, request, pk):
+        """Partial update of student details"""
+        db = get_mongo_db()
+        student = db.customusers.find_one({"_id": ObjectId(pk)})
+        if not student:
+            return Response({"error": "Student not found"}, status=status.HTTP_404_NOT_FOUND)
+        
+        serializer = CustomUserSerializer(student, data=request.data, partial=True)
+        if serializer.is_valid():
+            updated_student = serializer.save()
+            return Response({"student": updated_student}, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
 class StudentFilterByCourse(APIView):
     permission_classes = [IsAuthenticated]
 

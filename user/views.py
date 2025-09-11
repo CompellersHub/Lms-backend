@@ -820,16 +820,16 @@ class StudentDetail(APIView):
         serializer = CustomUserSerializer(student)
         return Response(serializer.data)
 
-    def put(self, request, student_id):
+    def put(self, request, pk):  # Changed from student_id to pk to match URL pattern
         db = get_mongo_db()
-        student = db.customusers.find_one({"_id": ObjectId(student_id)})
+        student = db.customusers.find_one({"_id": ObjectId(pk)})  # Changed from student_id to pk
         if not student:
             return Response({"error": "Student not found"}, status=status.HTTP_404_NOT_FOUND)
         serializer = CustomUserSerializer(student, data=request.data)
         if serializer.is_valid():
             updated_student = serializer.save()
             return Response({"student": updated_student}, status=status.HTTP_200_OK)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)  
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class StudentFilterByCourse(APIView):
     permission_classes = [IsAuthenticated]

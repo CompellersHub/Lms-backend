@@ -733,20 +733,120 @@ class ProfileUpdateView(APIView):
 
 
 class Teacher(APIView):
-    def post(self, request):
-        serializer = TeacherProfileSerializer(data=request.data)
-        if serializer.is_valid():
-            teacher = serializer.save()
-            teacher_data = serializer.data
-            teacher_data['id'] = str(teacher_data['id'])  # Ensure ObjectId is converted to string
-            return Response({"Teacher": teacher_data}, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def get(self, request):
         db = get_mongo_db()
         teachers = db.teacherprofiles.find()
         serializer = TeacherProfileSerializer([teacher for teacher in teachers], many=True)
         return Response(serializer.data)
+
+
+class TeacherDetail(APIView):
+    def get(self, request, pk):
+        """Get a specific teacher by ID"""
+        try:
+            if not ObjectId.is_valid(pk):
+                return Response(
+                    {"error": "Invalid teacher ID format"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            db = get_mongo_db()
+            teacher = db.teacherprofiles.find_one({"_id": ObjectId(pk)})
+            
+            if not teacher:
+                return Response(
+                    {"error": "Teacher not found"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            serializer = TeacherProfileSerializer(teacher)
+            return Response(serializer.data)
+            
+        except Exception as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    def put(self, request, pk):
+        """Full update of teacher details"""
+        try:
+            if not ObjectId.is_valid(pk):
+                return Response(
+                    {"error": "Invalid teacher ID format"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            db = get_mongo_db()
+            teacher = db.teacherprofiles.find_one({"_id": ObjectId(pk)})
+            
+            if not teacher:
+                return Response(
+                    {"error": "Teacher not found"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            serializer = TeacherProfileSerializer(teacher, data=request.data)
+            if serializer.is_valid():
+                updated_teacher = serializer.save()
+                return Response(
+                    TeacherProfileSerializer(updated_teacher).data,
+                    status=status.HTTP_200_OK
+                )
+            
+            return Response(
+                serializer.errors,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        except Exception as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    def patch(self, request, pk):
+        """Partial update of teacher details"""
+        try:
+            if not ObjectId.is_valid(pk):
+                return Response(
+                    {"error": "Invalid teacher ID format"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            db = get_mongo_db()
+            teacher = db.teacherprofiles.find_one({"_id": ObjectId(pk)})
+            
+            if not teacher:
+                return Response(
+                    {"error": "Teacher not found"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            serializer = TeacherProfileSerializer(
+                teacher, 
+                data=request.data, 
+                partial=True  # This allows partial updates
+            )
+            
+            if serializer.is_valid():
+                updated_teacher = serializer.save()
+                return Response(
+                    TeacherProfileSerializer(updated_teacher).data,
+                    status=status.HTTP_200_OK
+                )
+            
+            return Response(
+                serializer.errors,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        except Exception as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 class VerifyOTPView(APIView):

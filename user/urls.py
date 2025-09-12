@@ -12,6 +12,7 @@ urlpatterns = [
     path("student/", views.Student.as_view(), name='student'),
     path("student/<str:pk>/", views.StudentDetail.as_view(), name='student_detail'),
     path("teacher/", views.Teacher.as_view(), name='teacher'),
+    path('teachers/<str:pk>/', views.TeacherDetail.as_view(), name='teacher-detail'),
     path('api/google-login/', views.GoogleLoginView.as_view(), name='google-login'),
     path('students/filter/<str:course_id>', views.StudentFilterByCourse.as_view(), name='student-filter-by-course'), # New URL
     path('teacher-login/', views.TeacherLoginView.as_view(), name='teacher_login'),

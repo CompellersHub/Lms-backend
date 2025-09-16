@@ -15,6 +15,8 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.core.validators import validate_email
 from django.core.exceptions import ValidationError
 
+from courses.storages_backends import TeacherPicturesStorage
+
 logger = logging.getLogger(__name__)
 
 def check_password(password):
@@ -231,7 +233,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 
         
 
-    
+teaching_storage = TeacherPicturesStorage()
 
 class TeacherProfileSerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)
@@ -241,7 +243,10 @@ class TeacherProfileSerializer(serializers.Serializer):
     password = serializers.CharField(write_only=True)
     role = serializers.CharField(max_length=20, default='TEACHER')
     bio = serializers.CharField(allow_blank=True, required=False)
-    profile_picture = serializers.CharField(allow_blank=True, required=False)
+    profile_picture = serializers.FileField(
+        max_length=100,
+        allow_null=True, required=False
+    )
     phone_number = serializers.CharField(max_length=15, allow_blank=True, required=False)
     past_experience = serializers.CharField(allow_blank=True, required=False)
     course_taken = serializers.CharField(allow_blank=True, required=False)
@@ -252,10 +257,24 @@ class TeacherProfileSerializer(serializers.Serializer):
     verification_feedback = serializers.CharField(required=False, allow_null=True)
 
     def to_representation(self, instance):
+        representation = super().to_representation(instance)
+
         if '_id' in instance:
             instance['id'] = str(instance['_id'])
             del instance['_id']
-        return super().to_representation(instance)
+        
+
+        # Handle file field
+        if 'file' in instance and instance.get('file'):
+            # Check if it's already a URL or a file path
+            if instance['file'].startswith('http'):
+                representation['file'] = instance['file']
+            else:
+                representation['file'] = teaching_storage.url(instance['file'])
+        else:
+            representation['file'] = None
+        
+        return representation
 
     def create(self, validated_data):
         db = get_mongo_db()
@@ -265,6 +284,15 @@ class TeacherProfileSerializer(serializers.Serializer):
 
     def update(self, instance, validated_data):
         db = get_mongo_db()
+
+        file = validated_data.pop('file')
+        file_name = teaching_storage.save(f'Teacher_profile/{file.name}', file)
+
+
+        validated_data['file'] = file_name
+        validated_data['created_at'] = timezone.now()
+
+
         profile_id = ObjectId(instance['id'])
         db.teacherprofiles.update_one({"_id": profile_id}, {"$set": validated_data})
         return db.teacherprofiles.find_one({"_id": profile_id})

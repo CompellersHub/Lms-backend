@@ -175,7 +175,7 @@ class TargetAudience:
 
 class Course(models.Model):
     LEVEL_CHOICES = [
-        ('beginner', 'Beginner'),
+        ('Beginnes Friendly', 'Beginners Friendly'),
         ('intermediate', 'Intermediate'),
         ('advanced', 'Advanced'),
     ]

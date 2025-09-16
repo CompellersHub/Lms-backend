@@ -1537,7 +1537,7 @@ class SendTemplateToListAPIView(APIView):
         sender_email = settings.DEFAULT_FROM_EMAIL
         sender_name = "Titans Careers"
         list_id = 7  # Specific list ID
-        template_id = 18  # Specific template ID
+        template_id = 20  # Specific template ID
         
         # Get all contacts from the specified list
         contacts = self.get_brevo_contacts_in_list(brevo_api_key, list_id)
@@ -1688,7 +1688,7 @@ class CustomPasswordResetRequestView(APIView):
         if not user:
             # Don't reveal whether email exists for security
             logger.info(f"No user found with email: {email} (returning generic success)")
-            return Response({'message': 'If the email exists, a password reset link has been sent'}, 
+            return Response({'message': 'Check your email, a password reset link has been sent'}, 
                            status=status.HTTP_200_OK)
         
         # Generate a reset token

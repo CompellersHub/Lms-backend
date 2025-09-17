@@ -138,7 +138,7 @@ AWS_S3_SIGNATURE_VERSION = 's3v4'
 # For media files (user uploads)
 
 DEFAULT_FILE_STORAGE = 'courses.storage_backends.PublicMediaStorage'
-MEDIA_URL = f'https://{AWS_STORAGE_BUCKET_NAME}.s3.{AWS_S3_REGION_NAME}.amazonaws.com/'
+MEDIA_URL = f'https://d2907c0nlcl1a.cloudfront.net/'
 MEDIA_ROOT = ''  # This should be empty for S3
 
 # For CloudFront Integration (highly recommended for video)

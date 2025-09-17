@@ -315,7 +315,7 @@ class TeacherSignupView(APIView):
 
         # Optional fields with defaults
         optional_fields = {
-            'profile_picture': 'https://titanscareers.s3.amazonaws.com/Teacher_profile/placeholder.png',
+            'profile_picture': 'https://d2907c0nlcl1a.cloudfront.net/Teacher_profile/placeholder.png',
             'phone_number': '',
             'past_experience': '',
             'django_id': None,

@@ -1075,6 +1075,30 @@ class EventAPIView(APIView):
             updated_event = serializer.save()
             return Response(EventSerializer(updated_event).data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    def delete(self, request, id):
+        db = get_mongo_db()
+        try:
+            # Convert string ID to MongoDB ObjectId
+            obj_id = ObjectId(id)
+        except InvalidId:
+            return Response(
+                {"error": "Invalid event ID format"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        result = db.events.delete_one({'_id': obj_id})
+
+        if result.deleted_count == 0:
+            return Response(
+                {"error": "Event not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        return Response(
+            {"message": "Event deleted successfully"},
+            status=status.HTTP_204_NO_CONTENT
+        )
 
 
         User = get_user_model()

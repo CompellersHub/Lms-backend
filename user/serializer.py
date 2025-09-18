@@ -141,10 +141,10 @@ class CustomUserSerializer(serializers.Serializer):
         
         # Determine if `instance` is a Django model or a MongoDB dict
         if isinstance(instance, models.Model):
-            user_id = ObjectId(instance.id) # Get _id from Django model's id
+            user_id = ObjectId(instance.id)
         else:
-            user_id = ObjectId(instance['id']) # Get _id from MongoDB dict's 'id' field
-
+            user_id = instance['_id']
+    
         update_fields = {}
         for key, value in validated_data.items():
             if key == 'password':
@@ -155,16 +155,32 @@ class CustomUserSerializer(serializers.Serializer):
                     course_dict = {}
                     for k, v in course_item.items():
                         if k == 'id' and ObjectId.is_valid(v):
-                            course_dict['_id'] = ObjectId(v) # Convert 'id' to '_id' ObjectId for Mongo
+                            course_dict['_id'] = ObjectId(v)
                         else:
                             course_dict[k] = v
                     courses_for_mongo.append(course_dict)
-                update_fields['course'] = courses_for_mongo # Store as 'course' in MongoDB
+                update_fields['course'] = courses_for_mongo
             else:
                 update_fields[key] = value
         
         db.customusers.update_one({"_id": user_id}, {"$set": update_fields})
-        return db.customusers.find_one({"_id": user_id})
+        
+        # Get the updated document and convert ObjectId to string for JSON serialization
+        updated_user = db.customusers.find_one({"_id": user_id})
+        
+        # Convert ObjectId to string for JSON serialization
+        if updated_user and '_id' in updated_user:
+            updated_user['id'] = str(updated_user['_id'])
+            del updated_user['_id']
+        
+        # Convert any ObjectId in course items
+        if updated_user and 'course' in updated_user and isinstance(updated_user['course'], list):
+            for course in updated_user['course']:
+                if '_id' in course:
+                    course['id'] = str(course['_id'])
+                    del course['_id']
+        
+        return updated_user
     
 
 class TeacherLoginSerializer(serializers.Serializer):

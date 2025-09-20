@@ -29,7 +29,7 @@ urlpatterns = [
     path('teacher/dashboard/', views.TeacherDashboardView.as_view(), name='teacher-dashboard'),
     path('admin/verify-teachers/', views.AdminTeacherVerificationView.as_view(), name='admin-verify-teachers'),
     path('admin/verify-teachers/<str:teacher_id>/', views.AdminTeacherVerificationDetailView.as_view(), name='admin-verify-teachers-detail'),
-    
+    path('users/<str:user_id>/add-course/', views.AddCourseToUserView.as_view(), name='add-course-to-user'),
 
     path('teacher/email/', views.TeacherEmailView.as_view(), name='teacher-email'),
     

@@ -1,6 +1,6 @@
 # views.py
 
-from django.shortcuts import render
+from django.shortcuts import get_object_or_404, render
 from rest_framework import status
 
 from blog.models import BlogUser
@@ -1600,3 +1600,104 @@ class TeacherEmailView(APIView):
         """Log email activity to database"""
         # You can implement logging to your database here
         logger.info(f"Teacher {user.email} sent {email_type} email to {len(recipients)} recipients: {subject}")
+
+
+
+
+class AddCourseToUserView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request, user_id):
+        """
+        Add an existing course to a user's profile
+        Expected payload:
+        {
+            "course_id": "course_object_id_here",
+            "name": "Course Name",
+            "course_image": "url_to_image",
+            "price": 99.99
+        }
+        """
+        try:
+            # Get MongoDB connection first
+            db = get_mongo_db()
+            
+            # Validate user exists in MongoDB
+            if not ObjectId.is_valid(user_id):
+                return Response(
+                    {"error": "Invalid user ID format"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            user = db.customusers.find_one({"_id": ObjectId(user_id)})
+            if not user:
+                return Response(
+                    {"error": "User not found"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Validate required fields
+            required_fields = ['course_id', 'name', 'price']
+            for field in required_fields:
+                if field not in request.data:
+                    return Response(
+                        {"error": f"Missing required field: {field}"},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            
+            # Validate course_id is a valid ObjectId
+            course_id = request.data.get('course_id')
+            if not ObjectId.is_valid(course_id):
+                return Response(
+                    {"error": "Invalid course ID format"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Check if the course exists in your courses collection
+            course_exists = db.courses.find_one({"_id": ObjectId(course_id)})
+            if not course_exists:
+                return Response(
+                    {"error": "Course not found in the system"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Prepare course data
+            course_data = {
+                '_id': ObjectId(course_id),
+                'name': request.data.get('name'),
+                'course_image': request.data.get('course_image', ''),
+                'price': float(request.data.get('price', 0))
+            }
+            
+            # Check if the course already exists in the user's course list
+            if 'course' in user:
+                for course in user['course']:
+                    if '_id' in course and str(course['_id']) == course_id:
+                        return Response(
+                            {"error": "Course already exists in user's profile"},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+            
+            # Update user in MongoDB - add the course
+            result = db.customusers.update_one(
+                {"_id": ObjectId(user_id)},
+                {"$push": {"course": course_data}}
+            )
+            
+            if result.modified_count == 0:
+                return Response(
+                    {"error": "Failed to update user in database"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+            
+            # Return updated user data
+            updated_user = db.customusers.find_one({"_id": ObjectId(user_id)})
+            serializer = CustomUserSerializer(updated_user)
+            
+            return Response(serializer.data, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

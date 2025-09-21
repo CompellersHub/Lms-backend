@@ -122,6 +122,8 @@ AWS_SECRET_ACCESS_KEY = os.getenv('S3_SECRET_ACCESS_KEY')
 AWS_STORAGE_BUCKET_NAME = os.getenv('S3_BUCKET') # The S3 bucket name you created
 AWS_S3_REGION_NAME = os.getenv('S3_REGION') # e.g., 'us-east-1'
 AWS_S3_FILE_OVERWRITE = False # Prevents overwriting files with the same name
+# In your storage backend configuration
+AWS_S3_MAX_MEMORY_SIZE = 1024 * 1024 * 1024  # 1 GB
 
 # Add these to your AWS S3 Settings section
 AWS_S3_OBJECT_PARAMETERS = {
@@ -365,6 +367,8 @@ CELERY_TASK_ANNOTATIONS = {
     }
 }
 
+DATA_UPLOAD_MAX_MEMORY_SIZE = 1024 * 1024 * 1024  # 1 GB
+FILE_UPLOAD_MAX_MEMORY_SIZE = 1024 * 1024 * 1024  # 1 GB
 
 
 BREVO_API_KEY = os.getenv('Brevo_API')

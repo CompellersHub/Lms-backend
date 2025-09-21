@@ -1561,7 +1561,7 @@ class SendTemplateToListAPIView(APIView):
         sender_email = settings.DEFAULT_FROM_EMAIL
         sender_name = "Titans Careers"
         list_id = 8  # Specific list ID
-        template_id = 27  # Specific template ID
+        template_id = 28  # Specific template ID
         
         # Get all contacts from the specified list
         contacts = self.get_brevo_contacts_in_list(brevo_api_key, list_id)

@@ -1993,7 +1993,7 @@ class EventDetailAPIView(APIView):
             serializer = EventSerializer(
                 existing_event, 
                 data=data, 
-                partial=True,  # Allow partial updates
+                partial=True,
                 context={'request': request}
             )
             
@@ -2009,6 +2009,48 @@ class EventDetailAPIView(APIView):
             # Return updated event data
             response_serializer = EventSerializer(updated_event)
             return Response(response_serializer.data, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    def delete(self, request, event_id):
+        """
+        Delete event by ID
+        """
+        try:
+            db = get_mongo_db()
+            
+            # Validate event ID format
+            if not ObjectId.is_valid(event_id):
+                return Response(
+                    {"error": "Invalid event ID format"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Check if event exists
+            event = db.events.find_one({"_id": ObjectId(event_id)})
+            if not event:
+                return Response(
+                    {"error": "Event not found"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Delete the event
+            result = db.events.delete_one({"_id": ObjectId(event_id)})
+            
+            if result.deleted_count == 0:
+                return Response(
+                    {"error": "Failed to delete event"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+            
+            return Response(
+                {"message": "Event deleted successfully"},
+                status=status.HTTP_200_OK
+            )
             
         except Exception as e:
             return Response(

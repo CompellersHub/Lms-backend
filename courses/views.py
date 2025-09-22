@@ -1872,3 +1872,146 @@ class CustomPasswordResetConfirmView(APIView):
         # You might use Django's make_password or another method
         from django.contrib.auth.hashers import make_password
         return make_password(password)
+
+
+
+class EventDetailAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request, event_id):
+        """
+        Get event by ID
+        """
+        try:
+            db = get_mongo_db()
+            
+            # Validate event ID format
+            if not ObjectId.is_valid(event_id):
+                return Response(
+                    {"error": "Invalid event ID format"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Find event in MongoDB
+            event = db.events.find_one({"_id": ObjectId(event_id)})
+            if not event:
+                return Response(
+                    {"error": "Event not found"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Serialize the event data
+            serializer = EventSerializer(event)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    def put(self, request, event_id):
+        """
+        Update event by ID
+        """
+        try:
+            db = get_mongo_db()
+            
+            # Validate event ID format
+            if not ObjectId.is_valid(event_id):
+                return Response(
+                    {"error": "Invalid event ID format"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Find existing event
+            existing_event = db.events.find_one({"_id": ObjectId(event_id)})
+            if not existing_event:
+                return Response(
+                    {"error": "Event not found"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Prepare data for validation
+            data = request.data.copy()
+            
+            # Handle file uploads (icon)
+            if 'icon' in request.FILES:
+                data['icon'] = request.FILES['icon']
+            
+            # Validate and update event
+            serializer = EventSerializer(data=data, partial=True)
+            if not serializer.is_valid():
+                return Response(
+                    {"errors": serializer.errors},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Update the event
+            updated_event = serializer.update(existing_event, serializer.validated_data)
+            
+            # Return updated event data
+            response_serializer = EventSerializer(updated_event)
+            return Response(response_serializer.data, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    def patch(self, request, event_id):
+        """
+        Partial update event by ID
+        """
+        try:
+            db = get_mongo_db()
+            
+            # Validate event ID format
+            if not ObjectId.is_valid(event_id):
+                return Response(
+                    {"error": "Invalid event ID format"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Find existing event
+            existing_event = db.events.find_one({"_id": ObjectId(event_id)})
+            if not existing_event:
+                return Response(
+                    {"error": "Event not found"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Prepare data for validation
+            data = request.data.copy()
+            
+            # Handle file uploads (icon)
+            if 'icon' in request.FILES:
+                data['icon'] = request.FILES['icon']
+            
+            # Validate and partially update event
+            serializer = EventSerializer(
+                existing_event, 
+                data=data, 
+                partial=True,  # Allow partial updates
+                context={'request': request}
+            )
+            
+            if not serializer.is_valid():
+                return Response(
+                    {"errors": serializer.errors},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Update the event
+            updated_event = serializer.update(existing_event, serializer.validated_data)
+            
+            # Return updated event data
+            response_serializer = EventSerializer(updated_event)
+            return Response(response_serializer.data, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

@@ -30,7 +30,8 @@ urlpatterns = [
     path('admin/verify-teachers/', views.AdminTeacherVerificationView.as_view(), name='admin-verify-teachers'),
     path('admin/verify-teachers/<str:teacher_id>/', views.AdminTeacherVerificationDetailView.as_view(), name='admin-verify-teachers-detail'),
     path('users/<str:user_id>/add-course/', views.AddCourseToUserView.as_view(), name='add-course-to-user'),
-
+     path('students/batch-delete/', views.BatchDeleteStudentsView.as_view(), name='batch-delete-students'),
+    path('students/<str:user_id>/delete-courses/', views.DeleteStudentCoursesView.as_view(), name='delete-student-courses'),
     path('teacher/email/', views.TeacherEmailView.as_view(), name='teacher-email'),
     
 ]

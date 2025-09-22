@@ -1701,3 +1701,191 @@ class AddCourseToUserView(APIView):
                 {"error": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
+
+class BatchDeleteStudentsView(APIView):
+    permission_classes = [IsAuthenticated]  # Only admin can delete users in batch
+    
+    def post(self, request):
+        """
+        Delete multiple students in batch
+        Expected payload:
+        {
+            "student_ids": ["user_id_1", "user_id_2", "user_id_3"]
+        }
+        """
+        try:
+            db = get_mongo_db()
+            
+            # Validate required field
+            student_ids = request.data.get('student_ids', [])
+            if not student_ids:
+                return Response(
+                    {"error": "student_ids array is required"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            if not isinstance(student_ids, list):
+                return Response(
+                    {"error": "student_ids must be an array"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Validate each student ID format
+            valid_object_ids = []
+            invalid_ids = []
+            
+            for student_id in student_ids:
+                if ObjectId.is_valid(student_id):
+                    valid_object_ids.append(ObjectId(student_id))
+                else:
+                    invalid_ids.append(student_id)
+            
+            if invalid_ids:
+                return Response(
+                    {"error": f"Invalid student ID format: {invalid_ids}"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Check if all students exist
+            existing_students = list(db.customusers.find(
+                {"_id": {"$in": valid_object_ids}}
+            ))
+            
+            existing_ids = [str(student['_id']) for student in existing_students]
+            missing_ids = [str(id) for id in valid_object_ids if str(id) not in existing_ids]
+            
+            if missing_ids:
+                return Response(
+                    {"error": f"Students not found: {missing_ids}"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Delete students from MongoDB
+            result = db.customusers.delete_many({"_id": {"$in": valid_object_ids}})
+            
+            # If you're using Django models, delete them here too
+            # from .models import CustomUser
+            # CustomUser.objects.filter(id__in=student_ids).delete()
+            
+            return Response({
+                "message": f"Successfully deleted {result.deleted_count} students",
+                "deleted_count": result.deleted_count
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+# views.py
+class DeleteStudentCoursesView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request, user_id):
+        """
+        Delete specific courses from a student's data
+        Expected payload:
+        {
+            "course_ids": ["course_id_1", "course_id_2", "course_id_3"]
+        }
+        """
+        try:
+            db = get_mongo_db()
+            
+            # Validate user exists
+            if not ObjectId.is_valid(user_id):
+                return Response(
+                    {"error": "Invalid user ID format"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            user = db.customusers.find_one({"_id": ObjectId(user_id)})
+            if not user:
+                return Response(
+                    {"error": "User not found"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Validate required field
+            course_ids = request.data.get('course_ids', [])
+            if not course_ids:
+                return Response(
+                    {"error": "course_ids array is required"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            if not isinstance(course_ids, list):
+                return Response(
+                    {"error": "course_ids must be an array"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Validate each course ID format and convert to ObjectId
+            valid_course_object_ids = []
+            invalid_course_ids = []
+            
+            for course_id in course_ids:
+                if ObjectId.is_valid(course_id):
+                    valid_course_object_ids.append(ObjectId(course_id))
+                else:
+                    invalid_course_ids.append(course_id)
+            
+            if invalid_course_ids:
+                return Response(
+                    {"error": f"Invalid course ID format: {invalid_course_ids}"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Check if user has these courses
+            user_courses = user.get('course', [])
+            user_course_ids = [course.get('_id') for course in user_courses if course.get('_id')]
+            
+            # Find which course IDs actually exist in user's courses
+            existing_course_ids = []
+            for course_object_id in valid_course_object_ids:
+                if course_object_id in user_course_ids:
+                    existing_course_ids.append(course_object_id)
+            
+            if not existing_course_ids:
+                return Response(
+                    {"error": "None of the specified courses were found in the student's data"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Remove courses from user's course array
+            result = db.customusers.update_one(
+                {"_id": ObjectId(user_id)},
+                {"$pull": {"course": {"_id": {"$in": existing_course_ids}}}}
+            )
+            
+            if result.modified_count == 0:
+                return Response(
+                    {"error": "Failed to remove courses from student data"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+            
+            # If using Django models, remove the ManyToMany relationship
+            # from .models import CustomUser, Course
+            # user_model = CustomUser.objects.get(id=user_id)
+            # courses_to_remove = Course.objects.filter(id__in=course_ids)
+            # user_model.course.remove(*courses_to_remove)
+            
+            # Return updated user data
+            updated_user = db.customusers.find_one({"_id": ObjectId(user_id)})
+            serializer = CustomUserSerializer(updated_user)
+            
+            return Response({
+                "message": f"Successfully removed {len(existing_course_ids)} courses from student",
+                "removed_count": len(existing_course_ids),
+                "user": serializer.data
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

@@ -38,6 +38,7 @@ urlpatterns = [
 
     path('GenerateCertificate/', views.GenerateCertificatePDF.as_view(), name='generate-certificate'),
     path('event/', views.EventAPIView.as_view(), name='course_events'),
+    path('events/<str:event_id>/', views.EventDetailAPIView.as_view(), name='event-detail'),
     path('event-register/', views.EventRegistrationView.as_view(), name='course-registration'),
 
     path('consultations/', views.ConsultationView.as_view(), name='create-consultation'),

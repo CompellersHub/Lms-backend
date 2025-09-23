@@ -1959,21 +1959,21 @@ class EventDetailAPIView(APIView):
                 {"error": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-    
+        
     def patch(self, request, event_id):
         """
-        Partial update event by ID
+        Partially update event by ID (simpler version)
         """
         try:
             db = get_mongo_db()
-            
+
             # Validate event ID format
             if not ObjectId.is_valid(event_id):
                 return Response(
                     {"error": "Invalid event ID format"},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            
+
             # Find existing event
             existing_event = db.events.find_one({"_id": ObjectId(event_id)})
             if not existing_event:
@@ -1981,40 +1981,52 @@ class EventDetailAPIView(APIView):
                     {"error": "Event not found"},
                     status=status.HTTP_404_NOT_FOUND
                 )
-            
-            # Prepare data for validation
-            data = request.data.copy()
-            
-            # Handle file uploads (icon)
+
+            # Prepare update data - only include fields that are provided
+            update_data = {}
+
+            # Handle file uploads (icon) if provided
             if 'icon' in request.FILES:
-                data['icon'] = request.FILES['icon']
-            
-            # Validate and partially update event
-            serializer = EventSerializer(
-                existing_event, 
-                data=data, 
-                partial=True,
-                context={'request': request}
-            )
-            
+                update_data['icon'] = request.FILES['icon']
+
+            # Add other fields from request data (excluding icon file)
+            for field, value in request.data.items():
+                if field != 'icon':  # icon is handled separately above
+                    update_data[field] = value
+
+            # Validate the update data with partial=True
+            serializer = EventSerializer(data=update_data, partial=True)
             if not serializer.is_valid():
                 return Response(
                     {"errors": serializer.errors},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            
-            # Update the event
-            updated_event = serializer.update(existing_event, serializer.validated_data)
-            
+
+            # Perform the update with only the provided fields
+            result = db.events.update_one(
+                {"_id": ObjectId(event_id)},
+                {"$set": serializer.validated_data}
+            )
+
+            if result.modified_count == 0:
+                return Response(
+                    {"message": "No changes made to the event"},
+                    status=status.HTTP_200_OK
+                )
+
             # Return updated event data
+            updated_event = db.events.find_one({"_id": ObjectId(event_id)})
             response_serializer = EventSerializer(updated_event)
+
             return Response(response_serializer.data, status=status.HTTP_200_OK)
-            
+
         except Exception as e:
             return Response(
                 {"error": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
     
     def delete(self, request, event_id):
         """

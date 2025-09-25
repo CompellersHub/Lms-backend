@@ -195,6 +195,9 @@ CORS_ALLOWED_ORIGINS = [
 ]
 
 # settings.py
+TIKTOK_PIXEL_ID = 'D39E7O3C77UE7L6G8TU0'  # Replace with your actual Pixel ID
+
+# settings.py
 # Bank Transfer Configuration
 BARCLAYS_BANK_CONFIG = {
     'BANK_NAME': 'Barclays Bank UK',

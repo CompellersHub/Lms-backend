@@ -1912,7 +1912,7 @@ class EventDetailAPIView(APIView):
     
     def put(self, request, event_id):
         """
-        Update event by ID
+        Full update of event by ID (replace entire resource)
         """
         try:
             db = get_mongo_db()
@@ -1939,18 +1939,34 @@ class EventDetailAPIView(APIView):
             if 'icon' in request.FILES:
                 data['icon'] = request.FILES['icon']
             
-            # Validate and update event
-            serializer = EventSerializer(data=data, partial=True)
+            # For PUT, we need all required fields, so use partial=False
+            serializer = EventSerializer(data=data, partial=False)
             if not serializer.is_valid():
                 return Response(
                     {"errors": serializer.errors},
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
-            # Update the event
-            updated_event = serializer.update(existing_event, serializer.validated_data)
+            # Convert validated data to MongoDB format
+            update_data = {}
+            for key, value in serializer.validated_data.items():
+                # Handle special field types if needed
+                update_data[key] = value
+            
+            # Perform full update (replace)
+            result = db.events.replace_one(
+                {"_id": ObjectId(event_id)},
+                {**update_data, "_id": ObjectId(event_id)}  # Preserve the _id
+            )
+            
+            if result.modified_count == 0:
+                return Response(
+                    {"error": "Failed to update event"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
             
             # Return updated event data
+            updated_event = db.events.find_one({"_id": ObjectId(event_id)})
             response_serializer = EventSerializer(updated_event)
             return Response(response_serializer.data, status=status.HTTP_200_OK)
             

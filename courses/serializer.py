@@ -887,8 +887,8 @@ class EventSerializer(serializers.Serializer):
             'date': validated_data.get('date').isoformat(),
             'start_time': validated_data.get('start_time').isoformat(),
             'end_time': validated_data.get('end_time').isoformat(),
-            'created_at': datetime.now().isoformat(),
-            'updated_at': datetime.now().isoformat()
+            'created_at': timezone.now().isoformat(),
+            'updated_at': timezone.now().isoformat()
         }
         
         result = db.events.insert_one(mongo_data)
@@ -924,7 +924,7 @@ class EventSerializer(serializers.Serializer):
                 {"_id": event_id},
                 {"$set": {
                     **update_data,
-                    'updated_at': datetime.now().isoformat()
+                    'updated_at': timezone.now().isoformat()
                 }}
             )
         

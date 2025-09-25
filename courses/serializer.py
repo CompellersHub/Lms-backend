@@ -825,8 +825,8 @@ class EventSerializer(serializers.Serializer):
     image = serializers.URLField()
     event_excerpt = serializers.CharField()
     date = serializers.CharField()
-    start_time = serializers.TimeField()
-    end_time = serializers.TimeField()
+    start_time = serializers.CharField()
+    end_time = serializers.CharField()
     timezone = serializers.CharField(max_length=50, default='EST')
     is_active = serializers.BooleanField(default=True)
     instructor = serializers.CharField(max_length=100)
@@ -846,51 +846,73 @@ class EventSerializer(serializers.Serializer):
             else:
                 instance['id'] = str(instance['_id'])
             del instance['_id']
-        
+
+        # Convert time strings back to time objects for serialization
+        if 'start_time' in instance and isinstance(instance['start_time'], str):
+            try:
+                # Parse ISO format time string back to time object
+                from datetime import datetime
+                dt = datetime.fromisoformat(instance['start_time'])
+                instance['start_time'] = dt.time()
+            except (ValueError, AttributeError):
+                # If parsing fails, keep as string
+                pass
+            
+        if 'end_time' in instance and isinstance(instance['end_time'], str):
+            try:
+                from datetime import datetime
+                dt = datetime.fromisoformat(instance['end_time'])
+                instance['end_time'] = dt.time()
+            except (ValueError, AttributeError):
+                pass
+            
         # Convert course data if it exists
         if 'course' in instance and isinstance(instance['course'], dict):
             if '_id' in instance['course']:
                 instance['course']['id'] = str(instance['course']['_id'])
                 del instance['course']['_id']
-        
+
         return super().to_representation(instance)
 
     def to_internal_value(self, data):
-        data = data.copy()
-        
-        # Handle event ID
-        if 'id' in data:
-            if isinstance(data['id'], dict) and '$oid' in data['id']:
-                data['_id'] = ObjectId(data['id']['$oid'])
-                del data['id']
-        
-        # Handle course ID
-        if 'course' in data and data['course']:
-            if isinstance(data['course'], dict) and 'id' in data['course']:
-                if isinstance(data['course']['id'], dict) and '$oid' in data['course']['id']:
-                    data['course']['_id'] = ObjectId(data['course']['id']['$oid'])
-                    del data['course']['id']
-        
-        return super().to_internal_value(data)
+            data = data.copy()
+
+            # Handle event ID
+            if 'id' in data:
+                if isinstance(data['id'], dict) and '$oid' in data['id']:
+                    data['_id'] = ObjectId(data['id']['$oid'])
+                    del data['id']
+
+            # Handle course ID
+            if 'course' in data and data['course']:
+                if isinstance(data['course'], dict) and 'id' in data['course']:
+                    if isinstance(data['course']['id'], dict) and '$oid' in data['course']['id']:
+                        data['course']['_id'] = ObjectId(data['course']['id']['$oid'])
+                        del data['course']['id']
+
+            return super().to_internal_value(data)
 
     def create(self, validated_data):
         db = get_mongo_db()
-        
+
         # Handle course data
         course_data = validated_data.pop('course', None)
         if course_data:
             validated_data['course'] = course_data
-        
-        # Prepare MongoDB document
-        mongo_data = {
-            **validated_data,
-            'date': validated_data.get('date').isoformat(),
-            'start_time': validated_data.get('start_time').isoformat(),
-            'end_time': validated_data.get('end_time').isoformat(),
-            'created_at': timezone.now().isoformat(),
-            'updated_at': timezone.now().isoformat()
-        }
-        
+
+        # Prepare MongoDB document - convert time objects to strings
+        mongo_data = {}
+        for key, value in validated_data.items():
+            # Convert time objects to ISO format strings
+            if key in ['start_time', 'end_time'] and hasattr(value, 'isoformat'):
+                mongo_data[key] = value.isoformat()
+            else:
+                mongo_data[key] = value
+
+        # Add timestamps
+        mongo_data['created_at'] = timezone.now().isoformat()
+        mongo_data['updated_at'] = timezone.now().isoformat()
+
         result = db.events.insert_one(mongo_data)
         return db.events.find_one({"_id": result.inserted_id})
 
@@ -913,19 +935,21 @@ class EventSerializer(serializers.Serializer):
                     {"$set": {"course": validated_data['course']}}
                 )
         
-        # Update other fields
-        update_data = {
-            k: v for k, v in validated_data.items()
-            if k != 'course'
-        }
+        # Update other fields - convert time objects to strings
+        update_data = {}
+        for key, value in validated_data.items():
+            if key != 'course':
+                # Convert time objects to ISO format strings
+                if key in ['start_time', 'end_time'] and hasattr(value, 'isoformat'):
+                    update_data[key] = value.isoformat()
+                else:
+                    update_data[key] = value
         
         if update_data:
+            update_data['updated_at'] = timezone.now().isoformat()
             db.events.update_one(
                 {"_id": event_id},
-                {"$set": {
-                    **update_data,
-                    'updated_at': timezone.now().isoformat()
-                }}
+                {"$set": update_data}
             )
         
         return db.events.find_one({"_id": event_id})

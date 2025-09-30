@@ -1046,15 +1046,67 @@ class CourseProgressDetailView(APIView):
 class EventAPIView(APIView):
     def get(self, request, id=None):
         db = get_mongo_db()
+        
         if id:
+            # Get single event by ID
+            if not ObjectId.is_valid(id):
+                return Response(
+                    {"error": "Invalid event ID format"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+                
             event = db.events.find_one({"_id": ObjectId(id)})
             if not event:
-                return Response({"error": "Event not found"}, status=status.HTTP_404_NOT_FOUND)
+                return Response(
+                    {"error": "Event not found"}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
             serializer = EventSerializer(event)
             return Response(serializer.data)
+        
         else:
-            events = list(db.events.find())
-            serializer = EventSerializer(events, many=True)
+            # Apply filters from query parameters
+            filter_query = {}
+            
+            # Filter by active status
+            is_active = request.query_params.get('is_active')
+            if is_active is not None:
+                if is_active.lower() in ['true', '1', 'yes']:
+                    filter_query['is_active'] = True
+                elif is_active.lower() in ['false', '0', 'no']:
+                    filter_query['is_active'] = False
+            
+            # Filter by instructor
+            instructor = request.query_params.get('instructor')
+            if instructor:
+                filter_query['instructor'] = {'$regex': instructor, '$options': 'i'}  # Case-insensitive search
+            
+            # Filter by date range
+            start_date = request.query_params.get('start_date')
+            end_date = request.query_params.get('end_date')
+            if start_date or end_date:
+                date_filter = {}
+                if start_date:
+                    date_filter['$gte'] = start_date
+                if end_date:
+                    date_filter['$lte'] = end_date
+                filter_query['date'] = date_filter
+            
+            # Filter by title search
+            title = request.query_params.get('title')
+            if title:
+                filter_query['title'] = {'$regex': title, '$options': 'i'}
+            
+            # Get only the first event that matches filters
+            event = db.events.find_one(filter_query)
+            
+            if not event:
+                return Response(
+                    {"error": "No events found matching the criteria"}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            serializer = EventSerializer(event)
             return Response(serializer.data)
 
     def post(self, request):

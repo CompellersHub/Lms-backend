@@ -1319,9 +1319,9 @@ class CompletionCertificateSerializer(serializers.Serializer):
 
 class EventRegistrationSerializer(serializers.Serializer):
     COURSE_CHOICES = [
-        ('AML/KYC Compliance', 'AML/KYC Compliance'),
-        ('Business Analysis & Project Management', 'Business Analysis & Project Management'),
-        ('Cybersecurity', 'Cybersecurity'),
+        # ('AML/KYC Compliance', 'AML/KYC Compliance'),
+        # ('Business Analysis & Project Management', 'Business Analysis & Project Management'),
+        # ('Cybersecurity', 'Cybersecurity'),
         ('Data Analysis', 'Data Analysis'),
         
     ]

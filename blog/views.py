@@ -369,3 +369,6 @@ class RankYakWebhookView(View):
         
         logger.debug(f"Created {len(structured_content)} content blocks")
         return structured_content
+
+
+

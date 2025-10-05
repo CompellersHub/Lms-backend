@@ -1426,3 +1426,118 @@ class ConsultationSerializer(serializers.Serializer):
         Optional: Add any cross-field validation here
         """
         return data
+
+
+
+from rest_framework import serializers
+from bson import ObjectId
+from datetime import datetime
+from django.utils import timezone
+
+class JobSerializer(serializers.Serializer):
+    id = serializers.CharField(read_only=True)
+    title = serializers.CharField(max_length=200)
+    description = serializers.CharField()
+    location = serializers.CharField(max_length=100)
+    type = serializers.CharField(max_length=50)  # Changed from ChoiceField to CharField
+    salary = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    application_deadline = serializers.CharField()  # Changed from DateTimeField to CharField
+    company_name = serializers.CharField(max_length=200)  # Remove source mapping
+    company_logo = serializers.URLField(required=False, allow_blank=True)
+    contact_email = serializers.EmailField()
+    requirements = serializers.ListField(
+        child=serializers.CharField(),
+        required=False,
+        default=list
+    )
+    responsibilities = serializers.ListField(
+        child=serializers.CharField(),
+        required=False,
+        default=list
+    )
+    benefits = serializers.ListField(
+        child=serializers.CharField(),
+        required=False,
+        default=list
+    )
+    experience = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    education = serializers.CharField(max_length=200, required=False, allow_blank=True)
+    apply_link = serializers.URLField(required=False, allow_blank=True)
+    company_website = serializers.URLField(required=False, allow_blank=True)
+    is_active = serializers.BooleanField(default=True)
+    created_at = serializers.DateTimeField(read_only=True)
+    updated_at = serializers.DateTimeField(read_only=True)
+
+    # Remove all validation methods that are causing issues
+    # def validate_application_deadline(self, value):
+    #     if value <= timezone.now():
+    #         raise serializers.ValidationError("Application deadline must be in the future")
+    #     return value
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        
+        if '_id' in instance:
+            representation['id'] = str(instance['_id'])
+        
+        if '_id' in representation:
+            del representation['_id']
+        
+        return representation
+
+    def to_internal_value(self, data):
+        data = data.copy()
+        
+        if 'id' in data and data['id']:
+            if ObjectId.is_valid(data['id']):
+                data['_id'] = ObjectId(data['id'])
+            del data['id']
+        
+        # Remove field mapping - use the fields as they are
+        # if 'type' in data:
+        #     data['job_type'] = data.pop('type')
+        
+        # if 'company_name' in data:
+        #     data['company'] = data.pop('company_name')
+        
+        return super().to_internal_value(data)
+
+    def create(self, validated_data):
+        db = get_mongo_db()
+        
+        mongo_data = {
+            **validated_data,
+            'created_at': datetime.now().isoformat(),
+            'updated_at': datetime.now().isoformat()
+        }
+        
+        result = db.jobs.insert_one(mongo_data)
+        created_job = db.jobs.find_one({"_id": result.inserted_id})
+        
+        if created_job and '_id' in created_job:
+            created_job['id'] = str(created_job['_id'])
+            del created_job['_id']
+        
+        return created_job
+
+    def update(self, instance, validated_data):
+        db = get_mongo_db()
+        job_id = instance['_id'] if '_id' in instance else ObjectId(instance.get('id'))
+        
+        update_data = {
+            **validated_data,
+            'updated_at': datetime.now().isoformat()
+        }
+        
+        db.jobs.update_one(
+            {"_id": job_id},
+            {"$set": update_data}
+        )
+        
+        updated_job = db.jobs.find_one({"_id": job_id})
+        
+        if updated_job and '_id' in updated_job:
+            updated_job['id'] = str(updated_job['_id'])
+            del updated_job['_id']
+        
+        return updated_job

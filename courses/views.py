@@ -47,6 +47,7 @@ from .serializer import (
     AssignmentSerializer,
     EventRegistrationSerializer,
     EventSerializer,
+    JobSerializer,
     SubmissionSerializer,
     VideoSerializer,
     ModuleInCourseSerializer,
@@ -1560,8 +1561,8 @@ class SendTemplateToListAPIView(APIView):
         brevo_api_key = settings.BREVO_API_KEY
         sender_email = settings.DEFAULT_FROM_EMAIL
         sender_name = "Titans Careers"
-        list_id = 7  # Specific list ID
-        template_id = 35  # Specific template ID
+        list_id = 8 # Specific list ID
+        template_id = 36  # Specific template ID
     
         # Get all contacts from the specified list
         contacts = self.get_brevo_contacts_in_list(brevo_api_key, list_id)
@@ -2083,5 +2084,178 @@ class EventDetailAPIView(APIView):
         except Exception as e:
             return Response(
                 {"error": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+
+
+class JobAPIView(APIView):
+    def get(self, request, id=None):
+        db = get_mongo_db()
+        if id:
+            try:
+                job = db.jobs.find_one({"_id": ObjectId(id)})
+                if not job:
+                    return Response({"error": "Job not found"}, status=status.HTTP_404_NOT_FOUND)
+                
+                serializer = JobSerializer(job)
+                return Response(serializer.data)
+            except InvalidId:
+                return Response({"error": "Invalid job ID format"}, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            # Get query parameters for filtering
+            job_type = request.GET.get('type')
+            location = request.GET.get('location')
+            company = request.GET.get('company')
+            
+            query = {"is_active": True}
+            if job_type:
+                query['job_type'] = job_type
+            if location:
+                query['location'] = {'$regex': location, '$options': 'i'}
+            if company:
+                query['company'] = {'$regex': company, '$options': 'i'}
+            
+            jobs = list(db.jobs.find(query).sort("created_at", -1))
+            serializer = JobSerializer(jobs, many=True)
+            return Response(serializer.data)
+
+    def post(self, request):
+        serializer = JobSerializer(data=request.data)
+        if serializer.is_valid():
+            job = serializer.save()
+            return Response(JobSerializer(job).data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    
+
+
+class JobDetailAPIView(APIView):
+    """
+    API endpoint to get, update, and delete specific jobs by ID
+    """
+    
+    def get(self, request, id):
+        """
+        Get a specific job by ID
+        """
+        db = get_mongo_db()
+        try:
+            job = db.jobs.find_one({"_id": ObjectId(id)})
+            if not job:
+                return Response(
+                    {"error": "Job not found"}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            serializer = JobSerializer(job)
+            return Response(serializer.data)
+            
+        except InvalidId:
+            return Response(
+                {"error": "Invalid job ID format"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            return Response(
+                {"error": str(e)}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    def put(self, request, id):
+        """
+        Update a specific job by ID
+        """
+        db = get_mongo_db()
+        try:
+            job = db.jobs.find_one({"_id": ObjectId(id)})
+            if not job:
+                return Response(
+                    {"error": "Job not found"}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            serializer = JobSerializer(job, data=request.data, partial=True)
+            if serializer.is_valid():
+                updated_job = serializer.save()
+                return Response(JobSerializer(updated_job).data)
+            
+            return Response(
+                serializer.errors, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        except InvalidId:
+            return Response(
+                {"error": "Invalid job ID format"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            return Response(
+                {"error": str(e)}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    def patch(self, request, id):
+        """
+        Partially update a specific job by ID
+        """
+        db = get_mongo_db()
+        try:
+            job = db.jobs.find_one({"_id": ObjectId(id)})
+            if not job:
+                return Response(
+                    {"error": "Job not found"}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            serializer = JobSerializer(job, data=request.data, partial=True)
+            if serializer.is_valid():
+                updated_job = serializer.save()
+                return Response(JobSerializer(updated_job).data)
+            
+            return Response(
+                serializer.errors, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        except InvalidId:
+            return Response(
+                {"error": "Invalid job ID format"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            return Response(
+                {"error": str(e)}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    def delete(self, request, id):
+        """
+        Delete a specific job by ID
+        """
+        db = get_mongo_db()
+        try:
+            result = db.jobs.delete_one({"_id": ObjectId(id)})
+            if result.deleted_count == 0:
+                return Response(
+                    {"error": "Job not found"}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            return Response(
+                {"message": "Job deleted successfully"}, 
+                status=status.HTTP_204_NO_CONTENT
+            )
+            
+        except InvalidId:
+            return Response(
+                {"error": "Invalid job ID format"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            return Response(
+                {"error": str(e)}, 
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )

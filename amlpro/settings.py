@@ -110,7 +110,10 @@ CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
         "CONFIG": {
-            "hosts": [("127.0.0.1", 6379)],  # Update if your Redis is elsewhere
+            "hosts": [
+                os.getenv("CHANNEL_REDIS_HOST", "redis://localhost:6379")
+                #("127.0.0.1", 6379)
+                ],  # Update if your Redis is elsewhere
         },
     },
 }
@@ -357,8 +360,8 @@ EMAIL_HOST_PASSWORD = os.getenv('BREVO_SMTP_KEY') # Your Brevo SMTP key (the aut
 
 # brevo email 
 
-CELERY_BROKER_URL = 'amqp://localhost' 
-CELERY_RESULT_BACKEND = 'rpc://'
+CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", 'amqp://localhost')
+CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", 'rpc://')
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_ACCEPT_CONTENT = ['json']

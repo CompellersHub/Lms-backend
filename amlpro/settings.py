@@ -17,7 +17,7 @@ MONGO_URI = os.getenv('MONGO_URI')
 MONGO_DATABASE_NAME = os.getenv('DATABASE_NAME')
 
 # For your signals.py
-FRONTEND_RESET_PASSWORD_URL = 'https://titanscareers/courses/password-reset/confirm/' # Replace with your actual frontend URL
+FRONTEND_RESET_PASSWORD_URL = 'https://www.titanscareers.com/courses/password-reset/confirm/' # Replace with your actual frontend URL
 FRONTEND_DOMAIN = 'titanscareers.com' # Your frontend domain
 SITE_NAME = 'Titans Careers' # Your site name
 
@@ -33,8 +33,8 @@ SITE_NAME = 'Titans Careers' # Your site name
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-#SECRET_KEY = 'django-insecure-f($n54+mp@2@3bx$smc=$2-rxd6jyzbbz4%=h-_34%^w37_*--'
-SECRET_KEY = os.getenv('SECRET_KEY') or ''
+SECRET_KEY = 'django-insecure-f($n54+mp@2@3bx$smc=$2-rxd6jyzbbz4%=h-_34%^w37_*--'
+# SECRET_KEY =  os.getenv('SECRET_KEY')
 print(f"--- DEBUG: Current SECRET_KEY in use: '{SECRET_KEY}' ---")
 
 # SECURITY WARNING: don't run with debug turned on in production!

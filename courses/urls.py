@@ -50,6 +50,7 @@ urlpatterns = [
 
     path('jobs/', views.JobAPIView.as_view(), name='job-list'),
     path('jobs/<str:id>/', views.JobDetailAPIView.as_view(), name='job-detail'),
-
+    path('receipts/upload/', views.ReceiptUploadView.as_view(), name='receipt-upload'),
+    path('receipts/<str:receipt_id>/', views.ReceiptDetailView.as_view(), name='receipt-detail'),
 ]
 

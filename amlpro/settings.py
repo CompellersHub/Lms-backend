@@ -723,6 +723,8 @@ LOGGING = {
             'backupCount': 5,
             'formatter': 'verbose'
         },
+
+    
     }
 }
 

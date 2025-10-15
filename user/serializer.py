@@ -252,67 +252,75 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 teaching_storage = TeacherPicturesStorage()
 
 class TeacherProfileSerializer(serializers.Serializer):
-    id = serializers.CharField(read_only=True)
+    id = serializers.CharField(read_only=True, source='_id')
     email = serializers.EmailField()
     first_name = serializers.CharField(max_length=150, allow_blank=True, required=False)
     last_name = serializers.CharField(max_length=150, allow_blank=True, required=False)
-    password = serializers.CharField(write_only=True)
+    password = serializers.CharField(write_only=True, required=False)  # Made required=False for updates
     role = serializers.CharField(max_length=20, default='TEACHER')
     bio = serializers.CharField(allow_blank=True, required=False)
-    profile_picture = serializers.FileField(
-        max_length=100,
-        allow_null=True, required=False
-    )
+    profile_picture = serializers.URLField(allow_blank=True, required=False, default='https://d2907c0nlcl1a.cloudfront.net/Teacher_profile/placeholder.png')
     phone_number = serializers.CharField(max_length=15, allow_blank=True, required=False)
     past_experience = serializers.CharField(allow_blank=True, required=False)
     course_taken = serializers.CharField(allow_blank=True, required=False)
     created_at = serializers.DateTimeField(read_only=True)
     is_verified = serializers.BooleanField(default=False)
-    verified_at = serializers.DateTimeField(required=False)
-    rejected_at = serializers.DateTimeField(required=False)
+    verified_at = serializers.DateTimeField(required=False, allow_null=True)
+    rejected_at = serializers.DateTimeField(required=False, allow_null=True)
     verification_feedback = serializers.CharField(required=False, allow_null=True)
+    file = serializers.FileField(write_only=True, required=False, allow_null=True)  # Added file field
 
     def to_representation(self, instance):
         representation = super().to_representation(instance)
 
+        # Handle ID conversion safely
         if '_id' in instance:
-            instance['id'] = str(instance['_id'])
-            del instance['_id']
+            representation['id'] = str(instance['_id'])
+        elif 'id' in instance:
+            representation['id'] = str(instance['id'])
         
-
-        # Handle file field
-        if 'file' in instance and instance.get('file'):
-            # Check if it's already a URL or a file path
-            if instance['file'].startswith('http'):
-                representation['file'] = instance['file']
-            else:
-                representation['file'] = teaching_storage.url(instance['file'])
-        else:
-            representation['file'] = None
+        # Handle null profile_picture
+        if representation.get('profile_picture') is None:
+            representation['profile_picture'] = 'https://d2907c0nlcl1a.cloudfront.net/Teacher_profile/placeholder.png'
         
         return representation
 
     def create(self, validated_data):
         db = get_mongo_db()
-        validated_data['created_at'] = timezone.now()  # Use timezone.now()
+        
+        # Handle file upload in create
+        file = validated_data.pop('file', None)
+        if file:
+            file_name = teaching_storage.save(f'Teacher_profile/{file.name}', file)
+            validated_data['file'] = file_name
+        
+        validated_data['created_at'] = timezone.now()
         result = db.teacherprofiles.insert_one(validated_data)
         return db.teacherprofiles.find_one({"_id": result.inserted_id})
 
     def update(self, instance, validated_data):
         db = get_mongo_db()
+        
+        # Handle file upload
+        file = validated_data.pop('file', None)
+        if file:
+            file_name = teaching_storage.save(f'Teacher_profile/{file.name}', file)
+            validated_data['file'] = file_name
+        
+        # Don't update created_at on update, keep original
+        if 'created_at' in validated_data:
+            validated_data.pop('created_at')
+        
+        # Update the document in MongoDB
+        db.teacherprofiles.update_one(
+            {"_id": instance['_id']},
+            {"$set": validated_data}
+        )
+        
+        # Return updated instance
+        return db.teacherprofiles.find_one({"_id": instance['_id']})
 
-        file = validated_data.pop('file')
-        file_name = teaching_storage.save(f'Teacher_profile/{file.name}', file)
-
-
-        validated_data['file'] = file_name
-        validated_data['created_at'] = timezone.now()
-
-
-        profile_id = ObjectId(instance['id'])
-        db.teacherprofiles.update_one({"_id": profile_id}, {"$set": validated_data})
-        return db.teacherprofiles.find_one({"_id": profile_id})
-
+        
 class NotificationSerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)
     student = CustomUserSerializer()

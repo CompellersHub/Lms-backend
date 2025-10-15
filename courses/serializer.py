@@ -5,7 +5,7 @@ import pytz
 from rest_framework import serializers
 from bson.objectid import ObjectId
 
-from courses.storages_backends import AssignmentStorage, CourseLibraryStorage, SubmissionStorage
+from courses.storages_backends import AssignmentStorage, CourseLibraryStorage, ReceiptStorage, SubmissionStorage
 from user.serializer import TeacherProfileSerializer
 from django.core.validators import validate_email
 from django.core.exceptions import ValidationError
@@ -1541,3 +1541,108 @@ class JobSerializer(serializers.Serializer):
             del updated_job['_id']
         
         return updated_job
+    
+
+receipt_storage = ReceiptStorage()
+
+class ReceiptSerializer(serializers.Serializer):
+    id = serializers.CharField(read_only=True, source='_id')
+    title = serializers.CharField(max_length=200)
+    description = serializers.CharField(required=False, allow_blank=True)
+    amount = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+    date = serializers.DateField(required=False)
+    file = serializers.FileField(
+        max_length=100,
+        allow_null=True, 
+        required=False
+    )
+    created_at = serializers.DateTimeField(read_only=True)
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        
+        # Handle ID conversion safely
+        if '_id' in instance:
+            representation['id'] = str(instance['_id'])
+        
+        # Handle file field - generate URL
+        if 'file' in instance and instance.get('file'):
+            # Check if it's already a URL or a file path
+            if instance['file'].startswith('http'):
+                representation['file'] = instance['file']
+            else:
+                representation['file'] = receipt_storage.url(instance['file'])
+        else:
+            representation['file'] = None
+        
+        return representation
+    
+    def create(self, validated_data):
+        db = get_mongo_db()
+        
+        # Handle file upload to S3
+        file = validated_data.pop('file', None)
+        file_name = None
+        
+        if file:
+            # Use original filename for receipts
+            file_name = receipt_storage.save(f'receipts/{file.name}', file)
+        
+        # Prepare data for MongoDB
+        receipt_data = {
+            'title': validated_data.get('title'),
+            'description': validated_data.get('description', ''),
+            'amount': float(validated_data.get('amount', 0)) if validated_data.get('amount') else 0,
+            'date': validated_data.get('date'),
+            'file': file_name,
+            'uploaded_by': ObjectId(validated_data.get('uploaded_by')) if validated_data.get('uploaded_by') else None,
+            'created_at': timezone.now(),
+            'original_filename': file.name if file else None
+        }
+
+        try:
+            result = db.receipts.insert_one(receipt_data)
+            return db.receipts.find_one({"_id": result.inserted_id})
+        except Exception as e:
+            # Clean up file if insertion fails
+            if file_name:
+                receipt_storage.delete(file_name)
+            raise serializers.ValidationError(f"Error creating receipt: {e}")
+    
+    def update(self, instance, validated_data):
+        db = get_mongo_db()
+
+        # Handle ID conversion
+        if isinstance(instance, dict) and 'id' in instance:
+            receipt_id_str = str(instance['id'])
+            receipt_id = ObjectId(receipt_id_str)
+        elif isinstance(instance, dict) and '_id' in instance:
+            receipt_id = instance['_id']
+        else:
+            raise serializers.ValidationError("Invalid receipt instance")
+
+        # Handle file upload if new file is provided
+        file = validated_data.pop('file', None)
+        if file:
+            # Delete old file if exists
+            old_file = instance.get('file')
+            if old_file and not old_file.startswith('http'):
+                try:
+                    receipt_storage.delete(old_file)
+                except:
+                    pass
+            
+            # Save new file
+            file_name = receipt_storage.save(f'receipts/{file.name}', file)
+            validated_data['file'] = file_name
+            validated_data['original_filename'] = file.name
+
+        # Update in MongoDB
+        try:
+            db.receipts.update_one({"_id": receipt_id}, {"$set": validated_data})
+            return db.receipts.find_one({"_id": receipt_id})
+        except Exception as e:
+            # Clean up new file if update fails
+            if file:
+                receipt_storage.delete(file_name)
+            raise serializers.ValidationError(f"Error updating receipt: {e}")

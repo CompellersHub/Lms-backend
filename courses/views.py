@@ -37,6 +37,7 @@ from sib_api_v3_sdk.rest import ApiException
 from sib_api_v3_sdk import ContactsApi, CreateContact
 
 
+from courses.storages_backends import ReceiptStorage
 from user.serializer import CustomUserSerializer
 from user.tasks import send_course_registration_email
 from .serializer import (
@@ -48,6 +49,7 @@ from .serializer import (
     EventRegistrationSerializer,
     EventSerializer,
     JobSerializer,
+    ReceiptSerializer,
     SubmissionSerializer,
     VideoSerializer,
     ModuleInCourseSerializer,
@@ -2259,3 +2261,89 @@ class JobDetailAPIView(APIView):
                 {"error": str(e)}, 
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
+class ReceiptUploadView(APIView):
+    """
+    Handles uploads and retrieval for receipts
+    """
+    
+    def get(self, request):
+        db = get_mongo_db()
+        
+        # Optional: Add filters, pagination, etc.
+        receipts = list(db.receipts.find().sort('created_at', -1))
+        serializer = ReceiptSerializer(receipts, many=True)
+        
+        return Response(serializer.data)
+    
+    def post(self, request):
+        serializer = ReceiptSerializer(data=request.data)
+        
+        if serializer.is_valid():
+            # Add uploaded_by from request user if available
+            validated_data = serializer.validated_data.copy()
+            if request.user and hasattr(request.user, 'id'):
+                validated_data['uploaded_by'] = str(request.user.id)
+            
+            receipt = serializer.create(validated_data)
+            response_serializer = ReceiptSerializer(receipt)
+            
+            return Response({
+                "success": True,
+                "receipt": response_serializer.data
+            }, status=status.HTTP_201_CREATED)
+        
+        return Response({
+            "success": False,
+            "errors": serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+
+class ReceiptDetailView(APIView):
+    """
+    Handle GET, PUT, DELETE for individual receipts
+    """
+    
+    def get_object(self, receipt_id):
+        db = get_mongo_db()
+        try:
+            return db.receipts.find_one({"_id": ObjectId(receipt_id)})
+        except InvalidId:
+            return None
+    
+    def get(self, request, receipt_id):
+        receipt = self.get_object(receipt_id)
+        if not receipt:
+            return Response(
+                {"error": "Receipt not found"}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        serializer = ReceiptSerializer(receipt)
+        return Response(serializer.data)
+    
+    def delete(self, request, receipt_id):
+        receipt = self.get_object(receipt_id)
+        if not receipt:
+            return Response(
+                {"error": "Receipt not found"}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Delete file from S3
+        file_path = receipt.get('file')
+        if file_path and not file_path.startswith('http'):
+            try:
+                receipt_storage.delete(file_path)
+            except:
+                pass
+        
+        # Delete from MongoDB
+        db = get_mongo_db()
+        db.receipts.delete_one({"_id": ObjectId(receipt_id)})
+        
+        return Response({
+            "success": True,
+            "message": "Receipt deleted successfully"
+        }, status=status.HTTP_204_NO_CONTENT)

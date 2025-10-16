@@ -2299,6 +2299,7 @@ class ReceiptUploadView(APIView):
             "errors": serializer.errors
         }, status=status.HTTP_400_BAD_REQUEST)
 
+receipt_storage = ReceiptStorage()
 
 class ReceiptDetailView(APIView):
     """

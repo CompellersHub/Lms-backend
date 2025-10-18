@@ -1550,7 +1550,7 @@ class ReceiptSerializer(serializers.Serializer):
     title = serializers.CharField(max_length=200)
     description = serializers.CharField(required=False, allow_blank=True)
     amount = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
-    date = serializers.DateField(required=False)
+    date = serializers.DateTimeField(read_only=True)  # Changed to DateTimeField and read_only
     file = serializers.FileField(
         max_length=100,
         allow_null=True, 
@@ -1588,15 +1588,18 @@ class ReceiptSerializer(serializers.Serializer):
             # Use original filename for receipts
             file_name = receipt_storage.save(f'receipts/{file.name}', file)
         
+        # Get current time for both date and created_at
+        current_time = timezone.now()
+        
         # Prepare data for MongoDB
         receipt_data = {
             'title': validated_data.get('title'),
             'description': validated_data.get('description', ''),
             'amount': float(validated_data.get('amount', 0)) if validated_data.get('amount') else 0,
-            'date': validated_data.get('date'),
+            'date': current_time,  # Set to current upload time
             'file': file_name,
             'uploaded_by': ObjectId(validated_data.get('uploaded_by')) if validated_data.get('uploaded_by') else None,
-            'created_at': timezone.now(),
+            'created_at': current_time,
             'original_filename': file.name if file else None
         }
 
@@ -1637,7 +1640,11 @@ class ReceiptSerializer(serializers.Serializer):
             validated_data['file'] = file_name
             validated_data['original_filename'] = file.name
 
-        # Update in MongoDB
+        # Update in MongoDB - date remains unchanged during update
+        # If you want to update date when file is changed, uncomment below:
+        # if file:
+        #     validated_data['date'] = timezone.now()
+
         try:
             db.receipts.update_one({"_id": receipt_id}, {"$set": validated_data})
             return db.receipts.find_one({"_id": receipt_id})

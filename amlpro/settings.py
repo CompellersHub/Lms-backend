@@ -148,7 +148,7 @@ MEDIA_ROOT = ''  # This should be empty for S3
 
 # For CloudFront Integration (highly recommended for video)
 # Use your CloudFront Distribution Domain Name here
-# AWS_S3_CUSTOM_DOMAIN = 'yourcloudfrontdomain.cloudfront.net' # e.g., d1234abcd.cloudfront.net
+AWS_S3_CUSTOM_DOMAIN = 'https://d2907c0nlcl1a.cloudfront.net' # e.g., d1234abcd.cloudfront.net
 # MEDIA_URL = f'https://{AWS_S3_CUSTOM_DOMAIN}/media/' # CloudFront URL for media uploads
 # AWS_CLOUDFRONT_DOMAIN = 'yourcloudfrontdomain.cloudfront.net' # Store this separately for clarity if needed
 

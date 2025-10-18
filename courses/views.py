@@ -35,8 +35,8 @@ from brevo_python import AddContactToList
 import sib_api_v3_sdk
 from sib_api_v3_sdk.rest import ApiException
 from sib_api_v3_sdk import ContactsApi, CreateContact
-
-
+from botocore.exceptions import ClientError
+import boto3
 from courses.storages_backends import ReceiptStorage
 from user.serializer import CustomUserSerializer
 from user.tasks import send_course_registration_email
@@ -1112,81 +1112,82 @@ class EventAPIView(APIView):
 
 
 
+
+
 class GenerateCertificatePDF(APIView):
-    # Option 1: Explicitly set authentication_classes to an empty list
-    # This means NO authentication schemes will be run for this view.
-    authentication_classes = [] 
     
-    # Option 2: Set permission_classes to AllowAny
-    # This means ANY user (authenticated or unauthenticated/anonymous) can access this view.
-    # AllowAny is usually sufficient if you just want to make it public.
-    permission_classes = [AllowAny] 
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        # Since authentication is removed or permission is AllowAny,
-        # request.user will be an AnonymousUser if no session cookie is present.
-        # You should remove or adapt this check:
-        # if not request.user.is_authenticated:
-        #     return Response({"error": "Authentication required."}, status=status.HTTP_401_UNAUTHORIZED)
-        # If you remove the authentication, this check would always be false and return 401.
+        user = request.user
 
-        # If you still need a name, but don't want to enforce authentication:
-        # You could get a name from query params or assume an anonymous name
-        participant_name = request.query_params.get('username', 'Participant Name') # Get name from query param
-        if not participant_name: # Fallback if 'name' not provided
-             participant_name = "Anonymous Participant"
+        # Get optional course_id from query parameters to specify which course certificate
+        course_id = request.query_params.get('course_id', '')
+        completion_date_str = request.query_params.get('completion_date', 'Date Not Provided')
 
-        # If you *sometimes* want to use the authenticated user's name if available,
-        # but don't require authentication, you can check:
-        if request.user.is_authenticated:
-            user = request.user
-            # Fetch user data from MongoDB for the name
+        try:
+            # Fetch user data from MongoDB
             client = MongoClient(settings.MONGO_URI, tls=True, tlsAllowInvalidCertificates=True)
             db = get_mongo_db()
             users_collection = db.customusers
             mongo_user = users_collection.find_one({"email": user.email})
+            
+            if not mongo_user:
+                client.close()
+                logger.error(f"User with email {user.email} not found in MongoDB")
+                return Response({"error": "User data not found"}, status=status.HTTP_404_NOT_FOUND)
+
+            # Get participant name from MongoDB user data
+            first_name = mongo_user.get('first_name', '').strip()
+            last_name = mongo_user.get('last_name', '').strip()
+            
+            if first_name or last_name:
+                participant_name = f"{first_name} {last_name}".strip()
+            else:
+                participant_name = mongo_user.get('username', user.email)
+
+            # Create a clean identifier for the filename
+            if first_name or last_name:
+                filename_user_identifier = f"{first_name}_{last_name}".replace(' ', '_').strip('_')
+            else:
+                filename_user_identifier = mongo_user.get('username', user.email.split('@')[0])
+
+            # Get user's enrolled courses
+            user_courses = mongo_user.get('course', [])
+            
+            if not user_courses:
+                client.close()
+                return Response(
+                    {"error": "You are not enrolled in any courses"}, 
+                    status=status.HTTP_403_FORBIDDEN
+                )
+
+            # Determine which course to generate certificate for
+            selected_course = None
+            
+            if course_id:
+                # If course_id is provided, find that specific course
+                for course in user_courses:
+                    if str(course.get('id')) == course_id:
+                        selected_course = course
+                        break
+            else:
+                # If no course_id provided, use the first course
+                selected_course = user_courses[0]
+
+            if not selected_course:
+                client.close()
+                return Response(
+                    {"error": f"Course with ID {course_id} not found in your enrolled courses"}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            # Get the actual course name from the user's data
+            course_name = selected_course.get('name', 'Unnamed Course')
             client.close()
-            participant_name = mongo_user.get('first_name', '') + ' ' + mongo_user.get('last_name', '') if mongo_user and (mongo_user.get('first_name') or mongo_user.get('last_name')) else (mongo_user.get('email', 'N/A') if mongo_user else user.username)
-        else:
-            participant_name = request.query_params.get('name', 'Completed student') # Fallback if not authenticated
-
-
-        # Get course name and completion date from query parameters
-        course_name = request.query_params.get('course', 'Course Name Not Provided')
-        completion_date_str = request.query_params.get('completion_date', 'Date Not Provided')
-
-        try:
-            # --- IMPORTANT ---
-            # If you remove authentication, you CANNOT rely on request.user for the name.
-            # You must get the participant_name from somewhere else, e.g., query parameters.
-            # The current MongoDB user fetching logic relies on request.user.email.
-            # If you still need a name from MongoDB for an *unauthenticated* request,
-            # you would need to pass an identifier (like email or user ID) in the URL/body.
-
-            # Example: If you pass user_id in query params for unauthenticated certificate
-            # user_id_from_param = request.query_params.get('user_id')
-            # if user_id_from_param:
-            #     try:
-            #         client = MongoClient(settings.MONGO_URI, tls=True, tlsAllowInvalidCertificates=True)
-            #         db = get_mongo_db()
-            #         users_collection = db.customusers
-            #         mongo_user = users_collection.find_one({"_id": ObjectId(user_id_from_param)})
-            #         client.close()
-            #         if mongo_user:
-            #             participant_name = mongo_user.get('username')
-            #             if not participant_name.strip(): # Fallback if first/last name empty
-            #                  participant_name = mongo_user.get('email', 'N/A')
-            #         else:
-            #             logger.warning(f"User with ID {user_id_from_param} not found in MongoDB for certificate.")
-            #             participant_name = "Unknown Participant" # Default if ID not found
-            #     except Exception as e:
-            #         logger.error(f"Error fetching MongoDB user for certificate with ID {user_id_from_param}: {e}")
-            #         participant_name = "Error Fetching Name" # Default if MongoDB fetch fails
-            # else:
-            #     participant_name = request.query_params.get('name', 'Participant Name') # Default if no user_id
 
             # Load the PDF template
-            template_path = "staticfiles/certificate/COC.pdf"  # Update this path
+            template_path = "staticfiles/certificate/COC.pdf"
             with open(template_path, "rb") as template_file:
                 pdf_reader = PdfReader(template_file)
                 pdf_writer = PdfWriter()
@@ -1206,15 +1207,15 @@ class GenerateCertificatePDF(APIView):
 
                 # Set font and positions for text overlay
                 pdf.set_font("Calibri", size=24, style='B')
-                pdf.set_xy(60, 100)  # Adjust these coordinates based on your template
+                pdf.set_xy(60, 100)
                 pdf.cell(0, 10, participant_name, align='C')
 
                 pdf.set_font("Calibri", size=20, style='I')
-                pdf.set_xy(60, 125)  # Adjust these coordinates based on your template
+                pdf.set_xy(60, 125)
                 pdf.cell(0, 10, course_name, align='C')
 
                 pdf.set_font("Calibri", size=20)
-                pdf.set_xy(60, 150)  # Adjust these coordinates based on your template
+                pdf.set_xy(60, 150)
                 pdf.cell(0, 10, completion_date_str, align='C')
 
                 # Output the overlay to a buffer
@@ -1229,14 +1230,31 @@ class GenerateCertificatePDF(APIView):
                 output_buffer = io.BytesIO()
                 pdf_writer.write(output_buffer)
 
+                # Create a clean course name for the filename
+                clean_course_name = course_name.replace(' ', '_').replace('/', '_').replace('\\', '_')[:30]
+                
+                # Create the filename with user identifier
+                filename = f"Certificate_{clean_course_name}_{filename_user_identifier}.pdf"
+                
+                # Remove any potentially problematic characters from filename
+                filename = "".join(c for c in filename if c.isalnum() or c in "._-")
+                
+                # Log certificate generation for audit purposes
+                logger.info(f"Certificate generated for user: {user.email} - Course: {course_name}")
+                
                 # Create a response with the PDF data
                 response = HttpResponse(output_buffer.getvalue(), content_type='application/pdf')
-                response['Content-Disposition'] = f'attachment; filename="Completion Certificate - {participant_name}.pdf"'
+                response['Content-Disposition'] = f'attachment; filename="{filename}"'
                 return response
 
+        except FileNotFoundError:
+            logger.error(f"Certificate template not found at path: {template_path}")
+            return Response({"error": "Certificate template not found"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except Exception as e:
-            logger.error(f"Error generating certificate: {str(e)}")
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.error(f"Error generating certificate for user {user.email}: {str(e)}")
+            return Response({"error": "Failed to generate certificate"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+
 
 logger = logging.getLogger(__name__)
 

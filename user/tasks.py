@@ -1,5 +1,7 @@
 from celery import shared_task
 from django.conf import settings
+
+from courses.mongo_utils import get_mongo_db
 from .utils.email_service import send_brevo_email
 import logging
 
@@ -107,4 +109,56 @@ def send_course_registration_email(self, to_email, first_name, course_name, cour
         
     except Exception as e:
         logger.error(f"Failed to send to {to_email}: {str(e)}")
+        raise self.retry(exc=e, countdown=60, max_retries=3)
+    
+
+
+@shared_task(bind=True)
+def send_receipt_upload_confirmation(self, user_id, receipt_data):
+    """
+    Enhanced Celery task that accepts user_id and fetches user data
+    """
+    try:
+        logger.info(f"Sending receipt upload confirmation for user {user_id}")
+        
+        # Get MongoDB connection
+        
+        db = get_mongo_db()
+        
+        # Find user in MongoDB
+        user = db.customusers.find_one({'_id': user_id})
+        
+        if not user:
+            logger.error(f"User not found with ID: {user_id}")
+            return {'status': 'error', 'message': 'User not found'}
+        
+        user_email = user.get('email')
+        if not user_email:
+            logger.error(f"User {user_id} has no email address")
+            return {'status': 'error', 'message': 'User has no email'}
+        
+        # Prepare template parameters
+        params = {
+            'FIRST_NAME': user.get('first_name', 'there'),
+            'RECEIPT_DETAILS': receipt_data
+        }
+        
+        # Call email service
+        success = send_brevo_email(
+            to_email=user_email,
+            template_id=8,  # Your receipt template ID
+            params=params
+        )
+        
+        if not success:
+            raise Exception("Brevo API returned no response")
+            
+        return {
+            'status': 'success',
+            'email': user_email,
+            'message': "Receipt upload confirmation email sent successfully"
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to send receipt email for user {user_id}: {str(e)}")
         raise self.retry(exc=e, countdown=60, max_retries=3)

@@ -193,11 +193,11 @@ class Course(models.Model):
     price = models.FloatField() # REQUIRED, removed default
     original_price = models.FloatField(default=1500) # REQUIRED, removed default
     instructor = models.ForeignKey('user.TeacherProfile', on_delete=models.CASCADE) # Required
-    curriculum = models.ForeignKey('Curriculum', on_delete=models.CASCADE) # Required
+    curriculum = models.ForeignKey('Curriculum', on_delete=models.CASCADE, null=True, blank=True) # Required
     learning_outcomes = models.JSONField(default=dict, blank=True)
     required_materials = models.JSONField(default=dict, blank=True)
     target_audience = models.JSONField(default=dict, blank=True)
-    estimated_time = models.CharField(max_length=100) # Required
+    estimated_time = models.CharField(max_length=100, null=True, blank=True) # Required
     level = models.CharField(
         max_length=20,
         choices=LEVEL_CHOICES,

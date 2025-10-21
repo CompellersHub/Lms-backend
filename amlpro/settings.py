@@ -193,7 +193,8 @@ CORS_ALLOWED_ORIGINS = [
     "https://tools.titanscareers.com",
     'http://localhost',
     'http://127.0.0.1',
-    'https://admin.titanscareers.com'
+    'https://admin.titanscareers.com',
+    'https://titans-quiz.vercel.app',
     
 ]
 

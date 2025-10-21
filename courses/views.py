@@ -39,7 +39,7 @@ from botocore.exceptions import ClientError
 import boto3
 from courses.storages_backends import ReceiptStorage
 from user.serializer import CustomUserSerializer
-from user.tasks import send_course_registration_email
+from user.tasks import send_course_registration_email, send_receipt_upload_confirmation
 from .serializer import (
     CategorySerializer,
     ConsultationSerializer,
@@ -2307,6 +2307,9 @@ class ReceiptUploadView(APIView):
             receipt = serializer.create(validated_data)
             response_serializer = ReceiptSerializer(receipt)
             
+            # Send email confirmation asynchronously
+            self._send_receipt_email(request, receipt, response_serializer.data)
+            
             return Response({
                 "success": True,
                 "receipt": response_serializer.data
@@ -2316,6 +2319,77 @@ class ReceiptUploadView(APIView):
             "success": False,
             "errors": serializer.errors
         }, status=status.HTTP_400_BAD_REQUEST)
+    
+    def _send_receipt_email(self, request, receipt, receipt_data):
+        """
+        Helper method to send receipt upload confirmation email
+        """
+        try:
+            db = get_mongo_db()
+            
+            # Get user ID from request
+            user_id = None
+            if request.user and hasattr(request.user, 'id'):
+                user_id = str(request.user.id)
+            
+            if user_id:
+                # Find user in MongoDB customusers collection
+                user = db.customusers.find_one({'_id': user_id})
+                
+                if user:
+                    user_email = user.get('email')
+                    first_name = user.get('first_name')
+                    
+                    if user_email:
+                        # Prepare receipt details for the email
+                        receipt_details = self._format_receipt_details(receipt_data)
+                        
+                        # Send email asynchronously via Celery
+                        send_receipt_upload_confirmation.delay(
+                            to_email=user_email,
+                            first_name=first_name,
+                            receipt_details=receipt_details
+                        )
+                        logger.info(f"Receipt email queued for user {user_email}")
+                    else:
+                        logger.warning(f"User {user_id} has no email address")
+                else:
+                    logger.warning(f"User not found in MongoDB with ID: {user_id}")
+            else:
+                logger.warning("No user ID found in request")
+                
+        except Exception as e:
+            logger.error(f"Failed to queue receipt email: {str(e)}")
+            # Don't raise exception - email failure shouldn't break receipt upload
+    
+    def _format_receipt_details(self, receipt_data):
+        """
+        Format receipt details for the email
+        """
+        try:
+            details = []
+            
+            # Add basic receipt information
+            if receipt_data.get('amount'):
+                details.append(f"Amount: ${receipt_data.get('amount')}")
+            if receipt_data.get('merchant'):
+                details.append(f"Merchant: {receipt_data.get('merchant')}")
+            if receipt_data.get('date'):
+                details.append(f"Date: {receipt_data.get('date')}")
+            if receipt_data.get('created_at'):
+                details.append(f"Uploaded at: {receipt_data.get('created_at')}")
+            
+            # Add any additional fields you want to include
+            if receipt_data.get('description'):
+                details.append(f"Description: {receipt_data.get('description')}")
+            if receipt_data.get('category'):
+                details.append(f"Category: {receipt_data.get('category')}")
+            
+            return "\n".join(details) if details else "Your receipt has been successfully uploaded."
+            
+        except Exception as e:
+            logger.error(f"Error formatting receipt details: {str(e)}")
+            return "Your receipt has been successfully uploaded."
 
 receipt_storage = ReceiptStorage()
 

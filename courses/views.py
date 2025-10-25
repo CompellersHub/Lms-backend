@@ -2307,18 +2307,67 @@ class ReceiptUploadView(APIView):
             receipt = serializer.create(validated_data)
             response_serializer = ReceiptSerializer(receipt)
             
+            # Get user details for response using your existing pattern
+            user_details = self._get_user_details(request)
+            
             # Send email confirmation asynchronously
             self._send_receipt_email(request, receipt, response_serializer.data)
             
             return Response({
                 "success": True,
-                "receipt": response_serializer.data
+                "receipt": response_serializer.data,
+                "uploaded_by": user_details  # Add user details to response
             }, status=status.HTTP_201_CREATED)
         
         return Response({
             "success": False,
             "errors": serializer.errors
         }, status=status.HTTP_400_BAD_REQUEST)
+    
+    def _get_user_details(self, request):
+        """
+        Get user details from MongoDB using your existing StudentDetail pattern
+        """
+        try:
+            db = get_mongo_db()
+            
+            # Get user ID from request
+            user_id = None
+            if request.user and hasattr(request.user, 'id'):
+                user_id = str(request.user.id)
+            
+            if user_id:
+                # Use the same pattern as your StudentDetail endpoint
+                user = db.customusers.find_one({"_id": ObjectId(user_id)})
+                
+                if user:
+                    return {
+                        "user_id": str(user['_id']),
+                        "name": f"{user.get('first_name', '')} {user.get('last_name', '')}".strip(),
+                        "first_name": user.get('first_name'),
+                        "last_name": user.get('last_name'),
+                        "email": user.get('email')
+                    }
+                else:
+                    return {
+                        "user_id": user_id,
+                        "name": "User not found",
+                        "email": "Not available"
+                    }
+            else:
+                return {
+                    "user_id": None,
+                    "name": "Anonymous User",
+                    "email": "Not available"
+                }
+                
+        except Exception as e:
+            logger.error(f"Error getting user details: {str(e)}")
+            return {
+                "user_id": "Error",
+                "name": "Error retrieving user",
+                "email": "Error"
+            }
     
     def _send_receipt_email(self, request, receipt, receipt_data):
         """
@@ -2333,8 +2382,8 @@ class ReceiptUploadView(APIView):
                 user_id = str(request.user.id)
             
             if user_id:
-                # Find user in MongoDB customusers collection
-                user = db.customusers.find_one({'_id': user_id})
+                # Use the same pattern as your StudentDetail endpoint
+                user = db.customusers.find_one({"_id": ObjectId(user_id)})
                 
                 if user:
                     user_email = user.get('email')
@@ -2360,7 +2409,6 @@ class ReceiptUploadView(APIView):
                 
         except Exception as e:
             logger.error(f"Failed to queue receipt email: {str(e)}")
-            # Don't raise exception - email failure shouldn't break receipt upload
     
     def _format_receipt_details(self, receipt_data):
         """
@@ -2378,12 +2426,6 @@ class ReceiptUploadView(APIView):
                 details.append(f"Date: {receipt_data.get('date')}")
             if receipt_data.get('created_at'):
                 details.append(f"Uploaded at: {receipt_data.get('created_at')}")
-            
-            # Add any additional fields you want to include
-            if receipt_data.get('description'):
-                details.append(f"Description: {receipt_data.get('description')}")
-            if receipt_data.get('category'):
-                details.append(f"Category: {receipt_data.get('category')}")
             
             return "\n".join(details) if details else "Your receipt has been successfully uploaded."
             

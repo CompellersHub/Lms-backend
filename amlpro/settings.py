@@ -216,6 +216,13 @@ BARCLAYS_BANK_CONFIG = {
     'SUPPORT_PHONE': '+44 20 XXXX XXXX'
 }
 
+PAYL8R_CONFIG = {
+    'MERCHANT_ID': os.getenv('PAYL8R_MERCHANT_ID'),
+    'MERCHANT_KEY': os.getenv('PAYL8R_MERCHANT_KEY'),
+    'BASE_URL': os.getenv('PAYL8R_BASE_URL', 'https://api.payl8r.com/v1'),
+    'ENVIRONMENT': os.getenv('PAYL8R_ENVIRONMENT', 'sandbox'),
+}
+
 
 # settings.py
 STRIPE_CONFIG = {

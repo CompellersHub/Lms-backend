@@ -1305,59 +1305,28 @@ class StripeTransferStatusView(APIView):
 
 
 
-from courses.mongo_utils import get_mongo_db
-
-logger = logging.getLogger(__name__)
-
-class Payl8rAffordabilityView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request):
-        log_context = {
-            "user_id": str(request.user.id),
-            "endpoint": "payl8r-affordability",
-            "timestamp": datetime.utcnow().isoformat()
-        }
-
-        serializer = Payl8rApplicationSerializer(data=request.data)
-        if not serializer.is_valid():
-            logger.error("Invalid affordability request", extra={
-                **log_context, "errors": serializer.errors})
-            return Response({
-                "status": "failed",
-                "code": "INVALID_REQUEST",
-                "message": "Invalid request data",
-                "errors": serializer.errors
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        amount = serializer.validated_data['amount']
-        
-        payl8r_service = Payl8rService()
-        affordability_data = payl8r_service.get_affordability(float(amount))
-        
-        if affordability_data:
-            return Response({
-                "status": "success",
-                "data": affordability_data
-            })
-        else:
-            return Response({
-                "status": "failed",
-                "code": "AFFORDABILITY_UNAVAILABLE",
-                "message": "Could not calculate affordability"
-            }, status=status.HTTP_400_BAD_REQUEST)
-
+@permission_classes([IsAuthenticated])
 class CreatePayl8rApplicationView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request, *args, **kwargs):
+    """
+    Create a Payl8r credit application with sandbox support
+    """
+    def post(self, request):
         log_context = {
             "user_id": str(request.user.id),
             "endpoint": "create-payl8r-application",
             "timestamp": datetime.utcnow().isoformat()
         }
 
-        # 1. Database Connection Check
+        # 1. Validate Payl8r configuration
+        if not getattr(settings, 'PAYL8R_API_KEY', ''):
+            logger.error("Payl8r API key not configured", extra=log_context)
+            return Response(
+                {"status": "failed", "code": "PAYL8R_NOT_CONFIGURED",
+                 "message": "Payl8r payment system not configured",
+                 "user_message": "Payment option currently unavailable."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
         db = get_mongo_db()
         if db is None:
             logger.error("MongoDB connection failed", extra=log_context)
@@ -1368,42 +1337,20 @@ class CreatePayl8rApplicationView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-        # 2. Validate input data
-        serializer = CreatePayl8rApplicationSerializer(data=request.data)
-        if not serializer.is_valid():
-            logger.error("Invalid Payl8r application request", extra={
-                **log_context, "errors": serializer.errors})
-            return Response({
-                "status": "failed",
-                "code": "INVALID_REQUEST",
-                "message": "Invalid application data",
-                "errors": serializer.errors
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        course_id = serializer.validated_data['course_id']
-        
-        try:
-            course_oid = ObjectId(course_id)
-            log_context["course_id"] = course_id
-        except Exception as e:
-            logger.error("Invalid Course ID format", extra={
-                **log_context, "error": str(e), "provided_course_id": course_id})
+        course_id = request.data.get('course_id')
+        if not course_id:
+            logger.error("Missing course_id", extra={**log_context, "request_data": request.data})
             return Response(
-                {"status": "failed", "code": "INVALID_COURSE_ID",
-                 "message": "Invalid Course ID format",
-                 "user_message": "The course information is invalid. Please try again."},
+                {"status": "failed", "code": "MISSING_COURSE_ID",
+                 "message": "Course ID is required",
+                 "user_message": "Please select a course to enroll in."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # 3. Fetch Course Details
         try:
-            course = db.courses.find_one(
-                {"_id": course_oid},
-                {
-                    "name": 1, "price": 1, "course_image": 1, 
-                    "instructor": 1, "description": 1
-                }
-            )
+            course_oid = ObjectId(course_id)
+            course = db.courses.find_one({"_id": course_oid})
+            
             if not course:
                 logger.error("Course not found", extra=log_context)
                 return Response(
@@ -1412,312 +1359,224 @@ class CreatePayl8rApplicationView(APIView):
                      "user_message": "The course could not be found."},
                     status=status.HTTP_404_NOT_FOUND
                 )
-            
+
             log_context.update({
                 "course_name": course.get('name'),
                 "course_price": course.get('price')
             })
-        except Exception as e:
-            logger.error("Database error fetching course", extra={
-                **log_context, "error": str(e), "stack_trace": traceback.format_exc()})
-            return Response(
-                {"status": "failed", "code": "DATABASE_ERROR",
-                 "message": "Error fetching course details",
-                 "user_message": "We couldn't retrieve course information. Please try again."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
 
-        # 4. Generate merchant reference
-        merchant_reference = f"PAYL8R-{uuid.uuid4().hex[:12].upper()}"
-
-        # 5. Prepare Payl8r application data
-        application_data = serializer.validated_data.copy()
-        application_data['merchant_reference'] = merchant_reference
-        
-        # Add metadata
-        application_data['metadata'] = {
-            'course_id': course_id,
-            'user_id': str(request.user.id),
-            'course_name': course.get('name'),
-            'user_email': request.user.email
-        }
-        
-        # Add redirect URLs if not provided
-        if 'redirect_urls' not in application_data:
-            application_data['redirect_urls'] = {
-                'success_url': f"{settings.FRONTEND_URL}/payment/success?type=payl8r",
-                'failure_url': f"{settings.FRONTEND_URL}/payment/failed?type=payl8r",
-                'cancel_url': f"{settings.FRONTEND_URL}/payment/cancelled?type=payl8r"
+            # Generate merchant reference
+            merchant_reference = f"COURSE_{course_id}_{request.user.id}_{int(time.time())}"
+            
+            # Prepare application data
+            customer_data = request.data.get('customer', {})
+            application_data = {
+                "merchant_reference": merchant_reference,
+                "amount": float(course['price']),
+                "redirect_url": request.build_absolute_uri(reverse('payl8r-redirect')),
+                "cancel_url": request.build_absolute_uri(reverse('payl8r-cancel')),
+                "customer": {
+                    "title": customer_data.get('title', ''),
+                    "first_name": customer_data.get('first_name', request.user.first_name),
+                    "last_name": customer_data.get('last_name', request.user.last_name),
+                    "email": request.user.email,
+                    "phone": customer_data.get('phone', ''),
+                    "date_of_birth": customer_data.get('date_of_birth'),
+                    "employment_status": customer_data.get('employment_status'),
+                    "monthly_income": int(customer_data.get('monthly_income', 0)),
+                    "residential_status": customer_data.get('residential_status'),
+                    "months_at_address": int(customer_data.get('months_at_address', 0))
+                },
+                "products": [{
+                    "name": course['name'],
+                    "quantity": 1,
+                    "unit_price": float(course['price']),
+                    "image_url": course.get('course_image', '') or ''
+                }],
+                "billing_address": request.data.get('billing_address', {}),
+                "metadata": {
+                    "user_id": str(request.user.id),
+                    "course_id": course_id,
+                    "course_name": course['name'],
+                    "user_email": request.user.email,
+                    "environment": "sandbox"  # Mark as sandbox transaction
+                }
             }
 
-        # 6. Create Payl8r application
-        payl8r_service = Payl8rService()
-        payl8r_response = payl8r_service.create_application(application_data)
-        
-        if not payl8r_response or 'id' not in payl8r_response:
-            logger.error("Failed to create Payl8r application", extra=log_context)
-            return Response(
-                {"status": "failed", "code": "PAYL8R_APPLICATION_FAILED",
-                 "message": "Could not create Payl8r application",
-                 "user_message": "We couldn't process your finance application. Please try again."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            # Add shipping address if provided
+            if request.data.get('shipping_address'):
+                application_data["shipping_address"] = request.data.get('shipping_address')
 
-        # 7. Store application in database
-        try:
-            payl8r_application = {
+            # Create Payl8r application
+            payl8r_service = Payl8rService()
+            payl8r_response = payl8r_service.create_application(application_data)
+
+            # Store application in database
+            db.payl8r_applications.insert_one({
+                "application_id": payl8r_response.get('application_id'),
+                "merchant_reference": merchant_reference,
                 "user_id": ObjectId(request.user.id),
                 "course_id": course_oid,
-                "merchant_reference": merchant_reference,
-                "payl8r_application_id": payl8r_response['id'],
-                "total_amount": application_data['total_amount'],
-                "status": "pending",
-                "application_data": application_data,
-                "response_data": payl8r_response,
+                "amount": course['price'],
+                "status": "PENDING",
                 "created_at": datetime.utcnow(),
-                "updated_at": datetime.utcnow()
-            }
-            
-            db.payl8r_applications.insert_one(payl8r_application)
-            
-            logger.info("Payl8r application stored successfully", extra={
+                "updated_at": datetime.utcnow(),
+                "metadata": application_data['metadata'],
+                "application_data": application_data,
+                "environment": "sandbox"  # Mark as sandbox
+            })
+
+            logger.info("Payl8r sandbox application created successfully", extra={
                 **log_context, 
-                "payl8r_application_id": payl8r_response['id']
+                "application_id": payl8r_response.get('application_id'),
+                "merchant_reference": merchant_reference
             })
-
-        except Exception as e:
-            logger.error("Failed to store Payl8r application", extra={
-                **log_context, "error": str(e), "stack_trace": traceback.format_exc()})
-            # Continue anyway since Payl8r application was created
-
-        # 8. Return response to client
-        return Response({
-            "status": "success",
-            "application_id": payl8r_response['id'],
-            "merchant_reference": merchant_reference,
-            "redirect_url": payl8r_response.get('redirect_url'),
-            "course": {
-                "id": str(course['_id']),
-                "name": course.get('name'),
-                "price": course.get('price'),
-                "course_image": course.get('course_image')
-            },
-            "next_steps": {
-                "redirect_required": True,
-                "message": "Redirect to Payl8r to complete your application"
-            }
-        }, status=status.HTTP_201_CREATED)
-
-class Payl8rWebhookView(APIView):
-    """
-    Handle Payl8r webhook notifications
-    """
-    authentication_classes = []
-    permission_classes = []
-
-    def post(self, request):
-        webhook_data = request.data
-        logger.info("Payl8r webhook received", extra={"webhook_data": webhook_data})
-
-        # Verify webhook (add signature verification based on Payl8r docs)
-        
-        application_id = webhook_data.get('application_id')
-        new_status = webhook_data.get('status')
-        merchant_reference = webhook_data.get('merchant_reference')
-
-        if not application_id:
-            logger.error("Missing application_id in webhook")
-            return Response({"status": "error"}, status=status.HTTP_400_BAD_REQUEST)
-
-        db = get_mongo_db()
-        if db is None:
-            logger.error("Database connection failed during webhook")
-            return Response({"status": "error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-        try:
-            # Update application status
-            result = db.payl8r_applications.update_one(
-                {"payl8r_application_id": application_id},
-                {
-                    "$set": {
-                        "status": new_status,
-                        "response_data": webhook_data,
-                        "updated_at": datetime.utcnow()
-                    }
-                }
-            )
-
-            if result.modified_count > 0:
-                logger.info("Payl8r application status updated", extra={
-                    "application_id": application_id,
-                    "new_status": new_status
-                })
-
-                # If application is approved, create enrollment
-                if new_status == 'approved':
-                    self._create_enrollment_from_webhook(db, application_id, webhook_data)
-
-            return Response({"status": "success"})
-
-        except Exception as e:
-            logger.error("Error processing Payl8r webhook", extra={
-                "application_id": application_id,
-                "error": str(e),
-                "stack_trace": traceback.format_exc()
-            })
-            return Response({"status": "error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-    def _create_enrollment_from_webhook(self, db, application_id, webhook_data):
-        """Create enrollment when Payl8r application is approved"""
-        try:
-            # Get the application
-            application = db.payl8r_applications.find_one({
-                "payl8r_application_id": application_id
-            })
-            
-            if not application:
-                logger.error("Application not found for webhook enrollment")
-                return
-
-            user_id = application['user_id']
-            course_id = application['course_id']
-
-            # Check if already enrolled
-            if db.customusers.find_one({"_id": user_id, "course._id": course_id}):
-                logger.info("User already enrolled (Payl8r webhook)")
-                return
-
-            # Get course details
-            course = db.courses.find_one({"_id": course_id})
-            if not course:
-                logger.error("Course not found for Payl8r enrollment")
-                return
-
-            # Create enrollment (similar to your Stripe logic)
-            enrollment_date = datetime.utcnow()
-            
-            simplified_curriculum = [
-                {
-                    "title": module.get('title'),
-                    "video_count": len(module.get('video', [])),
-                    "notes": bool(module.get('course_note'))
-                }
-                for module in course.get('curriculum', [])
-            ]
-            
-            # Update user's courses
-            db.customusers.update_one(
-                {"_id": user_id},
-                {"$push": {"course": {
-                    "_id": course['_id'],
-                    "name": course.get('name'),
-                    "price": course.get('price'),
-                    "course_image": course.get('course_image'),
-                    "instructor": course.get('instructor'),
-                    "description": course.get('description'),
-                    "category": course.get('category'),
-                    "level": course.get('level'),
-                    "estimated_time": course.get('estimated_time'),
-                    "curriculum": simplified_curriculum,
-                    "enrollment_date": enrollment_date,
-                    "progress": {
-                        "completed_modules": 0,
-                        "total_modules": len(simplified_curriculum),
-                        "last_accessed": None
-                    },
-                    "payment_method": "payl8r"
-                }}}
-            )
-
-            # Record Payl8r transaction
-            db.payl8r_transactions.insert_one({
-                "user_id": user_id,
-                "course_id": course_id,
-                "payl8r_application_id": application_id,
-                "merchant_reference": application['merchant_reference'],
-                "amount": application['total_amount'],
-                "status": "APPROVED",
-                "enrollment_created": True,
-                "timestamp": enrollment_date,
-                "webhook_data": webhook_data
-            })
-
-            logger.info("Payl8r enrollment created successfully", extra={
-                "user_id": str(user_id),
-                "course_id": str(course_id),
-                "application_id": application_id
-            })
-
-        except Exception as e:
-            logger.error("Error creating Payl8r enrollment", extra={
-                "application_id": application_id,
-                "error": str(e),
-                "stack_trace": traceback.format_exc()
-            })
-
-class CheckPayl8rStatusView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request, application_id):
-        log_context = {
-            "user_id": str(request.user.id),
-            "application_id": application_id,
-            "endpoint": "check-payl8r-status",
-            "timestamp": datetime.utcnow().isoformat()
-        }
-
-        db = get_mongo_db()
-        if db is None:
-            return Response({
-                "status": "failed",
-                "code": "DATABASE_ERROR",
-                "message": "Database unavailable"
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-        try:
-            # Check in our database first
-            application = db.payl8r_applications.find_one({
-                "payl8r_application_id": application_id,
-                "user_id": ObjectId(request.user.id)
-            })
-
-            if not application:
-                return Response({
-                    "status": "failed",
-                    "code": "APPLICATION_NOT_FOUND",
-                    "message": "Application not found"
-                }, status=status.HTTP_404_NOT_FOUND)
-
-            # Optionally check with Payl8r API for latest status
-            payl8r_service = Payl8rService()
-            latest_status = payl8r_service.get_application_status(application_id)
-            
-            if latest_status:
-                # Update our database with latest status
-                db.payl8r_applications.update_one(
-                    {"payl8r_application_id": application_id},
-                    {"$set": {
-                        "status": latest_status.get('status'),
-                        "response_data": latest_status,
-                        "updated_at": datetime.utcnow()
-                    }}
-                )
-                application['status'] = latest_status.get('status')
 
             return Response({
                 "status": "success",
-                "application_status": application['status'],
-                "merchant_reference": application['merchant_reference'],
-                "course_id": str(application['course_id']),
-                "last_updated": application['updated_at'].isoformat()
+                "application_id": payl8r_response.get('application_id'),
+                "redirect_url": payl8r_response.get('redirect_url'),
+                "merchant_reference": merchant_reference,
+                "environment": "sandbox",
+                "message": "Credit application created successfully"
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            logger.error("Payl8r application creation failed", extra={
+                **log_context, 
+                "error": str(e),
+                "stack_trace": traceback.format_exc()
+            })
+            return Response(
+                {"status": "failed", "code": "PAYL8R_APPLICATION_FAILED",
+                 "message": f"Credit application failed: {str(e)}",
+                 "user_message": "We couldn't process your credit application. Please try again."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+
+@permission_classes([IsAuthenticated])
+class Payl8rTestScenariosView(APIView):
+    """
+    Get test scenarios for sandbox testing
+    """
+    def get(self, request):
+        payl8r_service = Payl8rService()
+        scenarios = payl8r_service.get_test_scenarios()
+        
+        return Response({
+            "status": "success",
+            "environment": "sandbox",
+            "test_scenarios": scenarios,
+            "notes": [
+                "Use these test scenarios in sandbox mode",
+                "Modify customer data to test different outcomes",
+                "All transactions are simulated in sandbox"
+            ]
+        })
+
+
+
+class Payl8rSandboxWebhookSimulator(APIView):
+    """
+    Simulate Payl8r webhooks for sandbox testing
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        """
+        Simulate webhook calls for testing
+        """
+        try:
+            application_id = request.data.get('application_id')
+            simulated_status = request.data.get('status', 'ACCEPTED')
+            
+            if not application_id:
+                return Response({
+                    "error": "application_id is required"
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # Create simulated webhook payload
+            webhook_payload = {
+                "application_id": application_id,
+                "status": simulated_status,
+                "merchant_reference": f"TEST_{int(time.time())}",
+                "timestamp": datetime.utcnow().isoformat()
+            }
+
+            # Process the simulated webhook
+            db = get_mongo_db()
+            if db:
+                # Update application status
+                db.payl8r_applications.update_one(
+                    {"application_id": application_id},
+                    {
+                        "$set": {
+                            "status": simulated_status,
+                            "updated_at": datetime.utcnow(),
+                            "webhook_data": webhook_payload,
+                            "simulated_webhook": True
+                        }
+                    }
+                )
+
+                # If status is ACCEPTED, enroll the user
+                if simulated_status == "ACCEPTED":
+                    application = db.payl8r_applications.find_one({"application_id": application_id})
+                    if application:
+                        user_id = application['user_id']
+                        course_id = application['course_id']
+                        
+                        # Check if already enrolled
+                        if not db.customusers.find_one({"_id": user_id, "course._id": course_id}):
+                            course = db.courses.find_one({"_id": course_id})
+                            if course:
+                                enrollment_date = datetime.utcnow()
+                                db.customusers.update_one(
+                                    {"_id": user_id},
+                                    {"$push": {"course": {
+                                        "_id": course_id,
+                                        "name": course.get('name'),
+                                        "price": course.get('price'),
+                                        "course_image": course.get('course_image'),
+                                        "instructor": course.get('instructor'),
+                                        "description": course.get('description'),
+                                        "enrollment_date": enrollment_date,
+                                        "payment_method": "payl8r_sandbox"
+                                    }}}
+                                )
+
+            return Response({
+                "status": "success",
+                "message": f"Simulated webhook with status: {simulated_status}",
+                "webhook_payload": webhook_payload
             })
 
         except Exception as e:
-            logger.error("Error checking Payl8r status", extra={
-                **log_context, "error": str(e)
+            logger.error("Sandbox webhook simulation failed", extra={
+                "error": str(e),
+                "stack_trace": traceback.format_exc()
             })
             return Response({
-                "status": "failed",
-                "code": "CHECK_STATUS_ERROR",
-                "message": "Could not check application status"
-            }, status=status.HTTP_400_BAD_REQUEST)
+                "status": "error",
+                "message": str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+
+# Add to your views.py temporarily
+@permission_classes([IsAuthenticated])
+class DebugPayl8rConfigView(APIView):
+    def get(self, request):
+        from django.conf import settings
+        
+        config_status = {
+            'PAYL8R_API_KEY': bool(getattr(settings, 'PAYL8R_API_KEY', None)),
+            'PAYL8R_API_KEY_VALUE': getattr(settings, 'PAYL8R_API_KEY', 'NOT_SET')[:10] + '...' if getattr(settings, 'PAYL8R_API_KEY', None) else 'NOT_SET',
+            'PAYL8R_BASE_URL': getattr(settings, 'PAYL8R_BASE_URL', 'NOT_SET'),
+            'PAYL8R_REDIRECT_URL': getattr(settings, 'PAYL8R_REDIRECT_URL', 'NOT_SET'),
+            'environment_variables': {
+                'PAYL8R_API_KEY in os.environ': 'PAYL8R_API_KEY' in os.environ,
+            }
+        }
+        
+        return Response(config_status)

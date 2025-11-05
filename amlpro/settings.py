@@ -143,12 +143,12 @@ AWS_S3_SIGNATURE_VERSION = 's3v4'
 # For media files (user uploads)
 
 DEFAULT_FILE_STORAGE = 'courses.storage_backends.PublicMediaStorage'
-MEDIA_URL = f'https://d2907c0nlcl1a.cloudfront.net/'
+MEDIA_URL = f'd2907c0nlcl1a.cloudfront.net/'
 MEDIA_ROOT = ''  # This should be empty for S3
 
 # For CloudFront Integration (highly recommended for video)
 # Use your CloudFront Distribution Domain Name here
-AWS_S3_CUSTOM_DOMAIN = 'https://d2907c0nlcl1a.cloudfront.net' # e.g., d1234abcd.cloudfront.net
+AWS_S3_CUSTOM_DOMAIN = 'd2907c0nlcl1a.cloudfront.net' # e.g., d1234abcd.cloudfront.net
 # MEDIA_URL = f'https://{AWS_S3_CUSTOM_DOMAIN}/media/' # CloudFront URL for media uploads
 # AWS_CLOUDFRONT_DOMAIN = 'yourcloudfrontdomain.cloudfront.net' # Store this separately for clarity if needed
 
@@ -216,12 +216,12 @@ BARCLAYS_BANK_CONFIG = {
     'SUPPORT_PHONE': '+44 20 XXXX XXXX'
 }
 
-PAYL8R_CONFIG = {
-    'MERCHANT_ID': os.getenv('PAYL8R_MERCHANT_ID'),
-    'MERCHANT_KEY': os.getenv('PAYL8R_MERCHANT_KEY'),
-    'BASE_URL': os.getenv('PAYL8R_BASE_URL', 'https://api.payl8r.com/v1'),
-    'ENVIRONMENT': os.getenv('PAYL8R_ENVIRONMENT', 'sandbox'),
-}
+# Payl8r Configuration
+PAYL8R_API_KEY = os.getenv('PAYL8R_API_KEY', 'your_sandbox_api_key_here')
+PAYL8R_BASE_URL = os.getenv('PAYL8R_BASE_URL', 'https://sandbox.payl8r.com/v2/')
+PAYL8R_REDIRECT_URL = os.getenv('PAYL8R_REDIRECT_URL', 'http://localhost:8000/payment/payl8r/redirect/')
+PAYL8R_CANCEL_URL = os.getenv('PAYL8R_CANCEL_URL', 'http://localhost:8000/payment/payl8r/cancel/')
+
 
 
 # settings.py

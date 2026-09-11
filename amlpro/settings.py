@@ -122,10 +122,9 @@ CHANNEL_LAYERS = {
 # Get these from your AWS IAM user credentials or instance profile
 AWS_ACCESS_KEY_ID = os.getenv('S3_ACCESS_KEY_ID')
 AWS_SECRET_ACCESS_KEY = os.getenv('S3_SECRET_ACCESS_KEY')
-AWS_STORAGE_BUCKET_NAME = os.getenv('S3_BUCKET') # The S3 bucket name you created
-AWS_S3_REGION_NAME = os.getenv('S3_REGION') # e.g., 'us-east-1'
-AWS_S3_FILE_OVERWRITE = False # Prevents overwriting files with the same name
-# In your storage backend configuration
+AWS_STORAGE_BUCKET_NAME = os.getenv('S3_BUCKET') 
+AWS_S3_REGION_NAME = os.getenv('S3_REGION') 
+AWS_S3_FILE_OVERWRITE = False 
 AWS_S3_MAX_MEMORY_SIZE = 1024 * 1024 * 1024  # 1 GB
 
 # Add these to your AWS S3 Settings section
@@ -142,7 +141,7 @@ AWS_S3_SIGNATURE_VERSION = 's3v4'
 
 # For media files (user uploads)
 
-DEFAULT_FILE_STORAGE = 'courses.storage_backends.PublicMediaStorage'
+# DEFAULT_FILE_STORAGE = 'courses.storage_backends.PublicMediaStorage'
 MEDIA_URL = f'd2907c0nlcl1a.cloudfront.net/'
 MEDIA_ROOT = ''  # This should be empty for S3
 
